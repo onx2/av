@@ -56,6 +56,22 @@ pub fn build_world_accel(statics: &[StaticShape]) -> WorldAccel {
                     non_plane_indices.push(i);
                 }
             }
+            StaticShape::Sphere { radius, transform } => {
+                if let Some(aabb) = sphere_aabb_world(radius, transform) {
+                    aabbs.push(aabb);
+                    non_plane_indices.push(i);
+                }
+            }
+            StaticShape::Capsule {
+                radius,
+                half_height,
+                transform,
+            } => {
+                if let Some(aabb) = capsule_aabb_world(radius, half_height, transform) {
+                    aabbs.push(aabb);
+                    non_plane_indices.push(i);
+                }
+            }
         }
     }
 
@@ -78,6 +94,32 @@ fn cuboid_aabb_world(half_extents: na::Vector3<f32>, transform: Transform) -> Op
         transform.rotation,
     );
     Some(cuboid.aabb(&iso))
+}
+
+fn sphere_aabb_world(radius: f32, transform: Transform) -> Option<Aabb> {
+    let ball = pshape::Ball::new(radius);
+    let iso = na::Isometry3::from_parts(
+        na::Translation3::new(
+            transform.translation.x,
+            transform.translation.y,
+            transform.translation.z,
+        ),
+        na::UnitQuaternion::identity(),
+    );
+    Some(ball.aabb(&iso))
+}
+
+fn capsule_aabb_world(radius: f32, half_height: f32, transform: Transform) -> Option<Aabb> {
+    let capsule = pshape::Capsule::new_y(half_height, radius);
+    let iso = na::Isometry3::from_parts(
+        na::Translation3::new(
+            transform.translation.x,
+            transform.translation.y,
+            transform.translation.z,
+        ),
+        transform.rotation,
+    );
+    Some(capsule.aabb(&iso))
 }
 
 /// Compute a swept AABB for a Y-aligned capsule moving from `start_pos` to `start_pos + desired`.

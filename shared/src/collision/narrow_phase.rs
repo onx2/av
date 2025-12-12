@@ -88,6 +88,70 @@ pub fn cast_capsule_against_static(
             }
             None
         }
+        StaticShape::Sphere { radius, transform } => {
+            // Treat as a Ball; rotation is irrelevant.
+            let ball = pshape::Ball::new(radius);
+            let ball_iso = transform.iso();
+
+            if let Ok(Some(toi)) = query::time_of_impact(
+                &capsule_iso,
+                &vel,
+                capsule,
+                &ball_iso,
+                &na::Vector3::zeros(),
+                &ball,
+                max_toi,
+                true,
+            ) {
+                let mut n = Vec3::new(
+                    toi.normal1.into_inner().x,
+                    toi.normal1.into_inner().y,
+                    toi.normal1.into_inner().z,
+                );
+                if n.dot(&vel) > 0.0 {
+                    n = -n;
+                }
+                return Some(MoveHit {
+                    normal: n,
+                    fraction: toi.toi,
+                });
+            }
+            None
+        }
+        StaticShape::Capsule {
+            radius,
+            half_height,
+            transform,
+        } => {
+            // Static capsule vs moving capsule.
+            let static_capsule = pshape::Capsule::new_y(half_height, radius);
+            let static_iso = transform.iso();
+
+            if let Ok(Some(toi)) = query::time_of_impact(
+                &capsule_iso,
+                &vel,
+                capsule,
+                &static_iso,
+                &na::Vector3::zeros(),
+                &static_capsule,
+                max_toi,
+                true,
+            ) {
+                let mut n = Vec3::new(
+                    toi.normal1.into_inner().x,
+                    toi.normal1.into_inner().y,
+                    toi.normal1.into_inner().z,
+                );
+                if n.dot(&vel) > 0.0 {
+                    n = -n;
+                }
+                return Some(MoveHit {
+                    normal: n,
+                    fraction: toi.toi,
+                });
+            }
+            None
+        }
     }
 }
 

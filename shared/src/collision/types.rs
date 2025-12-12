@@ -39,7 +39,10 @@ pub struct Transform {
 impl Transform {
     #[inline]
     pub fn new(translation: Vec3, rotation: Quat) -> Self {
-        Self { translation, rotation }
+        Self {
+            translation,
+            rotation,
+        }
     }
 
     /// Convert to nalgebra `Isometry3` for use with parry3d narrow-phase queries.
@@ -69,6 +72,20 @@ pub enum StaticShape {
         /// Local-space half-extents (hx, hy, hz).
         half_extents: Vec3,
         /// World-space pose of the cuboid.
+        transform: Transform,
+    },
+    Sphere {
+        /// Radius of the sphere in meters.
+        radius: f32,
+        /// World-space pose (translation used; rotation ignored).
+        transform: Transform,
+    },
+    Capsule {
+        /// Radius of the spherical caps and cylinder.
+        radius: f32,
+        /// Half of the cylinder length along the local +Y axis.
+        half_height: f32,
+        /// World-space pose of the capsule.
         transform: Transform,
     },
 }

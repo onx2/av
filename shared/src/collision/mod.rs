@@ -46,3 +46,31 @@ pub fn cuboid_from_pose(half_extents: Vec3, translation: Vec3, rotation: Quat) -
         },
     }
 }
+
+#[inline]
+pub fn sphere_from_pose(radius: f32, translation: Vec3, rotation: Quat) -> StaticShape {
+    StaticShape::Sphere {
+        radius,
+        transform: Transform {
+            translation,
+            rotation,
+        },
+    }
+}
+
+#[inline]
+pub fn capsule_from_pose(
+    radius: f32,
+    half_height: f32,
+    translation: Vec3,
+    rotation: Quat,
+) -> StaticShape {
+    StaticShape::Capsule {
+        radius,
+        half_height,
+        transform: Transform {
+            translation,
+            rotation,
+        },
+    }
+}
