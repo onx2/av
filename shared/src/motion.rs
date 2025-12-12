@@ -1,26 +1,21 @@
-#![allow(clippy::excessive_precision)]
-
-/*!
-3D movement helpers: compute the desired translation toward a target with an acceptance radius.
-
-This module centralizes the logic for:
-- Converting a target and speed into a per-tick desired translation.
-- Stopping at the surface of an "acceptance sphere" around the target to avoid jitter.
-
-Typical usage in a kinematic step:
-1) Compute desired translation via `compute_desired_translation`.
-2) Feed that desired translation into your collision sweep-and-slide.
-3) Optionally compute facing (yaw) based on the final translation you actually applied.
-
-Notes
-- All math uses nalgebra. Distances are in meters, time in seconds.
-- The acceptance radius is a world-space distance. For character controllers, a good default is
-  capsule_radius + ACCEPTANCE_BUFFER.
-
-About tolerances
-- Machine epsilon (f32::EPSILON) is too small for world-space thresholds. Use practical tolerances
-  reflecting your units and scale.
-*/
+//! 3D movement helpers: compute the desired translation toward a target with an acceptance radius.
+//! This module centralizes the logic for:
+//! - Converting a target and speed into a per-tick desired translation.
+//! - Stopping at the surface of an "acceptance sphere" around the target to avoid jitter.
+//!
+//! Typical usage in a kinematic step:
+//! 1) Compute desired translation via `compute_desired_translation`.
+//! 2) Feed that desired translation into your collision sweep-and-slide.
+//! 3) Optionally compute facing (yaw) based on the final translation you actually applied.
+//!
+//! Notes
+//! - All math uses nalgebra. Distances are in meters, time in seconds.
+//! - The acceptance radius is a world-space distance. For character controllers, a good default is
+//!   capsule_radius + ACCEPTANCE_BUFFER.
+//!
+//! About tolerances
+//! - Machine epsilon (f32::EPSILON) is too small for world-space thresholds. Use practical tolerances
+//!   reflecting your units and scale.
 
 use nalgebra as na;
 
@@ -47,9 +42,9 @@ pub fn acceptance_from_capsule(capsule_radius: f32) -> f32 {
 #[derive(Clone, Copy, Debug)]
 pub struct MoveTowardParams {
     /// Current world position of the mover (meters).
-    pub current: na::Point3<f32>,
+    pub current: na::Point<f32, 3>,
     /// Target world position (meters).
-    pub target: na::Point3<f32>,
+    pub target: na::Point<f32, 3>,
     /// Linear speed in meters per second.
     pub speed_mps: f32,
     /// Delta time in seconds.

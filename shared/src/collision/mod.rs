@@ -19,6 +19,7 @@ type Quat = na::UnitQuaternion<f32>;
 // nalgebra imported above
 #[allow(unused_imports)]
 use parry3d::{self as parry, shape as pshape};
+pub mod broad;
 
 /// A rigid transform used by statics (pose in world space).
 #[derive(Clone, Copy, Debug)]
@@ -319,4 +320,57 @@ pub fn cuboid_from_pose(half_extents: Vec3, translation: Vec3, rotation: Quat) -
             rotation,
         },
     }
+}
+
+/// Broad-phase accelerated variant of `move_capsule_kinematic`.
+/// Uses a prebuilt accelerator to prune candidate statics before running the narrow-phase sweep.
+pub fn move_capsule_kinematic_with_accel(
+    statics: &[StaticShape],
+    accel: &broad::WorldAccel,
+    req: MoveRequest,
+) -> MoveResult {
+    // Compute the swept AABB for this move.
+    let swept = broad::swept_capsule_aabb(
+        req.capsule.half_height,
+        req.capsule.radius,
+        req.start_pos,
+        req.desired_translation,
+        req.skin,
+    );
+
+    // Build a small subset of statics to test: all planes + AABB-overlapping finite shapes.
+    let mut subset: Vec<StaticShape> = Vec::new();
+    for &idx in &accel.plane_indices {
+        subset.push(statics[idx]);
+    }
+    for idx in broad::query_candidates(accel, &swept) {
+        subset.push(statics[idx]);
+    }
+
+    // Delegate to the narrow-phase sweep-and-slide on the pruned set.
+    move_capsule_kinematic(&subset, req)
+}
+
+/// Broad-phase accelerated ground-snap. Queries only candidates from the accelerator plus planes.
+pub fn snap_capsule_to_ground_with_accel(
+    statics: &[StaticShape],
+    accel: &broad::WorldAccel,
+    capsule: CapsuleSpec,
+    pos: Vec3,
+    max_snap_distance: f32,
+    hover_height: f32,
+) -> (Vec3, bool) {
+    let desired = na::Vector3::new(0.0, -max_snap_distance, 0.0);
+    let swept = broad::swept_capsule_aabb(capsule.half_height, capsule.radius, pos, desired, 0.0);
+
+    // Subset = planes + finite shapes overlapping the down-sweep.
+    let mut subset: Vec<StaticShape> = Vec::new();
+    for &idx in &accel.plane_indices {
+        subset.push(statics[idx]);
+    }
+    for idx in broad::query_candidates(accel, &swept) {
+        subset.push(statics[idx]);
+    }
+
+    snap_capsule_to_ground(&subset, capsule, pos, max_snap_distance, hover_height)
 }

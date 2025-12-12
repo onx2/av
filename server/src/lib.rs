@@ -1,5 +1,6 @@
 use nalgebra as na;
-use shared::*;
+use std::sync::OnceLock;
+
 use spacetimedb::*;
 
 #[derive(SpacetimeType, Clone, Copy, PartialEq)]
@@ -137,6 +138,30 @@ pub struct Player {
     pub actor_id: Option<u64>,
 }
 
+#[table(name = projectile, public)]
+pub struct Projectile {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+
+    /// The actor that initiated this projectile
+    #[index(btree)]
+    pub source_actor_id: Option<u64>,
+
+    /// When homing, this is the target
+    #[index(btree)]
+    pub target_actor_id: Option<u64>,
+
+    pub translation: DbVec3,
+    pub rotation: DbQuat,
+    pub scale: DbVec3,
+
+    pub speed: f32,
+
+    pub capsule_radius: f32,
+    pub capsule_half_height: f32,
+}
+
 #[table(name = actor, public)]
 pub struct Actor {
     #[primary_key]
@@ -180,6 +205,8 @@ const SKIN: f32 = 0.02;
 const SNAP_MAX_DISTANCE: f32 = 0.3;
 /// Global hover height above ground when snapped (meters).
 const SNAP_HOVER_HEIGHT: f32 = 0.02;
+/// Static accelerator for immutable world statics.
+static WORLD_ACCEL: OnceLock<shared::collision::broad::WorldAccel> = OnceLock::new();
 
 #[table(name = tick_timer, scheduled(tick))]
 struct TickTimer {
@@ -227,6 +254,11 @@ pub fn init(ctx: &ReducerContext) {
         scale: DbVec3::new(1.0, 1.0, 1.0),
         shape: ColliderShape::Cuboid(DbVec3::new(0.1, 1.0, 2.0)),
     });
+    // Build world statics (immutable in this project).
+    let statics = world_statics_to_shared(ctx);
+    // Build and cache the world accelerator once.
+    let accel = shared::collision::broad::build_world_accel(&statics);
+    let _ = WORLD_ACCEL.set(accel);
 }
 fn world_statics_to_shared(ctx: &ReducerContext) -> Vec<shared::collision::StaticShape> {
     let mut out = Vec::new();
@@ -273,6 +305,7 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
     // Build statics for collision
     let statics = world_statics_to_shared(ctx);
+    let accel = WORLD_ACCEL.get().expect("world accel not initialized");
 
     // Process entity's movement for those that have intent to move
     for mut source_actor in ctx.db.actor().iter() {
@@ -297,10 +330,12 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                     skin: SKIN,
                     max_iterations: 4,
                 };
-                let fall_col = shared::collision::move_capsule_kinematic(&statics, fall_req);
+                let fall_col =
+                    shared::collision::move_capsule_kinematic_with_accel(&statics, accel, fall_req);
                 // Snap to ground if close enough.
-                let (snapped_pos, hit) = shared::collision::snap_capsule_to_ground(
+                let (snapped_pos, hit) = shared::collision::snap_capsule_to_ground_with_accel(
                     &statics,
+                    accel,
                     capsule,
                     fall_col.end_pos,
                     SNAP_MAX_DISTANCE,
@@ -338,9 +373,12 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                         skin: SKIN,
                         max_iterations: 4,
                     };
-                    let fall_col = shared::collision::move_capsule_kinematic(&statics, fall_req);
-                    let (snapped_pos, hit) = shared::collision::snap_capsule_to_ground(
+                    let fall_col = shared::collision::move_capsule_kinematic_with_accel(
+                        &statics, accel, fall_req,
+                    );
+                    let (snapped_pos, hit) = shared::collision::snap_capsule_to_ground_with_accel(
                         &statics,
+                        accel,
                         capsule,
                         fall_col.end_pos,
                         SNAP_MAX_DISTANCE,
@@ -399,12 +437,14 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                     skin: SKIN,
                     max_iterations: 4,
                 };
-                let col = shared::collision::move_capsule_kinematic(&statics, move_req);
+                let col =
+                    shared::collision::move_capsule_kinematic_with_accel(&statics, accel, move_req);
 
                 let after_horizontal = col.end_pos;
                 // First ground snap after horizontal movement
-                let (snapped1_pos, hit1) = shared::collision::snap_capsule_to_ground(
+                let (snapped1_pos, hit1) = shared::collision::snap_capsule_to_ground_with_accel(
                     &statics,
+                    accel,
                     capsule,
                     after_horizontal,
                     SNAP_MAX_DISTANCE,
@@ -421,10 +461,13 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                         skin: SKIN,
                         max_iterations: 4,
                     };
-                    let fall_col = shared::collision::move_capsule_kinematic(&statics, fall_req);
+                    let fall_col = shared::collision::move_capsule_kinematic_with_accel(
+                        &statics, accel, fall_req,
+                    );
                     // Final snap after fall
-                    let (snapped2_pos, hit2) = shared::collision::snap_capsule_to_ground(
+                    let (snapped2_pos, hit2) = shared::collision::snap_capsule_to_ground_with_accel(
                         &statics,
+                        accel,
                         capsule,
                         fall_col.end_pos,
                         SNAP_MAX_DISTANCE,
@@ -518,6 +561,7 @@ pub fn enter_world(ctx: &ReducerContext) {
     });
     // Snap newly spawned actor to ground hover and set grounded accordingly.
     let statics = world_statics_to_shared(ctx);
+    let accel = WORLD_ACCEL.get().expect("world accel not initialized");
     let capsule = shared::collision::CapsuleSpec {
         radius: actor.capsule_radius,
         half_height: actor.capsule_half_height,
@@ -527,8 +571,9 @@ pub fn enter_world(ctx: &ReducerContext) {
         actor.translation.y,
         actor.translation.z,
     );
-    let (snapped, hit) = shared::collision::snap_capsule_to_ground(
+    let (snapped, hit) = shared::collision::snap_capsule_to_ground_with_accel(
         &statics,
+        accel,
         capsule,
         spawn_pos,
         SNAP_MAX_DISTANCE,
