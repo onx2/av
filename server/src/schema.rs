@@ -1,0 +1,232 @@
+#![allow(dead_code)]
+//! Database schema and SpacetimeDB types used by the server.
+//!
+//! This module declares all rows and tagged-union types persisted in the
+//! authoritative SpacetimeDB instance. Types here are intentionally
+//! simple, serializable data with clear semantics. Higher-level math and
+//! conversions to engine types (e.g., nalgebra) live elsewhere.
+
+use spacetimedb::*;
+
+/// A unit quaternion (w + xi + yj + zk), stored as four `f32` scalars.
+///
+/// Semantics:
+/// - Represents an orientation in world space.
+/// - Stored in `(x, y, z, w)` order to match common game engine conventions.
+/// - This is a purely data/serialization type; math happens elsewhere.
+#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+pub struct DbQuat {
+    /// x component (imaginary i)
+    pub x: f32,
+    /// y component (imaginary j)
+    pub y: f32,
+    /// z component (imaginary k)
+    pub z: f32,
+    /// w component (real part)
+    pub w: f32,
+}
+
+impl Default for DbQuat {
+    /// Default orientation used by the server (matches Bevy's default)
+    fn default() -> Self {
+        Self {
+            x: 0.0,
+            y: -1.0,
+            z: 0.0,
+            w: 0.0,
+        }
+    }
+}
+
+/// A 3D vector in world space (meters).
+///
+/// Semantics:
+/// - Used for translations, scales, and general scalar triplets.
+/// - This is a data type only; math/conversions live outside the schema.
+#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+pub struct DbVec3 {
+    /// X axis (east-west)
+    pub x: f32,
+    /// Y axis (up-down)
+    pub y: f32,
+    /// Z axis (north-south)
+    pub z: f32,
+}
+
+impl Default for DbVec3 {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
+impl DbVec3 {
+    /// (1, 1, 1)
+    pub const ONE: Self = Self::new(1.0, 1.0, 1.0);
+    /// (0, 0, 0)
+    pub const ZERO: Self = Self::new(0.0, 0.0, 0.0);
+
+    /// Construct a new vector.
+    #[inline(always)]
+    #[must_use]
+    pub const fn new(x: f32, y: f32, z: f32) -> Self {
+        Self { x, y, z }
+    }
+
+    /// Convert to `[x, z]` (drop Y) for 2D planar logic.
+    #[inline]
+    #[must_use]
+    pub const fn to_2d_array(&self) -> [f32; 2] {
+        [self.x, self.z]
+    }
+}
+
+/// Capsule dimensions for collider definitions.
+///
+/// Semantics:
+/// - `radius`: radius of spherical caps and cylinder.
+/// - `half_height`: half of the cylinder length along local +Y.
+/// - Total capsule height = `2*half_height + 2*radius`.
+#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+pub struct DbCapsule {
+    pub radius: f32,
+    pub half_height: f32,
+}
+
+/// Collider shape used by world statics (and potentially triggers in the future).
+///
+/// Notes:
+/// - Variants are newtype-like to keep storage compact and easy to serialize.
+/// - Shapes are combined with per-row `translation`, `rotation`, and `scale`.
+#[derive(SpacetimeType, PartialEq)]
+pub enum ColliderShape {
+    /// Infinite plane (half-space). `f32` is the offset along the plane normal:
+    /// the plane satisfies `n ⋅ x = dist`, where `n = rotation * +Y`.
+    Plane(f32),
+
+    /// Oriented box defined by local half-extents (hx, hy, hz).
+    /// The final physics size used by the server is `half_extents * scale`.
+    Cuboid(DbVec3),
+
+    /// Y-aligned capsule with `radius` and `half_height`.
+    Capsule(DbCapsule),
+}
+
+/// Movement intent for an actor.
+///
+/// Match arms are handled by the server's tick reducer; unsupported variants
+/// can be extended in the future.
+#[derive(SpacetimeType, PartialEq)]
+pub enum MoveIntent {
+    /// Follow a sequence of waypoints (in world space) across multiple frames.
+    Path(Vec<DbVec3>),
+
+    /// Follow a dynamic actor by id.
+    Actor(u64),
+
+    /// Move toward this point (direction) for a single frame.
+    Point(DbVec3),
+
+    /// No movement intent (idling).
+    None,
+}
+
+/// Logical kind/ownership for an actor.
+///
+/// Extend as needed for NPCs, bosses, and other categories.
+#[derive(SpacetimeType, PartialEq)]
+pub enum ActorKind {
+    /// A player-controlled actor keyed by the user's identity.
+    Player(Identity),
+    /// A simple monster/NPC variant.
+    Monster(u32),
+}
+
+/// Player account data persisted across sessions.
+///
+/// This table persists the last known actor state so players can rejoin
+/// with the same parameters and location. The authoritative actor entity
+/// is created/destroyed on demand and references back to this row.
+#[table(name = player, public)]
+pub struct Player {
+    /// Unique identity (primary key).
+    #[primary_key]
+    pub identity: Identity,
+
+    /// Optional live actor id. None if not currently in-world.
+    #[index(btree)]
+    pub actor_id: Option<u64>,
+
+    // ------ Persisted actor state (server-authoritative) ------
+    /// Last known translation of the actor (meters).
+    pub translation: DbVec3,
+    /// Last known rotation of the actor (unit quaternion).
+    pub rotation: DbQuat,
+    /// Visual/logic scale of the actor (component-wise).
+    pub scale: DbVec3,
+
+    /// Capsule radius used by the actor's kinematic collider (meters).
+    pub capsule_radius: f32,
+    /// Capsule half-height used by the actor's kinematic collider (meters).
+    pub capsule_half_height: f32,
+
+    /// Nominal horizontal movement speed in meters/second.
+    pub movement_speed: f32,
+
+    /// Ground contact state at last persistence (best-effort).
+    pub grounded: bool,
+}
+
+/// Live actor entity driven by the server's kinematic controller.
+///
+/// An `Actor` exists only while the player is "in world". The authoritative
+/// values here are updated every tick by the server and may be mirrored
+/// back to the `Player` row when leaving or disconnecting.
+#[table(name = actor, public)]
+pub struct Actor {
+    /// Auto-incremented unique id (primary key).
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+
+    /// Logical kind/ownership of this actor.
+    pub kind: ActorKind,
+
+    /// World transform (meters / unit quaternion).
+    pub translation: DbVec3,
+    pub rotation: DbQuat,
+    pub scale: DbVec3,
+
+    /// Capsule collider parameters (meters).
+    pub capsule_radius: f32,
+    pub capsule_half_height: f32,
+
+    /// Nominal horizontal movement speed (m/s).
+    pub movement_speed: f32,
+
+    /// Ground contact state (updated by tick).
+    pub grounded: bool,
+
+    /// Current movement intent.
+    pub move_intent: MoveIntent,
+}
+
+/// Static collider rows used to build the immutable world collision geometry.
+///
+/// The server reads these rows into the shared collision module's `StaticShape`
+/// representation, builds a static broad-phase accelerator once, and reuses it
+/// every tick for narrow-phase shape casts.
+#[table(name = world_static, public)]
+pub struct WorldStatic {
+    /// Unique id (primary key).
+    #[primary_key]
+    #[auto_inc]
+    pub id: u32,
+
+    /// World transform applied to the shape.
+    pub translation: DbVec3,
+    pub rotation: DbQuat,
+    pub scale: DbVec3,
+
+    /// Collider shape definition.
+    pub shape: ColliderShape,
+}

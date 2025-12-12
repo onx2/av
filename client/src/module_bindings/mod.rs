@@ -20,8 +20,6 @@ pub mod leave_world_reducer;
 pub mod move_intent_type;
 pub mod player_table;
 pub mod player_type;
-pub mod projectile_table;
-pub mod projectile_type;
 pub mod request_move_reducer;
 pub mod tick_reducer;
 pub mod tick_timer_table;
@@ -47,8 +45,6 @@ pub use leave_world_reducer::{leave_world, set_flags_for_leave_world, LeaveWorld
 pub use move_intent_type::MoveIntent;
 pub use player_table::*;
 pub use player_type::Player;
-pub use projectile_table::*;
-pub use projectile_type::Projectile;
 pub use request_move_reducer::{request_move, set_flags_for_request_move, RequestMoveCallbackId};
 pub use tick_reducer::{set_flags_for_tick, tick, TickCallbackId};
 pub use tick_timer_table::*;
@@ -141,7 +137,6 @@ impl TryFrom<__ws::ReducerCallInfo<__ws::BsatnFormat>> for Reducer {
 pub struct DbUpdate {
     actor: __sdk::TableUpdate<Actor>,
     player: __sdk::TableUpdate<Player>,
-    projectile: __sdk::TableUpdate<Projectile>,
     tick_timer: __sdk::TableUpdate<TickTimer>,
     world_static: __sdk::TableUpdate<WorldStatic>,
 }
@@ -158,9 +153,6 @@ impl TryFrom<__ws::DatabaseUpdate<__ws::BsatnFormat>> for DbUpdate {
                 "player" => db_update
                     .player
                     .append(player_table::parse_table_update(table_update)?),
-                "projectile" => db_update
-                    .projectile
-                    .append(projectile_table::parse_table_update(table_update)?),
                 "tick_timer" => db_update
                     .tick_timer
                     .append(tick_timer_table::parse_table_update(table_update)?),
@@ -199,9 +191,6 @@ impl __sdk::DbUpdate for DbUpdate {
         diff.player = cache
             .apply_diff_to_table::<Player>("player", &self.player)
             .with_updates_by_pk(|row| &row.identity);
-        diff.projectile = cache
-            .apply_diff_to_table::<Projectile>("projectile", &self.projectile)
-            .with_updates_by_pk(|row| &row.id);
         diff.tick_timer = cache
             .apply_diff_to_table::<TickTimer>("tick_timer", &self.tick_timer)
             .with_updates_by_pk(|row| &row.scheduled_id);
@@ -219,7 +208,6 @@ impl __sdk::DbUpdate for DbUpdate {
 pub struct AppliedDiff<'r> {
     actor: __sdk::TableAppliedDiff<'r, Actor>,
     player: __sdk::TableAppliedDiff<'r, Player>,
-    projectile: __sdk::TableAppliedDiff<'r, Projectile>,
     tick_timer: __sdk::TableAppliedDiff<'r, TickTimer>,
     world_static: __sdk::TableAppliedDiff<'r, WorldStatic>,
     __unused: std::marker::PhantomData<&'r ()>,
@@ -237,7 +225,6 @@ impl<'r> __sdk::AppliedDiff<'r> for AppliedDiff<'r> {
     ) {
         callbacks.invoke_table_row_callbacks::<Actor>("actor", &self.actor, event);
         callbacks.invoke_table_row_callbacks::<Player>("player", &self.player, event);
-        callbacks.invoke_table_row_callbacks::<Projectile>("projectile", &self.projectile, event);
         callbacks.invoke_table_row_callbacks::<TickTimer>("tick_timer", &self.tick_timer, event);
         callbacks.invoke_table_row_callbacks::<WorldStatic>(
             "world_static",
@@ -965,7 +952,6 @@ impl __sdk::SpacetimeModule for RemoteModule {
     fn register_tables(client_cache: &mut __sdk::ClientCache<Self>) {
         actor_table::register_table(client_cache);
         player_table::register_table(client_cache);
-        projectile_table::register_table(client_cache);
         tick_timer_table::register_table(client_cache);
         world_static_table::register_table(client_cache);
     }
