@@ -15,8 +15,20 @@ pub(super) fn plugin(app: &mut App) {
     app.add_systems(Update, (handle_enter_world, handle_left_click));
     app.add_systems(
         PostUpdate,
-        (on_actor_inserted, on_actor_deleted, draw_player_facing),
+        (
+            on_actor_inserted,
+            on_actor_deleted,
+            draw_player_facing,
+            interpolate,
+        ),
     );
+}
+
+#[derive(Component)]
+pub struct NetworkTransform {
+    pub translation: Vec3,
+    pub rotation: Quat,
+    pub scale: Vec3,
 }
 
 #[derive(Component)]
@@ -78,6 +90,11 @@ fn on_actor_inserted(
                         ..default()
                     })),
                     Transform {
+                        translation,
+                        rotation,
+                        scale,
+                    },
+                    NetworkTransform {
                         translation,
                         rotation,
                         scale,
@@ -188,7 +205,7 @@ fn handle_enter_world(keys: Res<ButtonInput<KeyCode>>, stdb: SpacetimeDB) {
 }
 
 fn sync(
-    mut transform_query: Query<&mut Transform, With<Player>>,
+    mut transform_query: Query<&mut NetworkTransform, With<Player>>,
     stdb: SpacetimeDB,
     mut messages: ReadUpdateMessage<Actor>,
     actor_entity_mapping: Res<ActorEntityMapping>,
@@ -196,12 +213,39 @@ fn sync(
     for msg in messages.read() {
         if let Some(actor) = stdb.db().actor().id().find(&msg.new.id) {
             if let Some(bevy_entity) = actor_entity_mapping.0.get(&actor.id) {
-                if let Ok((mut transform)) = transform_query.get_mut(*bevy_entity) {
-                    transform.rotation = actor.rotation.into();
-                    transform.scale = actor.scale.into();
-                    transform.translation = actor.translation.into();
+                if let Ok((mut network_transform)) = transform_query.get_mut(*bevy_entity) {
+                    network_transform.rotation = actor.rotation.into();
+                    network_transform.scale = actor.scale.into();
+                    network_transform.translation = actor.translation.into();
+                    // transform.translation.smooth_nudge(
+                    //     &actor.translation.into(),
+                    //     12.0,
+                    //     time.delta_secs(),
+                    // );
                 }
             }
         }
     }
+}
+
+pub fn interpolate(
+    time: Res<Time>,
+    mut transform_q: Query<(&mut Transform, &NetworkTransform), With<Player>>,
+) {
+    let delta_time = time.delta_secs();
+    transform_q
+        .par_iter_mut()
+        .for_each(|(mut transform, network_transform)| {
+            transform.translation.smooth_nudge(
+                &network_transform.translation.into(),
+                18.0,
+                delta_time,
+            );
+            transform.rotation = transform.rotation.slerp(
+                network_transform.rotation,
+                1.0 - (-18.0 * 5. * delta_time).exp(),
+            );
+
+            transform.scale = network_transform.scale;
+        });
 }
