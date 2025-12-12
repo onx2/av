@@ -1,7 +1,9 @@
 pub mod reducers;
 pub mod types;
 
-use crate::module_bindings::{ActorTableAccess, DbConnection, PlayerTableAccess, RemoteTables};
+use crate::module_bindings::{
+    ActorTableAccess, DbConnection, PlayerTableAccess, RemoteTables, WorldStaticTableAccess,
+};
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadStdbConnectedMessage, StdbConnection, StdbPlugin};
 use reducers::*;
@@ -24,6 +26,7 @@ pub(super) fn plugin(app: &mut App) {
             // --------------------------------
             .add_table(RemoteTables::player)
             .add_table(RemoteTables::actor)
+            .add_table(RemoteTables::world_static)
             .with_run_fn(DbConnection::run_threaded),
     );
 
@@ -34,7 +37,10 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
     for message in messages.read() {
         println!("SpacetimeDB module connected: {:?}", message.identity);
 
-        stdb.subscription_builder()
-            .subscribe(vec!["SELECT * FROM player", "SELECT * FROM actor"]);
+        stdb.subscription_builder().subscribe(vec![
+            "SELECT * FROM player",
+            "SELECT * FROM actor",
+            "SELECT * FROM world_static",
+        ]);
     }
 }

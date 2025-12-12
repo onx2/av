@@ -58,6 +58,7 @@ impl enter_world for super::RemoteReducers {
         EnterWorldCallbackId(self.imp.on_reducer(
             "enter_world",
             Box::new(move |ctx: &super::ReducerEventContext| {
+                #[allow(irrefutable_let_patterns)]
                 let super::ReducerEventContext {
                     event:
                         __sdk::ReducerEvent {

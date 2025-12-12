@@ -70,8 +70,8 @@ fn on_actor_inserted(
             let bevy_entity = commands
                 .spawn((
                     Mesh3d(meshes.add(Mesh::from(Capsule3d {
-                        radius: 0.5,
-                        half_length: 1.0,
+                        radius: new_actor.capsule_radius,
+                        half_length: new_actor.capsule_half_height,
                     }))),
                     MeshMaterial3d(materials.add(StandardMaterial {
                         base_color,
@@ -97,7 +97,11 @@ fn on_actor_inserted(
                         Mesh3d(eye_mesh.clone()),
                         MeshMaterial3d(eye_mat.clone()),
                         Transform {
-                            translation: Vec3::new(-0.18, 1.0, -0.55), // offset from center; slightly in front (-Z)
+                            translation: Vec3::new(
+                                -0.18,
+                                new_actor.capsule_half_height,
+                                -new_actor.capsule_radius,
+                            ), // offset from center; slightly in front (-Z)
                             ..default()
                         },
                     ));
@@ -107,7 +111,11 @@ fn on_actor_inserted(
                         Mesh3d(eye_mesh),
                         MeshMaterial3d(eye_mat),
                         Transform {
-                            translation: Vec3::new(0.18, 1.0, -0.55),
+                            translation: Vec3::new(
+                                0.18,
+                                new_actor.capsule_half_height,
+                                -new_actor.capsule_radius,
+                            ),
                             ..default()
                         },
                     ));
@@ -144,7 +152,7 @@ fn handle_left_click(
     interactions: Query<&PointerInteraction, Without<LocalPlayer>>,
     stdb: SpacetimeDB,
 ) {
-    if !mb.just_pressed(MouseButton::Left) {
+    if !mb.pressed(MouseButton::Left) {
         return;
     }
 

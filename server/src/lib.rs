@@ -1,4 +1,4 @@
-use glam::Quat;
+use nalgebra as na;
 use shared::*;
 use spacetimedb::*;
 
@@ -10,12 +10,45 @@ pub struct DbQuat {
     pub w: f32,
 }
 
-impl From<Quat> for DbQuat {
-    fn from(quat: Quat) -> Self {
-        Self {
-            x: quat.x,
-            y: quat.y,
-            z: quat.z,
+fn yaw_to_db_quat(theta: f32) -> DbQuat {
+    let half = 0.5 * theta;
+    DbQuat {
+        x: 0.0,
+        y: half.sin(),
+        z: 0.0,
+        w: half.cos(),
+    }
+}
+
+impl From<DbVec3> for na::Vector3<f32> {
+    fn from(v: DbVec3) -> Self {
+        na::Vector3::new(v.x, v.y, v.z)
+    }
+}
+
+impl From<na::Vector3<f32>> for DbVec3 {
+    fn from(v: na::Vector3<f32>) -> Self {
+        DbVec3 {
+            x: v.x,
+            y: v.y,
+            z: v.z,
+        }
+    }
+}
+
+impl From<DbQuat> for na::UnitQuaternion<f32> {
+    fn from(q: DbQuat) -> Self {
+        na::UnitQuaternion::from_quaternion(na::Quaternion::new(q.w, q.x, q.y, q.z))
+    }
+}
+
+impl From<na::UnitQuaternion<f32>> for DbQuat {
+    fn from(q: na::UnitQuaternion<f32>) -> Self {
+        let quat = q.into_inner();
+        DbQuat {
+            x: quat.i,
+            y: quat.j,
+            z: quat.k,
             w: quat.w,
         }
     }
@@ -64,6 +97,18 @@ impl DbVec3 {
         [self.x, self.z]
     }
 }
+#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+pub struct DbCapsule {
+    pub radius: f32,
+    pub half_height: f32,
+}
+
+#[derive(SpacetimeType, PartialEq)]
+pub enum ColliderShape {
+    Plane(f32),
+    Cuboid(DbVec3),
+    Capsule(DbCapsule),
+}
 
 #[derive(SpacetimeType, PartialEq)]
 pub enum MoveIntent {
@@ -83,7 +128,7 @@ pub enum ActorKind {
     Monster(u32),
 }
 
-#[spacetimedb::table(name = player, public)]
+#[table(name = player, public)]
 pub struct Player {
     #[primary_key]
     pub identity: Identity,
@@ -92,7 +137,7 @@ pub struct Player {
     pub actor_id: Option<u64>,
 }
 
-#[spacetimedb::table(name = actor, public)]
+#[table(name = actor, public)]
 pub struct Actor {
     #[primary_key]
     #[auto_inc]
@@ -102,13 +147,39 @@ pub struct Actor {
     pub translation: DbVec3,
     pub rotation: DbQuat,
     pub scale: DbVec3,
+    pub capsule_radius: f32,
+    pub capsule_half_height: f32,
+    // Per-actor movement tuning
+    pub movement_speed: f32,
+    // Ground contact state
+    pub grounded: bool,
 
     pub move_intent: MoveIntent,
+}
+#[table(name = world_static, public)]
+pub struct WorldStatic {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u32,
+
+    pub translation: DbVec3,
+    pub rotation: DbQuat,
+    pub scale: DbVec3,
+
+    pub shape: ColliderShape,
 }
 
 /// The HZ (FPS) at which the server should tick for movement.
 const TICK_RATE: i64 = 60;
 const DELTA_MICRO_SECS: i64 = 1_000_000 / TICK_RATE;
+/// Constant downward fall speed (m/s) applied when not grounded.
+const FALL_SPEED_MPS: f32 = -10.0;
+/// Global collision skin distance (meters).
+const SKIN: f32 = 0.02;
+/// Global maximum snap distance to ground (meters).
+const SNAP_MAX_DISTANCE: f32 = 0.3;
+/// Global hover height above ground when snapped (meters).
+const SNAP_HOVER_HEIGHT: f32 = 0.02;
 
 #[table(name = tick_timer, scheduled(tick))]
 struct TickTimer {
@@ -130,6 +201,59 @@ pub fn init(ctx: &ReducerContext) {
         scheduled_at: spacetimedb::ScheduleAt::Interval(tick_interval),
         last_tick: ctx.timestamp,
     });
+
+    // Seed world statics: ground plane and a test cuboid
+    ctx.db.world_static().insert(WorldStatic {
+        id: 0,
+        translation: DbVec3::new(0.0, 0.0, 0.0),
+        rotation: DbQuat {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            w: 1.0,
+        },
+        scale: DbVec3::new(10.0, 1.0, 10.0), // visual size; physics uses plane
+        shape: ColliderShape::Plane(0.0),
+    });
+    ctx.db.world_static().insert(WorldStatic {
+        id: 0,
+        translation: DbVec3::new(3.0, 1.0, 0.0),
+        rotation: DbQuat {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            w: 1.0,
+        },
+        scale: DbVec3::new(1.0, 1.0, 1.0),
+        shape: ColliderShape::Cuboid(DbVec3::new(0.1, 1.0, 2.0)),
+    });
+}
+fn world_statics_to_shared(ctx: &ReducerContext) -> Vec<shared::collision::StaticShape> {
+    let mut out = Vec::new();
+    for s in ctx.db.world_static().iter() {
+        let t: na::Vector3<f32> = s.translation.into();
+        let q: na::UnitQuaternion<f32> = s.rotation.into();
+        let sc: na::Vector3<f32> = s.scale.into();
+
+        match s.shape {
+            ColliderShape::Plane(offset_along_normal) => {
+                out.push(shared::collision::plane_from_pose(
+                    q,
+                    t,
+                    offset_along_normal,
+                ));
+            }
+            ColliderShape::Cuboid(half_extents) => {
+                let he: na::Vector3<f32> = half_extents.into();
+                let he_final = he.component_mul(&sc);
+                out.push(shared::collision::cuboid_from_pose(he_final, t, q));
+            }
+            ColliderShape::Capsule(_) => {
+                // Not used for world statics right now; ignore or handle if added later.
+            }
+        }
+    }
+    out
 }
 #[reducer]
 fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
@@ -147,40 +271,191 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
     timer.last_tick = ctx.timestamp;
     ctx.db.tick_timer().scheduled_id().update(timer);
 
+    // Build statics for collision
+    let statics = world_statics_to_shared(ctx);
+
     // Process entity's movement for those that have intent to move
-    for mut source_actor in ctx
-        .db
-        .actor()
-        .iter()
-        .filter(|pm| pm.move_intent != MoveIntent::None)
-    {
+    for mut source_actor in ctx.db.actor().iter() {
         match source_actor.move_intent {
             MoveIntent::None => {
-                log::error!("Player movement intent is None but should have been filtered out");
+                // Apply gravity-only step when there is no movement intent.
+                let capsule = shared::collision::CapsuleSpec {
+                    radius: source_actor.capsule_radius,
+                    half_height: source_actor.capsule_half_height,
+                };
+                let start_pos = na::Vector3::new(
+                    source_actor.translation.x,
+                    source_actor.translation.y,
+                    source_actor.translation.z,
+                );
+                // Downward motion for this tick.
+                let fall_desired = na::Vector3::new(0.0, FALL_SPEED_MPS * delta_time_seconds, 0.0);
+                let fall_req = shared::collision::MoveRequest {
+                    start_pos,
+                    desired_translation: fall_desired,
+                    capsule,
+                    skin: SKIN,
+                    max_iterations: 4,
+                };
+                let fall_col = shared::collision::move_capsule_kinematic(&statics, fall_req);
+                // Snap to ground if close enough.
+                let snapped = shared::collision::snap_capsule_to_ground(
+                    &statics,
+                    capsule,
+                    fall_col.end_pos,
+                    SNAP_MAX_DISTANCE,
+                    SNAP_HOVER_HEIGHT,
+                );
+                source_actor.grounded = snapped != fall_col.end_pos;
+                let final_pos = if source_actor.grounded {
+                    snapped
+                } else {
+                    fall_col.end_pos
+                };
+                source_actor.translation.x = final_pos.x;
+                source_actor.translation.y = final_pos.y;
+                source_actor.translation.z = final_pos.z;
+
+                ctx.db.actor().id().update(source_actor);
                 continue;
             }
             MoveIntent::Point(point) => {
-                let result = calculate_step_2d(CalculateStepArgs {
-                    current_position: source_actor.translation.to_2d_array(),
-                    target_position: point.to_2d_array(),
-                    acceptance_radius: 0.25,
-                    movement_speed: 5.0,
-                    delta_time_seconds,
-                });
+                // If already falling, cancel intent and apply gravity only.
+                if !source_actor.grounded {
+                    source_actor.move_intent = MoveIntent::None;
 
-                let dx = result.new_position[0] - source_actor.translation.x;
-                let dz = result.new_position[1] - source_actor.translation.z;
+                    let capsule = shared::collision::CapsuleSpec {
+                        radius: source_actor.capsule_radius,
+                        half_height: source_actor.capsule_half_height,
+                    };
+                    let start_pos = na::Vector3::new(
+                        source_actor.translation.x,
+                        source_actor.translation.y,
+                        source_actor.translation.z,
+                    );
+                    let fall_desired =
+                        na::Vector3::new(0.0, FALL_SPEED_MPS * delta_time_seconds, 0.0);
+                    let fall_req = shared::collision::MoveRequest {
+                        start_pos,
+                        desired_translation: fall_desired,
+                        capsule,
+                        skin: SKIN,
+                        max_iterations: 4,
+                    };
+                    let fall_col = shared::collision::move_capsule_kinematic(&statics, fall_req);
+                    let snapped = shared::collision::snap_capsule_to_ground(
+                        &statics,
+                        capsule,
+                        fall_col.end_pos,
+                        SNAP_MAX_DISTANCE,
+                        SNAP_HOVER_HEIGHT,
+                    );
+                    source_actor.grounded = snapped != fall_col.end_pos;
+                    let final_pos = if source_actor.grounded {
+                        snapped
+                    } else {
+                        fall_col.end_pos
+                    };
+                    source_actor.translation.x = final_pos.x;
+                    source_actor.translation.y = final_pos.y;
+                    source_actor.translation.z = final_pos.z;
+
+                    ctx.db.actor().id().update(source_actor);
+                    continue;
+                }
+                // 1) Compute desired 3D translation toward the target using a capsule-based acceptance radius.
+                let current = na::Point3::new(
+                    source_actor.translation.x,
+                    source_actor.translation.y,
+                    source_actor.translation.z,
+                );
+                // Constrain target.y to current.y (planar navigation), then zero out vertical movement.
+                let target = na::Point3::new(point.x, current.y, point.z);
+                let move_plan = shared::motion::compute_desired_with_capsule_acceptance(
+                    current,
+                    target,
+                    source_actor.movement_speed, // movement speed (m/s)
+                    delta_time_seconds,          // dt
+                    source_actor.capsule_radius,
+                );
+                let desired = na::Vector3::new(
+                    move_plan.desired_translation.x,
+                    0.0,
+                    move_plan.desired_translation.z,
+                );
+
+                // 2) Update yaw if we plan any horizontal movement this tick.
+                let dx = desired.x;
+                let dz = desired.z;
                 let moved_sq = dx * dx + dz * dz;
                 if moved_sq > f32::EPSILON {
                     // Yaw such that 0 faces -Z in client visuals (eyes point along -Z)
-                    source_actor.rotation = Quat::from_rotation_y((-dx).atan2(-dz)).into();
+                    let yaw = (-dx).atan2(-dz);
+                    source_actor.rotation = yaw_to_db_quat(yaw);
                 }
 
-                // Commit translation after computing delta
-                source_actor.translation.x = result.new_position[0];
-                source_actor.translation.z = result.new_position[1];
+                // 3) Commit translation via kinematic sweep-and-slide against statics.
+                let start_pos = na::Vector3::new(current.x, current.y, current.z);
+                let capsule = shared::collision::CapsuleSpec {
+                    radius: source_actor.capsule_radius,
+                    half_height: source_actor.capsule_half_height,
+                };
+                let move_req = shared::collision::MoveRequest {
+                    start_pos,
+                    desired_translation: desired,
+                    capsule,
+                    skin: SKIN,
+                    max_iterations: 4,
+                };
+                let col = shared::collision::move_capsule_kinematic(&statics, move_req);
 
-                if result.movement_finished {
+                let after_horizontal = col.end_pos;
+                // First ground snap after horizontal movement
+                let snapped1 = shared::collision::snap_capsule_to_ground(
+                    &statics,
+                    capsule,
+                    after_horizontal,
+                    SNAP_MAX_DISTANCE,
+                    SNAP_HOVER_HEIGHT,
+                );
+                let landed1 = snapped1 != after_horizontal;
+                if !landed1 {
+                    // Apply constant downward velocity when not grounded
+                    let fall_desired =
+                        na::Vector3::new(0.0, FALL_SPEED_MPS * delta_time_seconds, 0.0);
+                    let fall_req = shared::collision::MoveRequest {
+                        start_pos: after_horizontal,
+                        desired_translation: fall_desired,
+                        capsule,
+                        skin: SKIN,
+                        max_iterations: 4,
+                    };
+                    let fall_col = shared::collision::move_capsule_kinematic(&statics, fall_req);
+                    // Final snap after fall
+                    let snapped2 = shared::collision::snap_capsule_to_ground(
+                        &statics,
+                        capsule,
+                        fall_col.end_pos,
+                        SNAP_MAX_DISTANCE,
+                        SNAP_HOVER_HEIGHT,
+                    );
+                    source_actor.grounded = snapped2 != fall_col.end_pos;
+                    let final_pos = if source_actor.grounded {
+                        snapped2
+                    } else {
+                        fall_col.end_pos
+                    };
+                    source_actor.translation.x = final_pos.x;
+                    source_actor.translation.y = final_pos.y;
+                    source_actor.translation.z = final_pos.z;
+                } else {
+                    source_actor.grounded = true;
+                    source_actor.translation.x = snapped1.x;
+                    source_actor.translation.y = snapped1.y;
+                    source_actor.translation.z = snapped1.z;
+                }
+
+                if move_plan.finished {
                     source_actor.move_intent = MoveIntent::None;
                 }
 
@@ -246,7 +521,12 @@ pub fn enter_world(ctx: &ReducerContext) {
         scale: DbVec3::ONE,
         kind: ActorKind::Player(player.identity),
         rotation: DbQuat::default(),
-        translation: DbVec3::new(0., 1.5, 0.),
+        translation: DbVec3::new(0., 3.85, 0.),
+        capsule_radius: 0.35,
+        capsule_half_height: 0.75,
+        // movement tuning and grounded state
+        movement_speed: 5.0,
+        grounded: false,
         move_intent: MoveIntent::None,
     });
     player.actor_id = Some(actor.id);
@@ -301,6 +581,10 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
         );
         return Err("Actor not found".to_string());
     };
+
+    if !actor.grounded {
+        return Err("Actor is falling; cannot set move intent right now".to_string());
+    }
 
     actor.move_intent = intent;
     ctx.db.actor().id().update(actor);

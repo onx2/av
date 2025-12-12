@@ -13,4 +13,4 @@ spacetimedb = "1.11.0"
 log = "0.4"
 
 shared = { path = "../shared" }
-glam = { workspace = true }
+nalgebra = "0.32"

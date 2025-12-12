@@ -65,6 +65,7 @@ impl request_move for super::RemoteReducers {
         RequestMoveCallbackId(self.imp.on_reducer(
             "request_move",
             Box::new(move |ctx: &super::ReducerEventContext| {
+                #[allow(irrefutable_let_patterns)]
                 let super::ReducerEventContext {
                     event:
                         __sdk::ReducerEvent {
