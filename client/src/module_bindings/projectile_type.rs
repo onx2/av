@@ -9,18 +9,18 @@ use super::db_vec_3_type::DbVec3;
 
 #[derive(__lib::ser::Serialize, __lib::de::Deserialize, Clone, PartialEq, Debug)]
 #[sats(crate = __lib)]
-pub struct Player {
-    pub identity: __sdk::Identity,
-    pub actor_id: Option<u64>,
+pub struct Projectile {
+    pub id: u64,
+    pub source_actor_id: Option<u64>,
+    pub target_actor_id: Option<u64>,
     pub translation: DbVec3,
     pub rotation: DbQuat,
     pub scale: DbVec3,
+    pub speed: f32,
     pub capsule_radius: f32,
     pub capsule_half_height: f32,
-    pub movement_speed: f32,
-    pub grounded: bool,
 }
 
-impl __sdk::InModule for Player {
+impl __sdk::InModule for Projectile {
     type Module = super::RemoteModule;
 }

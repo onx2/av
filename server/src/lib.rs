@@ -136,6 +136,15 @@ pub struct Player {
 
     #[index(btree)]
     pub actor_id: Option<u64>,
+
+    /// Persisted data to rebuild actor from
+    pub translation: DbVec3,
+    pub rotation: DbQuat,
+    pub scale: DbVec3,
+    pub capsule_radius: f32,
+    pub capsule_half_height: f32,
+    pub movement_speed: f32,
+    pub grounded: bool,
 }
 
 #[table(name = projectile, public)]
@@ -504,14 +513,23 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 pub fn identity_connected(ctx: &ReducerContext) {
     log::info!("Client connected: {:?}", ctx.sender);
     if let Some(player) = ctx.db.player().identity().find(ctx.sender) {
+        // Clear any dangling actor reference on reconnect.
         ctx.db.player().identity().update(Player {
             actor_id: None,
             ..player
         });
     } else {
+        // Create a player with sensible defaults so we can rebuild an actor later.
         ctx.db.player().insert(Player {
             identity: ctx.sender,
             actor_id: None,
+            translation: DbVec3::new(0., 3.85, 0.),
+            rotation: DbQuat::default(),
+            scale: DbVec3::ONE,
+            capsule_radius: 0.35,
+            capsule_half_height: 0.75,
+            movement_speed: 5.0,
+            grounded: false,
         });
     }
 }
@@ -526,6 +544,16 @@ pub fn identity_disconnected(ctx: &ReducerContext) {
 
     if let Some(actor_id) = player.actor_id {
         if let Some(actor) = ctx.db.actor().id().find(actor_id) {
+            // Persist actor state back to player row.
+            player.translation = actor.translation;
+            player.rotation = actor.rotation;
+            player.scale = actor.scale;
+            player.capsule_radius = actor.capsule_radius;
+            player.capsule_half_height = actor.capsule_half_height;
+            player.movement_speed = actor.movement_speed;
+            player.grounded = actor.grounded;
+
+            // Delete actor and clear reference.
             ctx.db.actor().id().delete(actor.id);
             player.actor_id = None;
             ctx.db.player().identity().update(player);
@@ -546,48 +574,19 @@ pub fn enter_world(ctx: &ReducerContext) {
         return;
     };
 
+    // Rebuild actor directly from persisted player data.
     let actor = ctx.db.actor().insert(Actor {
         id: 0,
-        scale: DbVec3::ONE,
+        scale: player.scale,
         kind: ActorKind::Player(player.identity),
-        rotation: DbQuat::default(),
-        translation: DbVec3::new(0., 3.85, 0.),
-        capsule_radius: 0.35,
-        capsule_half_height: 0.75,
-        // movement tuning and grounded state
-        movement_speed: 5.0,
-        grounded: false,
+        rotation: player.rotation,
+        translation: player.translation,
+        capsule_radius: player.capsule_radius,
+        capsule_half_height: player.capsule_half_height,
+        movement_speed: player.movement_speed,
+        grounded: player.grounded,
         move_intent: MoveIntent::None,
     });
-    // Snap newly spawned actor to ground hover and set grounded accordingly.
-    let statics = world_statics_to_shared(ctx);
-    let accel = WORLD_ACCEL.get().expect("world accel not initialized");
-    let capsule = shared::collision::CapsuleSpec {
-        radius: actor.capsule_radius,
-        half_height: actor.capsule_half_height,
-    };
-    let spawn_pos = na::Vector3::new(
-        actor.translation.x,
-        actor.translation.y,
-        actor.translation.z,
-    );
-    let (snapped, hit) = shared::collision::snap_capsule_to_ground_with_accel(
-        &statics,
-        accel,
-        capsule,
-        spawn_pos,
-        SNAP_MAX_DISTANCE,
-        SNAP_HOVER_HEIGHT,
-    );
-    if let Some(mut a) = ctx.db.actor().id().find(actor.id) {
-        if hit {
-            a.translation = DbVec3::from(snapped);
-            a.grounded = true;
-        } else {
-            a.grounded = false;
-        }
-        ctx.db.actor().id().update(a);
-    }
 
     player.actor_id = Some(actor.id);
     ctx.db.player().identity().update(player);
@@ -610,6 +609,16 @@ pub fn leave_world(ctx: &ReducerContext) {
         return;
     };
 
+    // Persist actor state to player.
+    player.translation = actor.translation;
+    player.rotation = actor.rotation;
+    player.scale = actor.scale;
+    player.capsule_radius = actor.capsule_radius;
+    player.capsule_half_height = actor.capsule_half_height;
+    player.movement_speed = actor.movement_speed;
+    player.grounded = actor.grounded;
+
+    // Remove actor and clear reference.
     player.actor_id = None;
     ctx.db.actor().id().delete(actor.id);
     ctx.db.player().identity().update(player);
