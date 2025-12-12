@@ -103,16 +103,16 @@ pub fn cast_capsule_against_static(
                 max_toi,
                 true,
             ) {
-                let mut n = Vec3::new(
+                let mut normal = Vec3::new(
                     toi.normal1.into_inner().x,
                     toi.normal1.into_inner().y,
                     toi.normal1.into_inner().z,
                 );
-                if n.dot(&vel) > 0.0 {
-                    n = -n;
+                if normal.dot(&vel) > 0.0 {
+                    normal = -normal;
                 }
                 return Some(MoveHit {
-                    normal: n,
+                    normal,
                     fraction: toi.toi,
                 });
             }
