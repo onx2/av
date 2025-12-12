@@ -263,9 +263,9 @@ pub fn snap_capsule_to_ground(
     pos: Vec3,
     max_snap_distance: f32,
     hover_height: f32,
-) -> Vec3 {
+) -> (Vec3, bool) {
     if max_snap_distance <= 0.0 || hover_height < 0.0 {
-        return pos;
+        return (pos, false);
     }
 
     let capsule_shape = pshape::Capsule::new_y(capsule.half_height, capsule.radius);
@@ -295,10 +295,10 @@ pub fn snap_capsule_to_ground(
 
         // Hover slightly above ground along the contact normal.
         let new_pos = impact_center + n * hover_height.max(0.0);
-        return new_pos;
+        return (new_pos, true);
     }
 
-    pos
+    (pos, false)
 }
 
 /// Convenience: build a `StaticShape::Plane` from a world-space plane pose:

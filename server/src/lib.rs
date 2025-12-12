@@ -299,19 +299,15 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                 };
                 let fall_col = shared::collision::move_capsule_kinematic(&statics, fall_req);
                 // Snap to ground if close enough.
-                let snapped = shared::collision::snap_capsule_to_ground(
+                let (snapped_pos, hit) = shared::collision::snap_capsule_to_ground(
                     &statics,
                     capsule,
                     fall_col.end_pos,
                     SNAP_MAX_DISTANCE,
                     SNAP_HOVER_HEIGHT,
                 );
-                source_actor.grounded = snapped != fall_col.end_pos;
-                let final_pos = if source_actor.grounded {
-                    snapped
-                } else {
-                    fall_col.end_pos
-                };
+                source_actor.grounded = hit;
+                let final_pos = if hit { snapped_pos } else { fall_col.end_pos };
                 source_actor.translation.x = final_pos.x;
                 source_actor.translation.y = final_pos.y;
                 source_actor.translation.z = final_pos.z;
@@ -343,19 +339,15 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                         max_iterations: 4,
                     };
                     let fall_col = shared::collision::move_capsule_kinematic(&statics, fall_req);
-                    let snapped = shared::collision::snap_capsule_to_ground(
+                    let (snapped_pos, hit) = shared::collision::snap_capsule_to_ground(
                         &statics,
                         capsule,
                         fall_col.end_pos,
                         SNAP_MAX_DISTANCE,
                         SNAP_HOVER_HEIGHT,
                     );
-                    source_actor.grounded = snapped != fall_col.end_pos;
-                    let final_pos = if source_actor.grounded {
-                        snapped
-                    } else {
-                        fall_col.end_pos
-                    };
+                    source_actor.grounded = hit;
+                    let final_pos = if hit { snapped_pos } else { fall_col.end_pos };
                     source_actor.translation.x = final_pos.x;
                     source_actor.translation.y = final_pos.y;
                     source_actor.translation.z = final_pos.z;
@@ -411,15 +403,14 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
                 let after_horizontal = col.end_pos;
                 // First ground snap after horizontal movement
-                let snapped1 = shared::collision::snap_capsule_to_ground(
+                let (snapped1_pos, hit1) = shared::collision::snap_capsule_to_ground(
                     &statics,
                     capsule,
                     after_horizontal,
                     SNAP_MAX_DISTANCE,
                     SNAP_HOVER_HEIGHT,
                 );
-                let landed1 = snapped1 != after_horizontal;
-                if !landed1 {
+                if !hit1 {
                     // Apply constant downward velocity when not grounded
                     let fall_desired =
                         na::Vector3::new(0.0, FALL_SPEED_MPS * delta_time_seconds, 0.0);
@@ -432,27 +423,23 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                     };
                     let fall_col = shared::collision::move_capsule_kinematic(&statics, fall_req);
                     // Final snap after fall
-                    let snapped2 = shared::collision::snap_capsule_to_ground(
+                    let (snapped2_pos, hit2) = shared::collision::snap_capsule_to_ground(
                         &statics,
                         capsule,
                         fall_col.end_pos,
                         SNAP_MAX_DISTANCE,
                         SNAP_HOVER_HEIGHT,
                     );
-                    source_actor.grounded = snapped2 != fall_col.end_pos;
-                    let final_pos = if source_actor.grounded {
-                        snapped2
-                    } else {
-                        fall_col.end_pos
-                    };
+                    source_actor.grounded = hit2;
+                    let final_pos = if hit2 { snapped2_pos } else { fall_col.end_pos };
                     source_actor.translation.x = final_pos.x;
                     source_actor.translation.y = final_pos.y;
                     source_actor.translation.z = final_pos.z;
                 } else {
                     source_actor.grounded = true;
-                    source_actor.translation.x = snapped1.x;
-                    source_actor.translation.y = snapped1.y;
-                    source_actor.translation.z = snapped1.z;
+                    source_actor.translation.x = snapped1_pos.x;
+                    source_actor.translation.y = snapped1_pos.y;
+                    source_actor.translation.z = snapped1_pos.z;
                 }
 
                 if move_plan.finished {
@@ -529,6 +516,34 @@ pub fn enter_world(ctx: &ReducerContext) {
         grounded: false,
         move_intent: MoveIntent::None,
     });
+    // Snap newly spawned actor to ground hover and set grounded accordingly.
+    let statics = world_statics_to_shared(ctx);
+    let capsule = shared::collision::CapsuleSpec {
+        radius: actor.capsule_radius,
+        half_height: actor.capsule_half_height,
+    };
+    let spawn_pos = na::Vector3::new(
+        actor.translation.x,
+        actor.translation.y,
+        actor.translation.z,
+    );
+    let (snapped, hit) = shared::collision::snap_capsule_to_ground(
+        &statics,
+        capsule,
+        spawn_pos,
+        SNAP_MAX_DISTANCE,
+        SNAP_HOVER_HEIGHT,
+    );
+    if let Some(mut a) = ctx.db.actor().id().find(actor.id) {
+        if hit {
+            a.translation = DbVec3::from(snapped);
+            a.grounded = true;
+        } else {
+            a.grounded = false;
+        }
+        ctx.db.actor().id().update(a);
+    }
+
     player.actor_id = Some(actor.id);
     ctx.db.player().identity().update(player);
     log::info!("Client entered world: {:?}", ctx.sender);
