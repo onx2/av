@@ -332,7 +332,7 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                 );
                 // Downward motion for this tick.
                 let fall_desired = na::Vector3::new(0.0, FALL_SPEED_MPS * delta_time_seconds, 0.0);
-                let fall_req = shared::collision::MoveRequest {
+                let fall_req = shared::collision::kinematic::MoveRequest {
                     start_pos,
                     desired_translation: fall_desired,
                     capsule,
@@ -375,7 +375,7 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                     );
                     let fall_desired =
                         na::Vector3::new(0.0, FALL_SPEED_MPS * delta_time_seconds, 0.0);
-                    let fall_req = shared::collision::MoveRequest {
+                    let fall_req = shared::collision::kinematic::MoveRequest {
                         start_pos,
                         desired_translation: fall_desired,
                         capsule,
@@ -439,7 +439,7 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                     radius: source_actor.capsule_radius,
                     half_height: source_actor.capsule_half_height,
                 };
-                let move_req = shared::collision::MoveRequest {
+                let move_req = shared::collision::kinematic::MoveRequest {
                     start_pos,
                     desired_translation: desired,
                     capsule,
@@ -463,7 +463,7 @@ fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                     // Apply constant downward velocity when not grounded
                     let fall_desired =
                         na::Vector3::new(0.0, FALL_SPEED_MPS * delta_time_seconds, 0.0);
-                    let fall_req = shared::collision::MoveRequest {
+                    let fall_req = shared::collision::kinematic::MoveRequest {
                         start_pos: after_horizontal,
                         desired_translation: fall_desired,
                         capsule,

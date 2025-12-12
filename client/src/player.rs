@@ -217,11 +217,6 @@ fn sync(
                     network_transform.rotation = actor.rotation.into();
                     network_transform.scale = actor.scale.into();
                     network_transform.translation = actor.translation.into();
-                    // transform.translation.smooth_nudge(
-                    //     &actor.translation.into(),
-                    //     12.0,
-                    //     time.delta_secs(),
-                    // );
                 }
             }
         }
