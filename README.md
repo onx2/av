@@ -15,6 +15,16 @@ The story of its coming is told through Aurora, the one who unearthed the artifa
 - Generate client/server binding  `spacetime generate --lang rust -p ./server -o ./client/src/stdb`
 - Start the client: `cargo run -p client`
 
+### Local token testing (multiple clients on localhost)
+- Obtain a dev identity token from your local SpacetimeDB:
+  - `token=$(curl -s -X POST http://localhost:3000/v1/identity)`
+- Pass different tokens per client process to test replication:
+  - Use the `--token` flag:  
+    `cargo run -p client -- --token "$token"`
+  - Or via environment variable:  
+    `STDB_TOKEN="$token" cargo run -p client`
+- Internally the client uses `.with_token(token)` to connect as that identity. Reusing the same token connects as the same user; different tokens simulate different users.
+
 ## Todo
 
 ### Movement

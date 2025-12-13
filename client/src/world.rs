@@ -105,21 +105,5 @@ fn load_world(
             }
             _ => unimplemented!("This shouldn't be reached"),
         }
-        // commands.spawn((
-        //     // Ground,
-        //     Pickable::default(),
-        //     Transform {
-        //         rotation: world_static.rotation.into(),
-        //         translation: world_static.translation.into(),
-        //         scale: world_static.scale.into(),
-        //     },
-        //     Mesh3d(meshes.add(Plane3d::default().mesh().size(50., 50.).build())),
-        //     MeshMaterial3d(materials.add(StandardMaterial {
-        //         base_color: Color::linear_rgb(0.2, 0.3, 0.25),
-        //         perceptual_roughness: 1.0,
-        //         metallic: 0.0,
-        //         ..default()
-        //     })),
-        // ));
     }
 }
