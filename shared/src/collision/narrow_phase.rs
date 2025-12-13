@@ -1,7 +1,11 @@
 use nalgebra as na;
-use parry3d::{query, shape as pshape};
+use parry3d::{
+    query::{self, ShapeCastOptions},
+    shape as pshape,
+};
 
 use super::types::{Iso, MoveHit, StaticShape, Vec3};
+use parry3d::shape::Shape as _;
 
 /// Cast a moving Y-aligned capsule against a single static shape and return the earliest hit (if any).
 ///
@@ -30,28 +34,30 @@ pub fn cast_capsule_against_static(
                 na::UnitQuaternion::identity(),
             );
 
-            if let Ok(Some(toi)) = query::time_of_impact(
+            // parry3d 0.25: use builder to set maximum time of impact and pass options by value.
+            let mut opts = ShapeCastOptions::with_max_time_of_impact(max_toi);
+            opts.stop_at_penetration = true;
+            if let Ok(Some(hit)) = query::cast_shapes(
                 &capsule_iso,
                 &vel,
-                capsule,
+                capsule as &dyn pshape::Shape,
                 &plane_iso,
                 &na::Vector3::zeros(),
-                &plane,
-                max_toi,
-                true,
+                &plane as &dyn pshape::Shape,
+                opts,
             ) {
                 // Use the normal on the moving shape; ensure it opposes the motion.
                 let mut n = Vec3::new(
-                    toi.normal1.into_inner().x,
-                    toi.normal1.into_inner().y,
-                    toi.normal1.into_inner().z,
+                    hit.normal1.into_inner().x,
+                    hit.normal1.into_inner().y,
+                    hit.normal1.into_inner().z,
                 );
                 if n.dot(&vel) > 0.0 {
                     n = -n;
                 }
                 return Some(MoveHit {
                     normal: n,
-                    fraction: toi.toi,
+                    fraction: hit.time_of_impact,
                 });
             }
             None
@@ -63,27 +69,28 @@ pub fn cast_capsule_against_static(
             let cuboid = pshape::Cuboid::new(half_extents);
             let box_iso = transform.iso();
 
-            if let Ok(Some(toi)) = query::time_of_impact(
+            let mut opts = ShapeCastOptions::with_max_time_of_impact(max_toi);
+            opts.stop_at_penetration = true;
+            if let Ok(Some(hit)) = query::cast_shapes(
                 &capsule_iso,
                 &vel,
-                capsule,
+                capsule as &dyn pshape::Shape,
                 &box_iso,
                 &na::Vector3::zeros(),
-                &cuboid,
-                max_toi,
-                true,
+                &cuboid as &dyn pshape::Shape,
+                opts,
             ) {
                 let mut n = Vec3::new(
-                    toi.normal1.into_inner().x,
-                    toi.normal1.into_inner().y,
-                    toi.normal1.into_inner().z,
+                    hit.normal1.into_inner().x,
+                    hit.normal1.into_inner().y,
+                    hit.normal1.into_inner().z,
                 );
                 if n.dot(&vel) > 0.0 {
                     n = -n;
                 }
                 return Some(MoveHit {
                     normal: n,
-                    fraction: toi.toi,
+                    fraction: hit.time_of_impact,
                 });
             }
             None
@@ -93,27 +100,28 @@ pub fn cast_capsule_against_static(
             let ball = pshape::Ball::new(radius);
             let ball_iso = transform.iso();
 
-            if let Ok(Some(toi)) = query::time_of_impact(
+            let mut opts = ShapeCastOptions::with_max_time_of_impact(max_toi);
+            opts.stop_at_penetration = true;
+            if let Ok(Some(hit)) = query::cast_shapes(
                 &capsule_iso,
                 &vel,
-                capsule,
+                capsule as &dyn pshape::Shape,
                 &ball_iso,
                 &na::Vector3::zeros(),
-                &ball,
-                max_toi,
-                true,
+                &ball as &dyn pshape::Shape,
+                opts,
             ) {
                 let mut normal = Vec3::new(
-                    toi.normal1.into_inner().x,
-                    toi.normal1.into_inner().y,
-                    toi.normal1.into_inner().z,
+                    hit.normal1.into_inner().x,
+                    hit.normal1.into_inner().y,
+                    hit.normal1.into_inner().z,
                 );
                 if normal.dot(&vel) > 0.0 {
                     normal = -normal;
                 }
                 return Some(MoveHit {
                     normal,
-                    fraction: toi.toi,
+                    fraction: hit.time_of_impact,
                 });
             }
             None
@@ -127,27 +135,28 @@ pub fn cast_capsule_against_static(
             let static_capsule = pshape::Capsule::new_y(half_height, radius);
             let static_iso = transform.iso();
 
-            if let Ok(Some(toi)) = query::time_of_impact(
+            let mut opts = ShapeCastOptions::with_max_time_of_impact(max_toi);
+            opts.stop_at_penetration = true;
+            if let Ok(Some(hit)) = query::cast_shapes(
                 &capsule_iso,
                 &vel,
-                capsule,
+                capsule as &dyn pshape::Shape,
                 &static_iso,
                 &na::Vector3::zeros(),
-                &static_capsule,
-                max_toi,
-                true,
+                &static_capsule as &dyn pshape::Shape,
+                opts,
             ) {
                 let mut n = Vec3::new(
-                    toi.normal1.into_inner().x,
-                    toi.normal1.into_inner().y,
-                    toi.normal1.into_inner().z,
+                    hit.normal1.into_inner().x,
+                    hit.normal1.into_inner().y,
+                    hit.normal1.into_inner().z,
                 );
                 if n.dot(&vel) > 0.0 {
                     n = -n;
                 }
                 return Some(MoveHit {
                     normal: n,
-                    fraction: toi.toi,
+                    fraction: hit.time_of_impact,
                 });
             }
             None

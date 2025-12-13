@@ -1,18 +1,22 @@
 use nalgebra as na;
-use parry3d::{bounding_volume::Aabb, shape as pshape};
+use parry3d::{
+    bounding_volume::Aabb,
+    partitioning::{Bvh, BvhBuildStrategy},
+    shape as pshape,
+};
 
 use crate::collision::{StaticShape, Transform};
 
 /// Acceleration structure for broad-phase queries over immutable world statics.
 ///
 /// Notes:
-/// - We index only finite statics (e.g., Cuboid). Infinite planes are handled separately
-///   because they don't have a bounded AABB.
+/// - Finite shapes (Cuboid, Sphere, Capsule) are stored as world-space AABBs and scanned linearly
+///   to generate candidates. Planes are handled separately because they are infinite.
 /// - `non_plane_indices` maps each stored AABB back to its index in the original `statics` slice.
 /// - `plane_indices` stores indices of planes in the original `statics` slice.
 pub struct WorldAccel {
-    /// AABBs for non-plane statics (world-space).
-    pub aabbs: Vec<Aabb>,
+    /// BVH over finite static shapes (AABBs).
+    pub bvh: Bvh,
     /// Indices into the original `statics` slice for the AABBs above.
     pub non_plane_indices: Vec<usize>,
     /// Indices into the original `statics` slice for planes.
@@ -23,24 +27,24 @@ impl WorldAccel {
     /// Return true if this accelerator has no non-plane entries.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.aabbs.is_empty()
+        self.non_plane_indices.is_empty()
     }
 
     /// Number of non-plane entries (AABBs) in this accelerator.
     #[inline]
     pub fn len(&self) -> usize {
-        self.aabbs.len()
+        self.non_plane_indices.len()
     }
 }
 
 /// Build a simple broad-phase accelerator over immutable world statics.
 ///
-/// - Finite shapes (e.g., Cuboid) get a world-space AABB and are indexed.
+/// - Finite shapes (Cuboid, Sphere, Capsule) get a world-space AABB and are indexed.
 /// - Infinite shapes (Plane) are kept in `plane_indices` and should be tested separately during queries.
 pub fn build_world_accel(statics: &[StaticShape]) -> WorldAccel {
-    let mut aabbs = Vec::new();
-    let mut non_plane_indices = Vec::new();
-    let mut plane_indices = Vec::new();
+    let mut aabbs: Vec<Aabb> = Vec::new();
+    let mut non_plane_indices: Vec<usize> = Vec::new();
+    let mut plane_indices: Vec<usize> = Vec::new();
 
     for (i, s) in statics.iter().enumerate() {
         match *s {
@@ -76,7 +80,13 @@ pub fn build_world_accel(statics: &[StaticShape]) -> WorldAccel {
     }
 
     WorldAccel {
-        aabbs,
+        bvh: {
+            if aabbs.is_empty() {
+                Bvh::from_leaves(BvhBuildStrategy::Binned, &[])
+            } else {
+                Bvh::from_leaves(BvhBuildStrategy::Binned, &aabbs)
+            }
+        },
         non_plane_indices,
         plane_indices,
     }
@@ -160,13 +170,14 @@ pub fn swept_capsule_aabb(
 ///
 /// Returns indices referencing the original `statics` slice (not the local AABB array).
 pub fn query_candidates(accel: &WorldAccel, swept: &Aabb) -> Vec<usize> {
-    let mut out = Vec::new();
-    for (i, aabb) in accel.aabbs.iter().enumerate() {
-        if aabb_intersects(aabb, swept) {
-            out.push(accel.non_plane_indices[i]);
-        }
-    }
-    out
+    accel
+        .bvh
+        .intersect_aabb(swept)
+        .map(|leaf_idx| {
+            let i = leaf_idx as usize;
+            accel.non_plane_indices[i]
+        })
+        .collect()
 }
 
 /// Compute the union of two AABBs.

@@ -135,24 +135,113 @@ pub fn move_capsule_kinematic_with_accel(
     accel: &broad::WorldAccel,
     req: MoveRequest,
 ) -> MoveResult {
-    // Compute the swept AABB for this move.
-    let swept = broad::swept_capsule_aabb(
-        req.capsule.half_height,
-        req.capsule.radius,
-        req.start_pos,
-        req.desired_translation,
-        req.skin,
-    );
+    // Perform the sweep-and-slide loop directly over candidate indices to avoid
+    // cloning/copying shapes into a temporary subset.
+    let mut pos = req.start_pos;
+    let mut remaining = req.desired_translation;
+    let mut last_hit = None;
 
-    // Build a small subset of statics to test: all planes + AABB-overlapping finite shapes.
-    let mut subset: Vec<StaticShape> = Vec::new();
-    for &idx in &accel.plane_indices {
-        subset.push(statics[idx]);
-    }
-    for idx in broad::query_candidates(accel, &swept) {
-        subset.push(statics[idx]);
+    // Y-aligned capsule (controller axis is +Y).
+    let capsule_shape = pshape::Capsule::new_y(req.capsule.half_height, req.capsule.radius);
+
+    for _ in 0..req.max_iterations {
+        // Early out if remaining motion is too small to matter.
+        if remaining.norm_squared() <= MIN_MOVE_SQ {
+            break;
+        }
+
+        let len = remaining.norm();
+        let dir = remaining / len;
+
+        let capsule_iso: Iso = Iso::from_parts(
+            na::Translation3::new(pos.x, pos.y, pos.z),
+            na::UnitQuaternion::identity(),
+        );
+        let vel = dir * len;
+
+        // Compute a swept AABB for this step and collect candidate indices.
+        let swept = broad::swept_capsule_aabb(
+            req.capsule.half_height,
+            req.capsule.radius,
+            pos,
+            remaining,
+            req.skin,
+        );
+
+        let mut best: Option<MoveHit> = None;
+
+        // Test planes first (infinite; always included, not in the accel).
+        for &idx in &accel.plane_indices {
+            if let Some(hit) = narrow_phase::cast_capsule_against_static(
+                capsule_iso,
+                &capsule_shape,
+                vel,
+                1.0,
+                &statics[idx],
+            ) {
+                if best.map_or(true, |b| hit.fraction < b.fraction) {
+                    best = Some(hit);
+                }
+            }
+        }
+
+        // Test finite shapes from the broad-phase candidate index list.
+        let candidates = broad::query_candidates(accel, &swept);
+        for idx in candidates {
+            if let Some(hit) = narrow_phase::cast_capsule_against_static(
+                capsule_iso,
+                &capsule_shape,
+                vel,
+                1.0,
+                &statics[idx],
+            ) {
+                if best.map_or(true, |b| hit.fraction < b.fraction) {
+                    best = Some(hit);
+                }
+            }
+        }
+
+        match best {
+            None => {
+                // No hit → move fully and finish.
+                pos += remaining;
+                remaining = na::Vector3::zeros();
+                last_hit = None;
+                break;
+            }
+            Some(hit) => {
+                // Travel up to the contact point (minus skin).
+                let travel = (len * hit.fraction).max(0.0);
+                let advance = dir * (travel - req.skin).max(0.0);
+                pos += advance;
+
+                // Slide along the hit plane: remove the normal component from the leftover.
+                let n = {
+                    let n_len_sq = hit.normal.norm_squared();
+                    if n_len_sq > 1.0e-12 {
+                        hit.normal / n_len_sq.sqrt()
+                    } else {
+                        na::Vector3::zeros()
+                    }
+                };
+
+                let leftover = dir * (len - travel);
+                let slide = leftover - n * leftover.dot(&n);
+
+                remaining = slide;
+                last_hit = Some(hit);
+
+                // If the slide is negligible, we're done.
+                if slide.norm_squared() <= MIN_MOVE_SQ {
+                    break;
+                }
+            }
+        }
     }
 
-    // Delegate to the narrow-phase sweep-and-slide on the pruned set.
-    move_capsule_kinematic(&subset, req)
+    MoveResult {
+        end_pos: pos,
+        last_hit,
+        remaining,
+    }
 }

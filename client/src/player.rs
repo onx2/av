@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{
     module_bindings::{Actor, ActorKind, ActorTableAccess, MoveIntent, enter_world, request_move},
     server::SpacetimeDB,
@@ -5,11 +7,19 @@ use crate::{
 use bevy::{picking::pointer::PointerInteraction, platform::collections::HashMap, prelude::*};
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage, ReadUpdateMessage};
 
+/// How frequently, in milliseconds, to send directional movement updates to the server.
+const DIRECTIONAL_MOVEMENT_INTERVAL: Duration = Duration::from_millis(100);
+
+/// The time since the last directional movement was sent to the server.
+#[derive(Resource, Default)]
+struct LastDirectionSentAt(Duration);
+
 /// Used to tie the server entity id to the local bevy entity
 #[derive(Resource, Default)]
 pub struct ActorEntityMapping(HashMap<u64, Entity>);
 
 pub(super) fn plugin(app: &mut App) {
+    app.init_resource::<LastDirectionSentAt>();
     app.insert_resource(ActorEntityMapping::default());
     app.add_systems(PreUpdate, sync);
     app.add_systems(Update, (handle_enter_world, handle_left_click));
@@ -169,9 +179,20 @@ fn handle_left_click(
     interactions: Query<&PointerInteraction, Without<LocalPlayer>>,
     stdb: SpacetimeDB,
 ) {
-    if !mb.pressed(MouseButton::Left) {
+    if !mb.just_pressed(MouseButton::Left) && !mb.pressed(MouseButton::Left) {
         return;
     }
+
+    if mb.pressed(MouseButton::Left) {
+        // let held_dur = actions.current_duration(&InputAction::LeftClick);
+        // let should_send = held_dur == Duration::ZERO
+        //     || held_dur.saturating_sub(last_sent_at.0) >= DIRECTIONAL_MOVEMENT_INTERVAL;
+
+        // if !should_send {
+        //     return;
+        // }
+    }
+    println!("Left click handled");
 
     let Ok(interaction) = interactions.single() else {
         return;

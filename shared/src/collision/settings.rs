@@ -18,7 +18,7 @@ pub const DEFAULT_SKIN: f32 = 0.02;
 
 /// Maximum number of slide iterations per kinematic step.
 /// Higher values help with tight corners at the cost of more queries.
-pub const DEFAULT_MAX_ITERATIONS: u32 = 4;
+pub const DEFAULT_MAX_ITERATIONS: u32 = 3;
 
 /// Minimum squared movement threshold to consider a step meaningful (m^2).
 /// Movements below this are treated as zero to avoid tiny oscillations.
