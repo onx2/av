@@ -26,13 +26,21 @@ The story of its coming is told through Aurora, the one who unearthed the artifa
 - Internally the client uses `.with_token(token)` to connect as that identity. Reusing the same token connects as the same user; different tokens simulate different users.
 
 ## Todo
-
-### Movement
   - pathfinding on client
-  - validate movement against collisions (client & server)
+  - client-side prediction for local player movement
+  - avian3d on client with settings that match server's raw parry3d implementation
   
 ### World
   - create a tilemap world (many maps in Tiled editor)
   - render tilemap on client (chunked)
   - use object layer for labeling 3d prop positions and add metadata for collision
   - read in object layer and parse into rows for spacetimeDB
+
+### UI
+- title screen
+- gameplay screen
+- settings menu
+- main menu (setting, log out, exit game)
+
+### Ability system
+-

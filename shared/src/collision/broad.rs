@@ -209,13 +209,3 @@ fn aabb_inflate(a: &Aabb, margin: f32) -> Aabb {
         maxs: a.maxs + delta,
     }
 }
-
-/// Test two AABBs for intersection.
-fn aabb_intersects(a: &Aabb, b: &Aabb) -> bool {
-    !(a.maxs.x < b.mins.x
-        || a.mins.x > b.maxs.x
-        || a.maxs.y < b.mins.y
-        || a.mins.y > b.maxs.y
-        || a.maxs.z < b.mins.z
-        || a.mins.z > b.maxs.z)
-}
