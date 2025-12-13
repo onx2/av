@@ -1,11 +1,9 @@
+use super::types::{Iso, MoveHit, StaticShape, Vec3};
 use nalgebra as na;
 use parry3d::{
     query::{self, ShapeCastOptions},
     shape as pshape,
 };
-
-use super::types::{Iso, MoveHit, StaticShape, Vec3};
-use parry3d::shape::Shape as _;
 
 /// Cast a moving Y-aligned capsule against a single static shape and return the earliest hit (if any).
 ///

@@ -1,18 +1,24 @@
 use std::time::Duration;
 
 use crate::{
+    input::InputAction,
     module_bindings::{Actor, ActorKind, ActorTableAccess, MoveIntent, enter_world, request_move},
     server::SpacetimeDB,
+    world::Ground,
 };
 use bevy::{picking::pointer::PointerInteraction, platform::collections::HashMap, prelude::*};
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage, ReadUpdateMessage};
+use leafwing_input_manager::prelude::ActionState;
 
 /// How frequently, in milliseconds, to send directional movement updates to the server.
-const DIRECTIONAL_MOVEMENT_INTERVAL: Duration = Duration::from_millis(100);
+const DIRECTIONAL_MOVEMENT_INTERVAL: Duration = Duration::from_millis(50);
 
 /// The time since the last directional movement was sent to the server.
 #[derive(Resource, Default)]
-struct LastDirectionSentAt(Duration);
+struct LastDirectionSentAt {
+    duration: Duration,
+    position: Vec3,
+}
 
 /// Used to tie the server entity id to the local bevy entity
 #[derive(Resource, Default)]
@@ -175,71 +181,94 @@ fn draw_player_facing(mut gizmos: Gizmos, q: Query<&GlobalTransform, With<Player
 }
 
 fn handle_left_click(
-    mb: Res<ButtonInput<MouseButton>>,
+    mut last_sent_at: ResMut<LastDirectionSentAt>,
+    ground_q: Query<&Ground>,
+    actions: Res<ActionState<InputAction>>,
     interactions: Query<&PointerInteraction, Without<LocalPlayer>>,
     stdb: SpacetimeDB,
 ) {
-    if !mb.just_pressed(MouseButton::Left) && !mb.pressed(MouseButton::Left) {
+    let pressed = actions.pressed(&InputAction::LeftClick);
+    let just_released = actions.just_released(&InputAction::LeftClick);
+
+    if !pressed && !just_released {
         return;
     }
-
-    if mb.pressed(MouseButton::Left) {
-        // let held_dur = actions.current_duration(&InputAction::LeftClick);
-        // let should_send = held_dur == Duration::ZERO
-        //     || held_dur.saturating_sub(last_sent_at.0) >= DIRECTIONAL_MOVEMENT_INTERVAL;
-
-        // if !should_send {
-        //     return;
-        // }
-    }
-    println!("Left click handled");
 
     let Ok(interaction) = interactions.single() else {
         return;
     };
-    let Some((_entity, hit)) = interaction.get_nearest_hit() else {
+    let Some((entity, hit)) = interaction.get_nearest_hit() else {
         return;
     };
+
+    if !ground_q.contains(*entity) {
+        return;
+    }
     let Some(pos) = hit.position else {
         return;
     };
 
-    if let Ok(_) = stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
-        println!("Sent move request: {:?}", pos);
-    } else {
-        println!("Failed to request move");
-        return;
-    };
+    if just_released {
+        // Reset the "Direct Movement" tracker so the next click feels fresh
+        last_sent_at.duration = Duration::ZERO;
+        last_sent_at.position = Vec3::ZERO;
+
+        match stdb
+            .reducers()
+            // TODO: path finding then pass vec to MoveIntent::Path
+            .request_move(MoveIntent::Point(pos.into()))
+        {
+            Ok(_) => println!("Requesting Pathfinding to: {:?}", pos),
+            Err(e) => println!("Error: {}", e),
+        }
+    } else if pressed {
+        let held_dur = actions.current_duration(&InputAction::LeftClick);
+        let timer_ready = held_dur == Duration::ZERO
+            || held_dur.saturating_sub(last_sent_at.duration) >= DIRECTIONAL_MOVEMENT_INTERVAL;
+
+        let distance_ready = last_sent_at.position.distance_squared(pos) > 0.01;
+
+        if !timer_ready || !distance_ready {
+            return;
+        }
+
+        match stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
+            Ok(_) => {
+                last_sent_at.position = pos;
+                last_sent_at.duration = held_dur;
+                println!("Sent direct move: {:?}", pos);
+            }
+            Err(e) => println!("Error: {}", e),
+        }
+    }
 }
 
 fn handle_enter_world(keys: Res<ButtonInput<KeyCode>>, stdb: SpacetimeDB) {
     if keys.just_pressed(KeyCode::Space) {
         match stdb.reducers().enter_world() {
-            Ok(_) => {
-                println!("Called enter world without immediate failure");
-            }
-            Err(err) => {
-                println!("Immediate failure when calling enter world: {}", err);
-            }
+            Ok(_) => println!("Called enter world without immediate failure"),
+            Err(err) => println!("Immediate failure when calling enter world: {}", err),
         }
     }
 }
 
 fn sync(
     mut transform_query: Query<&mut NetworkTransform, With<Player>>,
-    stdb: SpacetimeDB,
     mut messages: ReadUpdateMessage<Actor>,
+    stdb: SpacetimeDB,
     actor_entity_mapping: Res<ActorEntityMapping>,
 ) {
     for msg in messages.read() {
-        if let Some(actor) = stdb.db().actor().id().find(&msg.new.id) {
-            if let Some(bevy_entity) = actor_entity_mapping.0.get(&actor.id) {
-                if let Ok((mut network_transform)) = transform_query.get_mut(*bevy_entity) {
-                    network_transform.rotation = actor.rotation.into();
-                    network_transform.scale = actor.scale.into();
-                    network_transform.translation = actor.translation.into();
-                }
-            }
+        let Some(actor) = stdb.db().actor().id().find(&msg.new.id) else {
+            continue;
+        };
+        let Some(bevy_entity) = actor_entity_mapping.0.get(&actor.id) else {
+            continue;
+        };
+        if let Ok(mut network_transform) = transform_query.get_mut(*bevy_entity) {
+            network_transform.rotation = actor.rotation.into();
+            network_transform.scale = actor.scale.into();
+            network_transform.translation = actor.translation.into();
         }
     }
 }
@@ -257,10 +286,9 @@ pub fn interpolate(
                 18.0,
                 delta_time,
             );
-            transform.rotation = transform.rotation.slerp(
-                network_transform.rotation,
-                1.0 - (-18.0 * 5. * delta_time).exp(),
-            );
+            transform.rotation = transform
+                .rotation
+                .slerp(network_transform.rotation, 1.0 - (-25.0 * delta_time).exp());
 
             transform.scale = network_transform.scale;
         });

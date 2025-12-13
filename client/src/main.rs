@@ -5,6 +5,7 @@
 
 mod camera;
 mod cursor;
+mod input;
 mod module_bindings;
 mod player;
 mod server;
@@ -45,10 +46,11 @@ impl Plugin for AppPlugin {
 
         app.add_plugins((
             server::plugin,
+            world::plugin,
             player::plugin,
             camera::plugin,
+            input::plugin,
             cursor::plugin,
-            world::plugin,
         ));
     }
 }
