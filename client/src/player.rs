@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use crate::{
+    cursor::{CurrentCursor, set_cursor_to_ability, set_cursor_to_combat, set_cursor_to_default},
     input::InputAction,
     module_bindings::{Actor, ActorKind, ActorTableAccess, MoveIntent, enter_world, request_move},
     server::SpacetimeDB,
@@ -187,6 +188,7 @@ fn handle_left_click(
     interactions: Query<&PointerInteraction, Without<LocalPlayer>>,
     stdb: SpacetimeDB,
 ) {
+    let just_pressed = actions.just_pressed(&InputAction::LeftClick);
     let pressed = actions.pressed(&InputAction::LeftClick);
     let just_released = actions.just_released(&InputAction::LeftClick);
 
@@ -208,7 +210,12 @@ fn handle_left_click(
         return;
     };
 
-    if just_released {
+    if just_pressed {
+        match stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
+            Ok(_) => println!("JUST PRESSED: {:?}", pos),
+            Err(e) => println!("Error: {}", e),
+        }
+    } else if just_released {
         // Reset the "Direct Movement" tracker so the next click feels fresh
         last_sent_at.duration = Duration::ZERO;
         last_sent_at.position = Vec3::ZERO;
@@ -218,11 +225,14 @@ fn handle_left_click(
             // TODO: path finding then pass vec to MoveIntent::Path
             .request_move(MoveIntent::Point(pos.into()))
         {
-            Ok(_) => println!("Requesting Pathfinding to: {:?}", pos),
+            Ok(_) => println!("JUST RELEASED: {:?}", pos),
             Err(e) => println!("Error: {}", e),
         }
     } else if pressed {
         let held_dur = actions.current_duration(&InputAction::LeftClick);
+        if held_dur < Duration::from_millis(150) {
+            return;
+        }
         let timer_ready = held_dur == Duration::ZERO
             || held_dur.saturating_sub(last_sent_at.duration) >= DIRECTIONAL_MOVEMENT_INTERVAL;
 
@@ -236,19 +246,29 @@ fn handle_left_click(
             Ok(_) => {
                 last_sent_at.position = pos;
                 last_sent_at.duration = held_dur;
-                println!("Sent direct move: {:?}", pos);
+                println!("PRESSED: {:?}", pos);
             }
             Err(e) => println!("Error: {}", e),
         }
     }
 }
 
-fn handle_enter_world(keys: Res<ButtonInput<KeyCode>>, stdb: SpacetimeDB) {
+fn handle_enter_world(
+    mut current_cursor: ResMut<CurrentCursor>,
+    keys: Res<ButtonInput<KeyCode>>,
+    stdb: SpacetimeDB,
+) {
     if keys.just_pressed(KeyCode::Space) {
         match stdb.reducers().enter_world() {
             Ok(_) => println!("Called enter world without immediate failure"),
             Err(err) => println!("Immediate failure when calling enter world: {}", err),
         }
+    } else if keys.just_pressed(KeyCode::Digit1) {
+        set_cursor_to_default(current_cursor);
+    } else if keys.just_pressed(KeyCode::Digit2) {
+        set_cursor_to_ability(current_cursor);
+    } else if keys.just_pressed(KeyCode::Digit3) {
+        set_cursor_to_combat(current_cursor);
     }
 }
 

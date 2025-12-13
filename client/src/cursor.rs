@@ -22,7 +22,7 @@ enum CursorKind {
 }
 
 #[derive(Resource)]
-struct CurrentCursor(CursorKind);
+pub struct CurrentCursor(CursorKind);
 
 pub(super) fn plugin(app: &mut App) {
     embedded_asset!(app, "../assets/embedded/cursors/default.png");
@@ -142,4 +142,12 @@ fn reapply_on_enter(
 
 // flip the desired cursor like this and the apply_cursor system will
 // pick it up automatically due to resource_changed run condition.
-// fn set_cursor_to_combat(mut cur: ResMut<CurrentCursor>) { cur.0 = CursorKind::Combat; }
+pub fn set_cursor_to_combat(mut cur: ResMut<CurrentCursor>) {
+    cur.0 = CursorKind::Combat;
+}
+pub fn set_cursor_to_ability(mut cur: ResMut<CurrentCursor>) {
+    cur.0 = CursorKind::Ability;
+}
+pub fn set_cursor_to_default(mut cur: ResMut<CurrentCursor>) {
+    cur.0 = CursorKind::Default;
+}
