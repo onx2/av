@@ -23,13 +23,21 @@ struct LastDirectionSentAt {
 
 /// Used to tie the server entity id to the local bevy entity
 #[derive(Resource, Default)]
-pub struct ActorEntityMapping(HashMap<u64, Entity>);
+pub struct ActorEntityMapping(pub HashMap<u64, Entity>);
 
 pub(super) fn plugin(app: &mut App) {
     app.init_resource::<LastDirectionSentAt>();
     app.insert_resource(ActorEntityMapping::default());
     app.add_systems(PreUpdate, sync);
-    app.add_systems(Update, (handle_enter_world, handle_left_click));
+    app.add_systems(
+        Update,
+        (
+            handle_enter_world,
+            handle_lmb_combat,
+            handle_lmb_movement,
+            handle_lmb_ability,
+        ),
+    );
     app.add_systems(
         PostUpdate,
         (
@@ -181,7 +189,68 @@ fn draw_player_facing(mut gizmos: Gizmos, q: Query<&GlobalTransform, With<Player
     }
 }
 
-fn handle_left_click(
+// TODO: This should probably call a different reducer explicitly for chase and attack
+fn handle_lmb_combat(
+    local_q: Single<&Player, With<LocalPlayer>>,
+    remote_q: Query<&Player, With<RemotePlayer>>,
+    actions: Res<ActionState<InputAction>>,
+    interactions: Query<&PointerInteraction>,
+    stdb: SpacetimeDB,
+) {
+    let just_pressed = actions.just_pressed(&InputAction::LeftClick);
+    let pressed = actions.pressed(&InputAction::LeftClick);
+
+    if !just_pressed && !pressed {
+        return;
+    }
+
+    let Ok(interaction) = interactions.single() else {
+        return;
+    };
+    let Some((entity, _)) = interaction.get_nearest_hit() else {
+        return;
+    };
+
+    if let Ok(remote_player) = remote_q.get(*entity) {
+        // TODO: Move this to a local cache in ECS, maybe on Player?
+        let Some(local_actor) = stdb.db().actor().id().find(&local_q.actor_id) else {
+            return;
+        };
+        // Don't send a new request if this is the same actor
+        if let MoveIntent::Actor(actor_id) = &local_actor.move_intent {
+            println!("Checking...{:?}={:?}", actor_id, &local_q.actor_id);
+            if actor_id == &local_q.actor_id {
+                return;
+            }
+        }
+        match stdb
+            .reducers()
+            .request_move(MoveIntent::Actor(remote_player.actor_id))
+        {
+            Ok(_) => println!("COMBAT CHASE: {:?}", remote_player.actor_id),
+            Err(e) => println!("Error: {}", e),
+        }
+    }
+}
+fn handle_lmb_ability(
+    actions: Res<ActionState<InputAction>>,
+    interactions: Query<&PointerInteraction>,
+) {
+    let just_pressed = actions.just_pressed(&InputAction::LeftClick);
+    let pressed = actions.pressed(&InputAction::LeftClick);
+    if !just_pressed && !pressed {
+        return;
+    }
+
+    let Ok(interaction) = interactions.single() else {
+        return;
+    };
+    let Some((entity, hit)) = interaction.get_nearest_hit() else {
+        return;
+    };
+}
+
+fn handle_lmb_movement(
     mut last_sent_at: ResMut<LastDirectionSentAt>,
     ground_q: Query<&Ground>,
     actions: Res<ActionState<InputAction>>,
@@ -192,7 +261,7 @@ fn handle_left_click(
     let pressed = actions.pressed(&InputAction::LeftClick);
     let just_released = actions.just_released(&InputAction::LeftClick);
 
-    if !pressed && !just_released {
+    if !just_pressed && !pressed && !just_released {
         return;
     }
 
@@ -254,7 +323,7 @@ fn handle_left_click(
 }
 
 fn handle_enter_world(
-    mut current_cursor: ResMut<CurrentCursor>,
+    current_cursor: ResMut<CurrentCursor>,
     keys: Res<ButtonInput<KeyCode>>,
     stdb: SpacetimeDB,
 ) {

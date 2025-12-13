@@ -14,6 +14,57 @@ use nalgebra as na;
 
 use crate::schema::{DbQuat, DbVec3};
 
+/// Planar (XZ) distance squared between two world positions (meters^2).
+#[inline]
+pub fn planar_distance_sq(a: DbVec3, b: DbVec3) -> f32 {
+    let dx = b.x - a.x;
+    let dz = b.z - a.z;
+    dx * dx + dz * dz
+}
+
+/// Are two positions within a planar movement range (meters)?
+#[inline]
+pub fn within_movement_range(a: DbVec3, b: DbVec3, max_distance: f32) -> bool {
+    if max_distance <= 0.0 {
+        return false;
+    }
+    planar_distance_sq(a, b) <= max_distance * max_distance
+}
+
+/// Are two positions within a planar acceptance radius (meters)?
+#[inline]
+pub fn within_acceptance(a: DbVec3, b: DbVec3, acceptance_radius: f32) -> bool {
+    if acceptance_radius < 0.0 {
+        return true;
+    }
+    planar_distance_sq(a, b) <= acceptance_radius * acceptance_radius
+}
+
+/// Default server-side maximum allowed movement intent distance (meters).
+pub const DEFAULT_MAX_INTENT_DISTANCE: f32 = 100.0;
+
+#[inline]
+pub fn delta_seconds_from_timestamps(
+    now: spacetimedb::Timestamp,
+    last: spacetimedb::Timestamp,
+    fallback_micros: i64,
+) -> f32 {
+    now.time_duration_since(last)
+        .unwrap_or(spacetimedb::TimeDuration::from_micros(fallback_micros))
+        .to_micros() as f32
+        / 1_000_000.0
+}
+
+#[inline]
+pub fn delta_seconds_with_rate(
+    now: spacetimedb::Timestamp,
+    last: spacetimedb::Timestamp,
+    tick_rate_hz: i64,
+) -> f32 {
+    let fallback_micros = 1_000_000 / tick_rate_hz;
+    delta_seconds_from_timestamps(now, last, fallback_micros)
+}
+
 /// Convert a database vector to nalgebra's `Vector3<f32>`.
 ///
 /// This is the canonical way to get a math vector from a `DbVec3`.

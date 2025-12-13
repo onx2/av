@@ -1,11 +1,14 @@
 use bevy::{
     asset::embedded_asset,
+    picking::pointer::PointerInteraction,
     prelude::*,
     window::{
         CursorEntered, CursorIcon, CustomCursor, CustomCursorImage, PrimaryWindow, WindowFocused,
         WindowResized,
     },
 };
+
+use crate::player::RemotePlayer;
 
 #[derive(Resource)]
 struct CursorAssets {
@@ -41,7 +44,12 @@ pub(super) fn plugin(app: &mut App) {
     // Re-apply on focus/enter to avoid OS/browser resets
     app.add_systems(
         Update,
-        (reapply_on_focus, reapply_on_enter, reapply_on_resize),
+        (
+            reapply_on_focus,
+            reapply_on_enter,
+            reapply_on_resize,
+            update,
+        ),
     );
 }
 
@@ -150,4 +158,28 @@ pub fn set_cursor_to_ability(mut cur: ResMut<CurrentCursor>) {
 }
 pub fn set_cursor_to_default(mut cur: ResMut<CurrentCursor>) {
     cur.0 = CursorKind::Default;
+}
+
+// Example of updating cursor based on what it is over...
+// TODO:
+// - combat when the entity it is over can enter combat
+// - ability when the LocalPlayer has some ability queued up
+// - default otherwise
+fn update(
+    player_q: Query<&RemotePlayer>,
+    interactions: Query<&PointerInteraction>,
+    current: ResMut<CurrentCursor>,
+) {
+    let Ok(interaction) = interactions.single() else {
+        return;
+    };
+    let Some((entity, _hit)) = interaction.get_nearest_hit() else {
+        return;
+    };
+
+    if player_q.get(*entity).is_ok() {
+        set_cursor_to_combat(current);
+    } else {
+        set_cursor_to_default(current);
+    }
 }

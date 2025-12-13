@@ -16,6 +16,7 @@
 //!   motion is canceled while airborne (falling), so this reducer rejects new
 //!   intents when `grounded == false`.
 
+use crate::model::{within_acceptance, within_movement_range, DEFAULT_MAX_INTENT_DISTANCE};
 use crate::schema::*;
 use spacetimedb::{ReducerContext, Table};
 
@@ -55,8 +56,76 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
         return Err("Actor is falling; cannot set move intent right now".to_string());
     }
 
-    // Apply intent and persist.
-    actor.move_intent = intent;
+    // Precompute planar acceptance radius (capsule + small buffer).
+    let acceptance = (actor.capsule_radius * 2.0).max(0.0);
+
+    // Validate intent and normalize where applicable (e.g., trim close waypoints).
+    match intent {
+        MoveIntent::Point(p) => {
+            // Reject if the destination is already within acceptance.
+            if within_acceptance(actor.translation, p, acceptance) {
+                return Err("Destination too close to current position".to_string());
+            }
+            // Reject if the destination is too far away.
+            if !within_movement_range(actor.translation, p, DEFAULT_MAX_INTENT_DISTANCE) {
+                return Err("Destination too far from current position".to_string());
+            }
+            actor.move_intent = MoveIntent::Point(p);
+        }
+        MoveIntent::Path(mut path) => {
+            // Empty path is a no-op; clear intent.
+            if path.is_empty() {
+                actor.move_intent = MoveIntent::None;
+            } else {
+                // Remove any leading waypoints that are already within acceptance.
+                loop {
+                    let wp = path[0];
+                    if within_acceptance(actor.translation, wp, acceptance) {
+                        path.remove(0);
+                        if path.is_empty() {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                if path.is_empty() {
+                    actor.move_intent = MoveIntent::None;
+                } else {
+                    // Reject if the first waypoint is too far away.
+                    let wp = path[0];
+                    if !within_movement_range(actor.translation, wp, DEFAULT_MAX_INTENT_DISTANCE) {
+                        return Err("First waypoint too far from current position".to_string());
+                    }
+                    actor.move_intent = MoveIntent::Path(path);
+                }
+            }
+        }
+        MoveIntent::Actor(target_id) => {
+            // Disallow chasing self and require a valid target actor.
+            if target_id == actor.id {
+                return Err("Cannot set follow intent to self".to_string());
+            }
+            let Some(target_actor) = ctx.db.actor().id().find(target_id) else {
+                return Err("Target actor not found".to_string());
+            };
+            // Reject if the target actor is too far away (planar).
+            if !within_movement_range(
+                actor.translation,
+                target_actor.translation,
+                DEFAULT_MAX_INTENT_DISTANCE,
+            ) {
+                return Err("Target actor too far from current position".to_string());
+            }
+            actor.move_intent = MoveIntent::Actor(target_id);
+        }
+        MoveIntent::None => {
+            actor.move_intent = MoveIntent::None;
+        }
+    }
+
+    // Persist changes.
     ctx.db.actor().id().update(actor);
 
     Ok(())
