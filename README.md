@@ -11,8 +11,8 @@ The story of its coming is told through Aurora, the one who unearthed the artifa
 - Install SpacetimeDB
 - Clone/Fork the repository
 - Start the spacetimeDB server: `spacetime start`
-- Publish spacetime locally: `spacetime publish <db_name> -p ./server`
-- Generate client/server binding  `spacetime generate --lang rust -p ./server -o ./client/src/stdb`
+- Publish spacetime locally: `spacetime publish --server local --project-path ./server aurorasveil`
+- Generate client/server binding  `spacetime generate --lang rust -p ./server -o ./client/src/module_bindings`
 - Start the client: `cargo run -p client`
 
 ### Local token testing (multiple clients on localhost)
