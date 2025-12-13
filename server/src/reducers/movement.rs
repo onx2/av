@@ -18,7 +18,7 @@
 
 use crate::model::{within_acceptance, within_movement_range, DEFAULT_MAX_INTENT_DISTANCE};
 use crate::schema::*;
-use spacetimedb::{ReducerContext, Table};
+use spacetimedb::ReducerContext;
 
 /// Request or update the movement intent for the caller's live actor.
 ///
@@ -57,7 +57,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
     }
 
     // Precompute planar acceptance radius (capsule + small buffer).
-    let acceptance = (actor.capsule_radius * 2.0).max(0.0);
+    let acceptance = shared::motion::acceptance_from_capsule(actor.capsule_radius);
 
     // Validate intent and normalize where applicable (e.g., trim close waypoints).
     match intent {
@@ -72,33 +72,43 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
             }
             actor.move_intent = MoveIntent::Point(p);
         }
-        MoveIntent::Path(mut path) => {
+        MoveIntent::Path(path) => {
             // Empty path is a no-op; clear intent.
             if path.is_empty() {
                 actor.move_intent = MoveIntent::None;
             } else {
-                // Remove any leading waypoints that are already within acceptance.
-                loop {
-                    let wp = path[0];
+                // Build a validated path ensuring:
+                // - Every waypoint is outside acceptance from the actor and previous waypoint.
+                // - Every waypoint is within max range from the actor.
+                // - Consecutive waypoints are not too far apart.
+                let mut validated: Vec<DbVec3> = Vec::with_capacity(path.len());
+                let mut prev = actor.translation;
+
+                for wp in path.into_iter() {
+                    // Skip waypoints within acceptance of the actor or the previous accepted waypoint.
                     if within_acceptance(actor.translation, wp, acceptance) {
-                        path.remove(0);
-                        if path.is_empty() {
-                            break;
-                        }
-                    } else {
-                        break;
+                        continue;
                     }
+                    if within_acceptance(prev, wp, acceptance) {
+                        continue;
+                    }
+
+                    // Enforce max range from the actor and between consecutive points.
+                    if !within_movement_range(actor.translation, wp, DEFAULT_MAX_INTENT_DISTANCE) {
+                        return Err("Waypoint too far from actor".to_string());
+                    }
+                    if !within_movement_range(prev, wp, DEFAULT_MAX_INTENT_DISTANCE) {
+                        return Err("Consecutive waypoints too far apart".to_string());
+                    }
+
+                    validated.push(wp);
+                    prev = wp;
                 }
 
-                if path.is_empty() {
+                if validated.is_empty() {
                     actor.move_intent = MoveIntent::None;
                 } else {
-                    // Reject if the first waypoint is too far away.
-                    let wp = path[0];
-                    if !within_movement_range(actor.translation, wp, DEFAULT_MAX_INTENT_DISTANCE) {
-                        return Err("First waypoint too far from current position".to_string());
-                    }
-                    actor.move_intent = MoveIntent::Path(path);
+                    actor.move_intent = MoveIntent::Path(validated);
                 }
             }
         }
@@ -129,108 +139,4 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
     ctx.db.actor().id().update(actor);
 
     Ok(())
-}
-
-/// Enter the world: (re)create the caller's live actor from their persisted Player state.
-///
-/// Behavior:
-/// - Validates a Player row exists for the caller.
-/// - Rejects if the caller already has a live actor.
-/// - Spawns a new Actor row seeded from the Player's persisted fields
-///   (transform, capsule dimensions, movement speed, grounded).
-/// - Sets `player.actor_id = Some(actor.id)`.
-///
-/// Determinism:
-/// - Actor creation uses persisted state only. No randomization occurs here.
-/// - The kinematic controller will immediately process this actor on the next tick.
-#[spacetimedb::reducer]
-pub fn enter_world(ctx: &ReducerContext) {
-    let Some(mut player) = ctx.db.player().identity().find(ctx.sender) else {
-        // If a Player row doesn't exist, this likely indicates that `identity_connected`
-        // did not run, or the DB was reset. For robustness, create a minimal default.
-        let default = Player {
-            identity: ctx.sender,
-            actor_id: None,
-            translation: DbVec3::new(0.0, 3.85, 0.0),
-            rotation: DbQuat::default(),
-            scale: DbVec3::ONE,
-            capsule_radius: 0.35,
-            capsule_half_height: 0.75,
-            movement_speed: 5.0,
-            grounded: false,
-        };
-        let _ = ctx.db.player().insert(default);
-        return;
-    };
-
-    if let Some(_) = player.actor_id {
-        // Already in world—ignore duplicate requests.
-        return;
-    }
-
-    // Rebuild actor from persisted Player state.
-    let actor = ctx.db.actor().insert(Actor {
-        id: 0,
-        kind: ActorKind::Player(player.identity),
-        translation: player.translation,
-        rotation: player.rotation,
-        scale: player.scale,
-        capsule_radius: player.capsule_radius,
-        capsule_half_height: player.capsule_half_height,
-        movement_speed: player.movement_speed,
-        grounded: player.grounded,
-        move_intent: MoveIntent::None,
-    });
-
-    // Link back Player -> Actor.
-    player.actor_id = Some(actor.id);
-    ctx.db.player().identity().update(player);
-}
-
-/// Leave the world: persist the caller's actor state and despawn the live actor.
-///
-/// Behavior:
-/// - Validates a Player row exists for the caller.
-/// - If no live actor exists, this is a no-op.
-/// - Otherwise:
-///   - Persists current Actor state back to Player (transform, capsule, speed, grounded).
-///   - Deletes the Actor row.
-///   - Clears `player.actor_id`.
-///
-/// Determinism:
-/// - This reducer is purely a state transition and data persistence step; it does
-///   not run the physics controller.
-#[spacetimedb::reducer]
-pub fn leave_world(ctx: &ReducerContext) {
-    let Some(mut player) = ctx.db.player().identity().find(ctx.sender) else {
-        return;
-    };
-
-    let Some(actor_id) = player.actor_id else {
-        // No live actor; nothing to do.
-        return;
-    };
-
-    let Some(actor) = ctx.db.actor().id().find(actor_id) else {
-        // Inconsistent state; clear the dangling id.
-        player.actor_id = None;
-        ctx.db.player().identity().update(player);
-        return;
-    };
-
-    // Persist actor state back to Player.
-    player.translation = actor.translation;
-    player.rotation = actor.rotation;
-    player.scale = actor.scale;
-    player.capsule_radius = actor.capsule_radius;
-    player.capsule_half_height = actor.capsule_half_height;
-    player.movement_speed = actor.movement_speed;
-    player.grounded = actor.grounded;
-
-    // Despawn actor and clear link.
-    ctx.db.actor().id().delete(actor.id);
-    player.actor_id = None;
-
-    // Save updated Player row.
-    ctx.db.player().identity().update(player);
 }

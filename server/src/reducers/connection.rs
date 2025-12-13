@@ -61,12 +61,10 @@ pub fn identity_disconnected(ctx: &ReducerContext) {
     log::info!("Client disconnected: {:?}", ctx.sender);
 
     let Some(mut player) = ctx.db.player().identity().find(ctx.sender) else {
-        // No persisted player record; nothing to do.
         return;
     };
 
     let Some(actor_id) = player.actor_id else {
-        // No live actor; nothing to persist.
         return;
     };
 
@@ -82,11 +80,8 @@ pub fn identity_disconnected(ctx: &ReducerContext) {
 
         // Despawn the actor and clear the link.
         ctx.db.actor().id().delete(actor.id);
-        player.actor_id = None;
-        ctx.db.player().identity().update(player);
-    } else {
-        // Actor row missing; clear dangling reference.
-        player.actor_id = None;
-        ctx.db.player().identity().update(player);
     }
+
+    player.actor_id = None;
+    ctx.db.player().identity().update(player);
 }

@@ -20,20 +20,12 @@
 use nalgebra as na;
 
 /// When the remaining translation length squared is below this threshold, treat it as zero (m^2).
-pub const MIN_MOVE_SQ: f32 = 1.0e-8;
-
-/// Practical tolerance for comparing distances and dot-products in meters/meters^2.
-pub const DIST_EPS: f32 = 1.0e-6;
-
-/// A small buffer added to the capsule radius when using it as the acceptance radius (meters).
-pub const ACCEPTANCE_BUFFER: f32 = 0.05;
+pub use crate::collision::settings::{
+    ACCEPTANCE_BUFFER, DIST_EPS, MIN_MOVE_SQ, acceptance_from_capsule,
+};
 
 /// Compute an acceptance radius from a capsule radius by adding a small buffer.
 /// This helps avoid jitter when very close to the target.
-#[inline]
-pub fn acceptance_from_capsule(capsule_radius: f32) -> f32 {
-    (capsule_radius + ACCEPTANCE_BUFFER).max(0.0)
-}
 
 /// Input for computing the desired translation toward a target in 3D.
 ///

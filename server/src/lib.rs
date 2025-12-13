@@ -29,6 +29,8 @@ pub mod world;
 // Reducers split by concern.
 pub mod reducers {
     pub mod connection;
+    pub mod enter_world;
+    pub mod leave_world;
     pub mod movement;
     pub mod tick;
 }
@@ -37,7 +39,8 @@ pub mod reducers {
 use crate::schema::world_static;
 pub use reducers::{
     connection::{identity_connected, identity_disconnected},
-    movement::{enter_world, leave_world, request_move},
+    enter_world, leave_world,
+    movement::request_move,
     tick::tick,
 };
 

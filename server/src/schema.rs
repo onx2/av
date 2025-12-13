@@ -60,9 +60,7 @@ impl Default for DbVec3 {
 }
 
 impl DbVec3 {
-    /// (1, 1, 1)
     pub const ONE: Self = Self::new(1.0, 1.0, 1.0);
-    /// (0, 0, 0)
     pub const ZERO: Self = Self::new(0.0, 0.0, 0.0);
 
     /// Construct a new vector.
@@ -173,6 +171,7 @@ pub struct Player {
     pub movement_speed: f32,
 
     /// Ground contact state at last persistence (best-effort).
+    #[index(btree)]
     pub grounded: bool,
 }
 
