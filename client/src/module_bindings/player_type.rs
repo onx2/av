@@ -18,7 +18,6 @@ pub struct Player {
     pub capsule_radius: f32,
     pub capsule_half_height: f32,
     pub movement_speed: f32,
-    pub grounded: bool,
 }
 
 impl __sdk::InModule for Player {

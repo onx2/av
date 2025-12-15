@@ -8,7 +8,7 @@ pub(super) fn plugin(app: &mut App) {
 }
 
 const CAMERA_OFFSET_GLOBAL: Vec3 = Vec3::new(0.0, 25.0, -10.0);
-const CAMERA_DECAY_RATE: f32 = 12.0;
+const CAMERA_DECAY_RATE: f32 = 24.0;
 
 fn add_camera(mut commands: Commands) {
     commands.spawn((

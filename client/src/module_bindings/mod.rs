@@ -16,6 +16,8 @@ pub mod db_vec_3_type;
 pub mod enter_world_reducer;
 pub mod identity_connected_reducer;
 pub mod identity_disconnected_reducer;
+pub mod kcc_settings_table;
+pub mod kcc_settings_type;
 pub mod leave_world_reducer;
 pub mod move_intent_type;
 pub mod player_table;
@@ -41,6 +43,8 @@ pub use identity_connected_reducer::{
 pub use identity_disconnected_reducer::{
     identity_disconnected, set_flags_for_identity_disconnected, IdentityDisconnectedCallbackId,
 };
+pub use kcc_settings_table::*;
+pub use kcc_settings_type::KccSettings;
 pub use leave_world_reducer::{leave_world, set_flags_for_leave_world, LeaveWorldCallbackId};
 pub use move_intent_type::MoveIntent;
 pub use player_table::*;
@@ -136,6 +140,7 @@ impl TryFrom<__ws::ReducerCallInfo<__ws::BsatnFormat>> for Reducer {
 #[doc(hidden)]
 pub struct DbUpdate {
     actor: __sdk::TableUpdate<Actor>,
+    kcc_settings: __sdk::TableUpdate<KccSettings>,
     player: __sdk::TableUpdate<Player>,
     tick_timer: __sdk::TableUpdate<TickTimer>,
     world_static: __sdk::TableUpdate<WorldStatic>,
@@ -150,6 +155,9 @@ impl TryFrom<__ws::DatabaseUpdate<__ws::BsatnFormat>> for DbUpdate {
                 "actor" => db_update
                     .actor
                     .append(actor_table::parse_table_update(table_update)?),
+                "kcc_settings" => db_update
+                    .kcc_settings
+                    .append(kcc_settings_table::parse_table_update(table_update)?),
                 "player" => db_update
                     .player
                     .append(player_table::parse_table_update(table_update)?),
@@ -188,6 +196,9 @@ impl __sdk::DbUpdate for DbUpdate {
         diff.actor = cache
             .apply_diff_to_table::<Actor>("actor", &self.actor)
             .with_updates_by_pk(|row| &row.id);
+        diff.kcc_settings = cache
+            .apply_diff_to_table::<KccSettings>("kcc_settings", &self.kcc_settings)
+            .with_updates_by_pk(|row| &row.id);
         diff.player = cache
             .apply_diff_to_table::<Player>("player", &self.player)
             .with_updates_by_pk(|row| &row.identity);
@@ -207,6 +218,7 @@ impl __sdk::DbUpdate for DbUpdate {
 #[doc(hidden)]
 pub struct AppliedDiff<'r> {
     actor: __sdk::TableAppliedDiff<'r, Actor>,
+    kcc_settings: __sdk::TableAppliedDiff<'r, KccSettings>,
     player: __sdk::TableAppliedDiff<'r, Player>,
     tick_timer: __sdk::TableAppliedDiff<'r, TickTimer>,
     world_static: __sdk::TableAppliedDiff<'r, WorldStatic>,
@@ -224,6 +236,11 @@ impl<'r> __sdk::AppliedDiff<'r> for AppliedDiff<'r> {
         callbacks: &mut __sdk::DbCallbacks<RemoteModule>,
     ) {
         callbacks.invoke_table_row_callbacks::<Actor>("actor", &self.actor, event);
+        callbacks.invoke_table_row_callbacks::<KccSettings>(
+            "kcc_settings",
+            &self.kcc_settings,
+            event,
+        );
         callbacks.invoke_table_row_callbacks::<Player>("player", &self.player, event);
         callbacks.invoke_table_row_callbacks::<TickTimer>("tick_timer", &self.tick_timer, event);
         callbacks.invoke_table_row_callbacks::<WorldStatic>(
@@ -951,6 +968,7 @@ impl __sdk::SpacetimeModule for RemoteModule {
 
     fn register_tables(client_cache: &mut __sdk::ClientCache<Self>) {
         actor_table::register_table(client_cache);
+        kcc_settings_table::register_table(client_cache);
         player_table::register_table(client_cache);
         tick_timer_table::register_table(client_cache);
         world_static_table::register_table(client_cache);

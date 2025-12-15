@@ -20,8 +20,8 @@ pub struct Actor {
     pub capsule_radius: f32,
     pub capsule_half_height: f32,
     pub movement_speed: f32,
-    pub grounded: bool,
     pub move_intent: MoveIntent,
+    pub grounded: bool,
 }
 
 impl __sdk::InModule for Actor {

@@ -5,6 +5,16 @@
 //! authoritative SpacetimeDB instance. Types here are intentionally
 //! simple, serializable data with clear semantics. Higher-level math and
 //! conversions to engine types (e.g., nalgebra) live elsewhere.
+//!
+//! Note on grounding
+//! -----------------
+//! We intentionally do NOT persist a `grounded` flag on `Actor` rows.
+//! Grounding should be derived each tick from Rapier scene queries / the
+//! kinematic character controller (KCC) collision events, as described in
+//! the Rapier docs.
+//
+//! This avoids stale state and makes behavior deterministic on both
+//! server and client given the same world + inputs.
 
 use spacetimedb::*;
 
@@ -169,10 +179,6 @@ pub struct Player {
 
     /// Nominal horizontal movement speed in meters/second.
     pub movement_speed: f32,
-
-    /// Ground contact state at last persistence (best-effort).
-    #[index(btree)]
-    pub grounded: bool,
 }
 
 /// Live actor entity driven by the server's kinematic controller.
@@ -202,18 +208,74 @@ pub struct Actor {
     /// Nominal horizontal movement speed (m/s).
     pub movement_speed: f32,
 
-    /// Ground contact state (updated by tick).
-    pub grounded: bool,
-
     /// Current movement intent.
     pub move_intent: MoveIntent,
+
+    /// Whether the Actor was grounded last step
+    /// Used to apply gravity at a 1-step lag to prevent double collision detection.
+    pub grounded: bool,
+}
+
+/// Kinematic Character Controller (KCC) settings shared by server and clients.
+///
+/// This is intended to be a single-row table (e.g. `id = 1`) that both:
+/// - the server reads to configure Rapier's `KinematicCharacterController`, and
+/// - clients subscribe to in order to recreate the same controller configuration locally.
+///
+/// Notes
+/// - Values are expressed in meters, seconds, and degrees (converted to radians at runtime).
+/// - Autostep and snap-to-ground are always enabled (per current design).
+#[table(name = kcc_settings, public)]
+pub struct KccSettings {
+    /// Unique id (primary key). Use a single row with `id = 1`.
+    #[primary_key]
+    pub id: u32,
+
+    /// Small gap preserved between the character and its surroundings (meters).
+    pub offset: f32,
+
+    /// Maximum climbable slope angle (degrees).
+    pub max_slope_climb_deg: f32,
+
+    /// Minimum slope angle (degrees) before automatic sliding starts.
+    pub min_slope_slide_deg: f32,
+
+    /// Snap-to-ground distance threshold (meters). Always enabled.
+    pub snap_to_ground: f32,
+
+    /// Autostep maximum height (meters). Always enabled.
+    pub autostep_max_height: f32,
+
+    /// Autostep minimum width (meters). Always enabled.
+    pub autostep_min_width: f32,
+
+    /// Whether the controller should slide against obstacles.
+    pub slide: bool,
+
+    /// Increase if the character gets stuck when sliding (small, meters).
+    pub normal_nudge_factor: f32,
+
+    /// Constant falling speed magnitude (m/s) applied as downward motion when airborne.
+    pub fall_speed_mps: f32,
+
+    /// Small downward bias magnitude (m/s) applied while grounded to satisfy snap-to-ground preconditions.
+    pub grounded_down_bias_mps: f32,
+
+    /// Ground probe distance (meters) used to derive "touching ground" at start of tick.
+    pub ground_probe_distance: f32,
+
+    /// Minimum acceptable Y component of a ground normal to be considered "ground".
+    /// (e.g. cos(max_slope_climb_angle)).
+    pub ground_normal_min_y: f32,
+
+    /// Planar acceptance radius for MoveIntent::Point completion (meters).
+    pub point_acceptance_radius: f32,
 }
 
 /// Static collider rows used to build the immutable world collision geometry.
 ///
-/// The server reads these rows into the shared collision module's `StaticShape`
-/// representation, builds a static broad-phase accelerator once, and reuses it
-/// every tick for narrow-phase shape casts.
+/// The server reads these rows into an in-memory Rapier query world once, and reuses it
+/// every tick for scene queries and the kinematic character controller (KCC).
 #[table(name = world_static, public)]
 pub struct WorldStatic {
     /// Unique id (primary key).

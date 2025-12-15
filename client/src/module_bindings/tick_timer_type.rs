@@ -10,6 +10,7 @@ pub struct TickTimer {
     pub scheduled_id: u64,
     pub scheduled_at: __sdk::ScheduleAt,
     pub last_tick: __sdk::Timestamp,
+    pub time_accumulator: f32,
 }
 
 impl __sdk::InModule for TickTimer {

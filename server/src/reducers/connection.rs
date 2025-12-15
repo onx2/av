@@ -47,7 +47,6 @@ pub fn identity_connected(ctx: &ReducerContext) {
             capsule_radius: 0.35,
             capsule_half_height: 0.75,
             movement_speed: 5.0,
-            grounded: false,
         });
     }
 }
@@ -76,7 +75,6 @@ pub fn identity_disconnected(ctx: &ReducerContext) {
         player.capsule_radius = actor.capsule_radius;
         player.capsule_half_height = actor.capsule_half_height;
         player.movement_speed = actor.movement_speed;
-        player.grounded = actor.grounded;
 
         // Despawn the actor and clear the link.
         ctx.db.actor().id().delete(actor.id);

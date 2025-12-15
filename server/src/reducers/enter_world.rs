@@ -27,7 +27,6 @@ pub fn enter_world(ctx: &ReducerContext) {
             capsule_radius: 0.35,
             capsule_half_height: 0.75,
             movement_speed: 5.0,
-            grounded: false,
         };
         let _ = ctx.db.player().insert(default);
         return;
@@ -48,8 +47,8 @@ pub fn enter_world(ctx: &ReducerContext) {
         capsule_radius: player.capsule_radius,
         capsule_half_height: player.capsule_half_height,
         movement_speed: player.movement_speed,
-        grounded: player.grounded,
         move_intent: MoveIntent::None,
+        grounded: false,
     });
 
     // Link back Player -> Actor.

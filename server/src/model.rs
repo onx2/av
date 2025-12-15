@@ -29,20 +29,15 @@ pub fn within_acceptance(a: DbVec3, b: DbVec3, acceptance_radius: f32) -> bool {
 /// Default server-side maximum allowed movement intent distance (meters).
 pub const DEFAULT_MAX_INTENT_DISTANCE: f32 = 100.0;
 
-pub fn delta_seconds_with_rate(
+pub fn get_variable_delta_time(
     now: spacetimedb::Timestamp,
     last: spacetimedb::Timestamp,
-    tick_rate_hz: i64,
-) -> f32 {
+) -> Option<f32> {
     now.time_duration_since(last)
-        .unwrap_or(spacetimedb::TimeDuration::from_micros(
-            1_000_000 / tick_rate_hz,
-        ))
-        .to_micros() as f32
-        / 1_000_000.0
+        .map(|dur| dur.to_micros() as f32 / 1_000_000.0)
 }
 
-pub fn get_delta_time(scheduled_at: ScheduleAt) -> f32 {
+pub fn get_fixed_delta_time(scheduled_at: ScheduleAt) -> f32 {
     match scheduled_at {
         ScheduleAt::Interval(dt) => dt.to_micros() as f32 / 1_000_000.0,
         _ => panic!("Expected ScheduleAt to be Interval"),

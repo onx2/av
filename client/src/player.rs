@@ -29,23 +29,10 @@ pub(super) fn plugin(app: &mut App) {
     app.init_resource::<LastDirectionSentAt>();
     app.insert_resource(ActorEntityMapping::default());
     app.add_systems(PreUpdate, sync);
-    app.add_systems(
-        Update,
-        (
-            handle_enter_world,
-            handle_lmb_combat,
-            handle_lmb_movement,
-            handle_lmb_ability,
-        ),
-    );
+    app.add_systems(Update, (handle_enter_world, handle_lmb_movement));
     app.add_systems(
         PostUpdate,
-        (
-            on_actor_inserted,
-            on_actor_deleted,
-            draw_player_facing,
-            interpolate,
-        ),
+        (on_actor_inserted, on_actor_deleted, interpolate),
     );
 }
 
@@ -171,88 +158,8 @@ fn on_actor_inserted(
     }
 }
 
-fn draw_player_facing(mut gizmos: Gizmos, q: Query<&GlobalTransform, With<Player>>) {
-    for gt in &q {
-        // Get world-space rotation/position robustly
-        let (_, rot, start) = gt.to_scale_rotation_translation();
-
-        // Compute forward from rotation; fallback if invalid/degenerate
-        let mut dir = rot * Vec3::NEG_Z;
-        if !dir.is_finite() || dir.length_squared() <= 1.0e-8 {
-            // Use default forward to avoid zero-length direction panics
-            dir = Vec3::NEG_Z;
-        }
-
-        // Draw arrow using start/end so we don't construct a Dir3 directly
-        let end = start + dir.normalize() * 1.5;
-        gizmos.arrow(start, end, Color::srgb(1.0, 1.0, 0.2));
-    }
-}
-
-// TODO: This should probably call a different reducer explicitly for chase and attack
-fn handle_lmb_combat(
-    local_q: Single<&Player, With<LocalPlayer>>,
-    remote_q: Query<&Player, With<RemotePlayer>>,
-    actions: Res<ActionState<InputAction>>,
-    interactions: Query<&PointerInteraction>,
-    stdb: SpacetimeDB,
-) {
-    let just_pressed = actions.just_pressed(&InputAction::LeftClick);
-    let pressed = actions.pressed(&InputAction::LeftClick);
-
-    if !just_pressed && !pressed {
-        return;
-    }
-
-    let Ok(interaction) = interactions.single() else {
-        return;
-    };
-    let Some((entity, _)) = interaction.get_nearest_hit() else {
-        return;
-    };
-
-    if let Ok(remote_player) = remote_q.get(*entity) {
-        // TODO: Move this to a local cache in ECS, maybe on Player?
-        let Some(local_actor) = stdb.db().actor().id().find(&local_q.actor_id) else {
-            return;
-        };
-        // Don't send a new request if this is the same actor
-        if let MoveIntent::Actor(actor_id) = &local_actor.move_intent {
-            println!("Checking...{:?}={:?}", actor_id, &local_q.actor_id);
-            if actor_id == &local_q.actor_id {
-                return;
-            }
-        }
-        match stdb
-            .reducers()
-            .request_move(MoveIntent::Actor(remote_player.actor_id))
-        {
-            Ok(_) => println!("COMBAT CHASE: {:?}", remote_player.actor_id),
-            Err(e) => println!("Error: {}", e),
-        }
-    }
-}
-fn handle_lmb_ability(
-    actions: Res<ActionState<InputAction>>,
-    interactions: Query<&PointerInteraction>,
-) {
-    let just_pressed = actions.just_pressed(&InputAction::LeftClick);
-    let pressed = actions.pressed(&InputAction::LeftClick);
-    if !just_pressed && !pressed {
-        return;
-    }
-
-    let Ok(interaction) = interactions.single() else {
-        return;
-    };
-    let Some((entity, hit)) = interaction.get_nearest_hit() else {
-        return;
-    };
-}
-
 fn handle_lmb_movement(
     mut last_sent_at: ResMut<LastDirectionSentAt>,
-    ground_q: Query<&Ground>,
     actions: Res<ActionState<InputAction>>,
     interactions: Query<&PointerInteraction, Without<LocalPlayer>>,
     stdb: SpacetimeDB,
@@ -268,13 +175,10 @@ fn handle_lmb_movement(
     let Ok(interaction) = interactions.single() else {
         return;
     };
-    let Some((entity, hit)) = interaction.get_nearest_hit() else {
+    let Some((_entity, hit)) = interaction.get_nearest_hit() else {
         return;
     };
 
-    // if !ground_q.contains(*entity) {
-    //     return;
-    // }
     let Some(pos) = hit.position else {
         return;
     };
@@ -372,12 +276,12 @@ pub fn interpolate(
         .for_each(|(mut transform, network_transform)| {
             transform.translation.smooth_nudge(
                 &network_transform.translation.into(),
-                18.0,
+                14.0,
                 delta_time,
             );
             transform.rotation = transform
                 .rotation
-                .slerp(network_transform.rotation, 1.0 - (-25.0 * delta_time).exp());
+                .slerp(network_transform.rotation, 1.0 - (-24.0 * delta_time).exp());
 
             transform.scale = network_transform.scale;
         });

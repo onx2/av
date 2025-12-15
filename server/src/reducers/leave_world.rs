@@ -39,7 +39,6 @@ pub fn leave_world(ctx: &ReducerContext) {
     player.capsule_radius = actor.capsule_radius;
     player.capsule_half_height = actor.capsule_half_height;
     player.movement_speed = actor.movement_speed;
-    player.grounded = actor.grounded;
 
     // Despawn actor and clear link.
     ctx.db.actor().id().delete(actor.id);

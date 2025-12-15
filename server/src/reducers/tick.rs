@@ -1,107 +1,176 @@
 use crate::{
-    model::{delta_seconds_with_rate, get_delta_time, yaw_to_db_quat},
-    schema::{actor, MoveIntent},
+    model::{get_fixed_delta_time, get_variable_delta_time, yaw_to_db_quat},
+    schema::kcc_settings,
     tick_timer,
-    world::{world_accel, world_statics},
+    world::world_query_world,
     TickTimer,
-};
-use shared::{
-    collision::{settings::acceptance_from_capsule, CapsuleSpec},
-    step_movement,
 };
 use spacetimedb::{ReducerContext, Table};
 
+use crate::schema::{actor, MoveIntent};
+
+// Use Rapier types/macros through the shared crate to keep dependency versions unified.
+use shared::rapier_world::rapier3d::prelude::*;
+
+// In rapier3d 0.31.0 the character controller types live under `rapier3d::control`.
+use shared::rapier_world::rapier3d::control::{
+    CharacterAutostep, CharacterLength, KinematicCharacterController,
+};
+
+/// Safety cap to avoid spending unbounded time catching up after long stalls.
+const MAX_STEPS_PER_TICK: u32 = 5;
+
+/// Minimum planar motion required to update yaw (meters per tick).
+const YAW_EPS: f32 = 1.0e-6;
+
+/// The single-row primary key for `kcc_settings`.
+const KCC_SETTINGS_ID: u32 = 1;
+
 #[spacetimedb::reducer]
 pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
-    // 1. Guard against client calls (Correctly done already)
+    // Only the server (module identity) may invoke the scheduled reducer.
     if ctx.sender != ctx.identity() {
         return Err("`tick` may not be invoked by clients.".into());
     }
 
-    // --- TIME CALCULATION ---
-    let fixed_dt: f32 = get_delta_time(timer.scheduled_at);
-    let real_dt: f32 = ctx
-        .timestamp
-        .time_duration_since(timer.last_tick)
-        .unwrap_or(spacetimedb::TimeDuration::from_micros(1_000_000 / 60))
-        .to_micros() as f32
-        / 1_000_000.0;
+    // Fixed timestep.
+    let fixed_dt: f32 = get_fixed_delta_time(timer.scheduled_at);
 
-    // You can remove this logging line once debugging is finished,
-    // as it clutters the logs and the true delta time is FIXED_DT.
-    log::info!("Delta Times: {:?} | {:?}", fixed_dt, real_dt);
+    // Real time elapsed since last tick; used to advance the accumulator.
+    let real_dt: f32 = get_variable_delta_time(ctx.timestamp, timer.last_tick).unwrap_or(fixed_dt);
 
-    // 2. ACCUMULATE TIME
-    // Use the real elapsed time to push the simulation clock forward.
+    // Accumulate real time; drain it in fixed-size steps.
     timer.time_accumulator += real_dt;
 
-    // --- THE FIXED-STEP CATCH-UP LOOP ---
+    // Load KCC settings once per reducer invocation (single-row table).
+    // This keeps the configuration stable for the whole catch-up loop without global caching.
+    let Some(kcc) = ctx.db.kcc_settings().id().find(KCC_SETTINGS_ID) else {
+        return Err("Missing kcc_settings row (expected id = 1)".into());
+    };
+
+    // Cache the immutable world query state once per reducer invocation.
+    let world = world_query_world(ctx);
+
+    // Build the KCC controller once per reducer invocation from DB-driven settings.
+    //
+    // IMPORTANT: interpret DB values as ABSOLUTE meters.
+    let mut controller = KinematicCharacterController::default();
+    controller.offset = CharacterLength::Absolute(kcc.offset);
+    controller.max_slope_climb_angle = kcc.max_slope_climb_deg.to_radians();
+    controller.min_slope_slide_angle = kcc.min_slope_slide_deg.to_radians();
+    controller.snap_to_ground = Some(CharacterLength::Absolute(kcc.snap_to_ground));
+    controller.autostep = Some(CharacterAutostep {
+        max_height: CharacterLength::Absolute(kcc.autostep_max_height),
+        min_width: CharacterLength::Absolute(kcc.autostep_min_width),
+        include_dynamic_bodies: false,
+    });
+    controller.slide = kcc.slide;
+    controller.normal_nudge_factor = kcc.normal_nudge_factor;
+
     let mut steps_ran: u32 = 0;
-
-    let statics = world_statics(ctx);
-    let accel = world_accel(ctx);
-
-    log::info!("Statics: {:?}", statics.len());
-
-    // 3. Loop: Run the deterministic steps until the accumulator is drained below FIXED_DT
     while timer.time_accumulator >= fixed_dt {
-        // Process all actors every tick (gravity applies even without movement intent).
+        // Borrowed query pipeline view for this step (Rapier 0.31).
+        let query_pipeline = world.query_pipeline(QueryFilter::default());
+
+        // Process all actors.
         for mut actor in ctx.db.actor().iter() {
-            // Build capsule spec (field names here must match your schema).
-            let capsule = CapsuleSpec {
-                radius: actor.capsule_radius,
-                half_height: actor.capsule_half_height,
+            // Determine desired planar movement for this fixed step.
+            // For now, handle only MoveIntent::Point; other intents result in no planar motion.
+            //
+            // IMPORTANT: Copy target coordinates out into locals so we don't hold a borrow of
+            // `actor.translation` across the rest of this block (we mutate translation later).
+            let (target_x, target_z, has_point_intent) = match &actor.move_intent {
+                MoveIntent::Point(p) => (p.x, p.z, true),
+                _ => (actor.translation.x, actor.translation.z, false),
             };
 
-            let acceptance = acceptance_from_capsule(actor.capsule_radius);
-            let target = match actor.move_intent {
-                MoveIntent::Point(point) => point,
-                _ => actor.translation,
+            // Compute intended planar direction toward the target.
+            let dx = target_x - actor.translation.x;
+            let dz = target_z - actor.translation.z;
+
+            // Avoid sqrt unless we actually need a direction.
+            let dist_sq = dx.powi(2) + dz.powi(2);
+
+            // Planar step length.
+            let max_step = if has_point_intent {
+                actor.movement_speed.max(0.0) * fixed_dt
+            } else {
+                0.0
             };
-            let res = step_movement(
-                statics,
-                accel,
-                capsule,
-                actor.translation.into(),
-                target.into(),
-                actor.movement_speed,
-                fixed_dt,
-                acceptance,
-            );
 
-            actor.translation = res.new_translation.into();
-            actor.grounded = res.is_grounded;
+            let planar = if dist_sq > 1.0e-12 && max_step > 0.0 {
+                let dist = dist_sq.sqrt();
+                let inv_dist = 1.0 / dist;
+                let step = max_step.min(dist);
+                vector![dx * inv_dist * step, 0.0, dz * inv_dist * step]
+            } else {
+                vector![0.0, 0.0, 0.0]
+            };
 
-            if let Some(yaw_quat) = res.new_rotation {
-                actor.rotation = yaw_quat.into();
+            // Update yaw based on *intent* direction (not post-collision motion).
+            // This looks more natural when sliding along walls.
+            if planar.x * planar.x + planar.z * planar.z > YAW_EPS {
+                // Match your established server convention: yaw = (-dx).atan2(-dz)
+                let yaw = (-planar.x).atan2(-planar.z);
+                actor.rotation = yaw_to_db_quat(yaw);
             }
 
-            // Save once at the end of the iteration.
+            // Apply downward bias always; apply fall speed only if we were airborne last step.
+            let down_bias = -kcc.grounded_down_bias_mps * fixed_dt;
+
+            // `actor.grounded` is persisted and represents the grounded state from the previous fixed step.
+            // This gives us the desired 1-tick lag without any global in-memory cache.
+            let fall = if actor.grounded {
+                0.0
+            } else {
+                -kcc.fall_speed_mps * fixed_dt
+            };
+
+            let desired_translation = vector![planar.x, down_bias + fall, planar.z];
+
+            let corrected = controller.move_shape(
+                fixed_dt,
+                &query_pipeline,
+                &Capsule::new_y(actor.capsule_half_height, actor.capsule_radius),
+                &Isometry::translation(
+                    actor.translation.x,
+                    actor.translation.y,
+                    actor.translation.z,
+                ),
+                desired_translation,
+                |_| {},
+            );
+
+            // Apply corrected movement.
+            actor.translation.x += corrected.translation.x;
+            actor.translation.y += corrected.translation.y;
+            actor.translation.z += corrected.translation.z;
+
+            // Persist grounded for the next fixed step.
+            actor.grounded = corrected.grounded;
+
+            // Clear MoveIntent::Point when within the acceptance radius (planar).
+            if has_point_intent && dist_sq <= kcc.point_acceptance_radius.powi(2) {
+                actor.move_intent = MoveIntent::None;
+            }
+
             ctx.db.actor().id().update(actor);
         }
 
-        // -----------------------------------------------------------------
-
-        // 4. CONSUME TIME
-        // Subtract exactly the fixed time step from the accumulator.
+        // Consume fixed time step.
         timer.time_accumulator -= fixed_dt;
         steps_ran += 1;
 
-        // OPTIONAL: Safety break for extreme lag (prevents infinite loop/crash)
-        if steps_ran > 5 {
-            log::warn!("Server severely lagged! Ran max steps. Dumping accumulator time.");
+        if steps_ran >= MAX_STEPS_PER_TICK {
+            // Prevent runaway catch-up loops.
             timer.time_accumulator = 0.0;
             break;
         }
     }
 
-    // 5. Cleanup and Persist State
+    // Persist timer state.
     timer.last_tick = ctx.timestamp;
-
-    // Persist the updated timer row (with the new last_tick AND the remaining time_accumulator)
     ctx.db.tick_timer().scheduled_id().update(timer);
-
-    log::info!("Steps Ran: {}", steps_ran); // Helpful to see the catch-up in action
 
     Ok(())
 }
