@@ -156,9 +156,6 @@ pub struct KccSettings {
     /// Minimum slope angle (degrees) before automatic sliding starts.
     pub min_slope_slide_deg: f32,
 
-    /// Snap-to-ground distance threshold (meters). Always enabled.
-    pub snap_to_ground: f32,
-
     /// Autostep maximum height (meters). Always enabled.
     pub autostep_max_height: f32,
 

@@ -49,7 +49,7 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
         offset: CharacterLength::Absolute(kcc.offset),
         max_slope_climb_angle: kcc.max_slope_climb_deg.to_radians(),
         min_slope_slide_angle: kcc.min_slope_slide_deg.to_radians(),
-        snap_to_ground: Some(CharacterLength::Absolute(kcc.snap_to_ground)),
+        snap_to_ground: None,
         autostep: Some(CharacterAutostep {
             max_height: CharacterLength::Absolute(kcc.autostep_max_height),
             min_width: CharacterLength::Absolute(kcc.autostep_min_width),

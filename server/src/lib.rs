@@ -64,14 +64,13 @@ pub fn init(ctx: &ReducerContext) {
         offset: 0.05,
         max_slope_climb_deg: 52.0,
         min_slope_slide_deg: 45.0,
-        snap_to_ground: 0.05,
-        autostep_max_height: 0.3,
+        autostep_max_height: 0.325,
         autostep_min_width: 0.2,
         slide: true,
-        normal_nudge_factor: 0.1,
-        fall_speed_mps: 7.82,
-        grounded_down_bias_mps: 0.15,
-        hard_airborne_probe_distance: 0.5,
+        normal_nudge_factor: 0.05,
+        fall_speed_mps: 9.82,
+        grounded_down_bias_mps: 0.5,
+        hard_airborne_probe_distance: 0.6,
         point_acceptance_radius_sq: 0.0225,
     });
 
@@ -125,22 +124,10 @@ pub fn init(ctx: &ReducerContext) {
     });
 
     // A simple staircase to test autostep up/down.
-    //
-    // Each "step" is a short cuboid. With:
-    // - autostep_max_height = 0.35
-    // - autostep_min_width  = 0.20
-    // the step rise must be <= 0.35 and the flat depth should be >= 0.20.
-    //
-    // We'll build 6 steps going in +X with:
-    // - rise = 0.20m per step
-    // - run  = 0.50m per step
-    //
-    // The cuboid is centered at its translation, so y = (height/2) + step_index * rise.
-    // We'll keep width (Z) fairly wide so it's easy to walk on.
     let stairs_origin = DbVec3::new(0.0, 0.0, -6.0);
-    let step_run: f32 = 0.85;
-    let step_rise: f32 = 0.25;
-    let step_count: u32 = 10;
+    let step_run: f32 = 0.55;
+    let step_rise: f32 = 0.4;
+    let step_count: u32 = 20;
 
     // Half extents for each step: total height = 0.20, total depth = 0.50.
     let step_half = DbVec3::new(step_run * 0.5, step_rise * 0.5, 1.5);
@@ -163,7 +150,7 @@ pub fn init(ctx: &ReducerContext) {
                 z: 0.0,
                 w: 1.0,
             },
-            scale: DbVec3::new(1.0, 1.0, 1.0),
+            scale: DbVec3::ONE,
             shape: ColliderShape::Cuboid(step_half),
         });
     }
