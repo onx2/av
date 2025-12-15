@@ -26,6 +26,32 @@ const YAW_EPS: f32 = 1.0e-6;
 /// The single-row primary key for `kcc_settings`.
 const KCC_SETTINGS_ID: u32 = 1;
 
+#[inline]
+fn has_support_within(
+    query_pipeline: &QueryPipeline<'_>,
+    actor: &crate::schema::Actor,
+    max_dist: f32,
+    min_ground_normal_y: f32,
+) -> bool {
+    // Probe from the capsule "feet" (slightly above to avoid starting inside geometry).
+    let center = actor.translation;
+    let feet_y = center.y - (actor.capsule_half_height + actor.capsule_radius);
+    let origin_y = feet_y + 0.02;
+
+    let ray = Ray::new(
+        point![center.x, origin_y, center.z],
+        vector![0.0, -1.0, 0.0],
+    );
+
+    if let Some((_handle, hit)) =
+        query_pipeline.cast_ray_and_get_normal(&ray, max_dist.max(0.0), true)
+    {
+        hit.normal.y >= min_ground_normal_y
+    } else {
+        false
+    }
+}
+
 #[spacetimedb::reducer]
 pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
     // Only the server (module identity) may invoke the scheduled reducer.
@@ -145,15 +171,26 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                 actor.grounded = true;
                 actor.grounded_grace_steps = 4;
             } else if actor.grounded_grace_steps > 0 {
-                actor.grounded_grace_steps -= 1;
+                let supported = has_support_within(
+                    &query_pipeline,
+                    &actor,
+                    kcc.hard_airborne_probe_distance,
+                    kcc.max_slope_climb_deg.to_radians().cos(),
+                );
+
+                if supported {
+                    actor.grounded_grace_steps -= 1;
+                } else {
+                    actor.grounded_grace_steps = 0;
+                    actor.grounded = false;
+                }
             } else {
                 actor.grounded = false;
             }
 
             // Clear MoveIntent::Point when within the acceptance radius (planar).
             // TODO: Acceptance radius should be computed differently
-            let acceptance_radius_sq = 0.0225;
-            if has_point_intent && dist_sq <= acceptance_radius_sq {
+            if has_point_intent && dist_sq <= kcc.point_acceptance_radius_sq {
                 actor.move_intent = MoveIntent::None;
             }
 

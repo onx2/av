@@ -58,39 +58,18 @@ pub fn init(ctx: &ReducerContext) {
     ctx.db.kcc_settings().id().delete(1);
     ctx.db.kcc_settings().insert(KccSettings {
         id: 1,
-
-        // KCC lengths (ABSOLUTE METERS):
-        // Tick configures Rapier with `CharacterLength::Absolute` for offset/autostep/snap-to-ground,
-        // so these values must be interpreted as meters (not relative fractions).
-        //
-        // For reference, your current character capsule is:
-        // - radius = 0.35m (diameter = 0.70m)
-        // - half_height = 0.75m (total height ≈ 2.20m)
-        //
-        // Keep `offset` small but non-zero (numerical stability).
         offset: 0.02,
-
-        // Slopes (degrees; tick converts to radians).
         max_slope_climb_deg: 52.0,
-        min_slope_slide_deg: 35.0,
-
-        // Snap-to-ground distance (meters).
-        snap_to_ground: 1.0,
-
-        // Autostep (meters).
-        autostep_max_height: 1.30,
+        min_slope_slide_deg: 45.0,
+        snap_to_ground: 0.1,
+        autostep_max_height: 0.35,
         autostep_min_width: 0.30,
-
-        // Controller behavior.
         slide: true,
-
-        // Increase slightly if the character gets stuck on edges when sliding.
-        normal_nudge_factor: 0.05,
-
-        // Movement glue values (used by tick):
-        // Constant fall speed and a slight downward bias to satisfy snap-to-ground prerequisites.
+        normal_nudge_factor: 0.075,
         fall_speed_mps: 9.82,
-        grounded_down_bias_mps: 0.5,
+        grounded_down_bias_mps: 0.25,
+        hard_airborne_probe_distance: 0.36,
+        point_acceptance_radius_sq: 0.0225,
     });
 
     for row in ctx.db.world_static().iter() {

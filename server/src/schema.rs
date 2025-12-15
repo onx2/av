@@ -234,6 +234,7 @@ pub struct KccSettings {
     pub id: u32,
 
     /// Small gap preserved between the character and its surroundings (meters).
+    /// Keep `offset` small but non-zero for numerical stability
     pub offset: f32,
 
     /// Maximum climbable slope angle (degrees).
@@ -262,6 +263,17 @@ pub struct KccSettings {
 
     /// Small downward bias magnitude (m/s) applied while grounded to satisfy snap-to-ground preconditions.
     pub grounded_down_bias_mps: f32,
+
+    /// Probe distance (meters) used to detect whether the character is truly unsupported.
+    ///
+    /// If the actor is not grounded but still within the grounded grace period, a downward probe
+    /// of this length can be used to decide whether to cancel the grace immediately (e.g. when
+    /// stepping off a ledge) or keep it (e.g. stair edge flicker).
+    pub hard_airborne_probe_distance: f32,
+
+    /// The squared distance from a point that we consider reached / close enough
+    /// Helpful to prevent floating point errors and jitter
+    pub point_acceptance_radius_sq: f32,
 }
 
 /// Static collider rows used to build the immutable world collision geometry.
