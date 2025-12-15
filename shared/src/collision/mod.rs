@@ -3,7 +3,15 @@ Collision root module.
 
 This module re-exports submodules that implement the kinematic character
 controller (KCC) using parry3d for narrow-phase queries and a simple broad-phase
-for static world acceleration. The code is split for clarity:
+for static world acceleration.
+
+Public API policy
+-----------------
+This crate is intended to expose only a minimal public surface area. Movement
+code should use the accelerated variants (with `WorldAccel`) to ensure the
+client and server stay fast and deterministic.
+
+The code is split for clarity:
 
 - types:        shared data types (Transform, StaticShape, CapsuleSpec, etc.)
 - settings:     controller and tolerance constants
@@ -21,8 +29,11 @@ pub mod settings;
 pub mod types;
 
 // Re-export commonly used types and functions.
-pub use ground::{snap_capsule_to_ground, snap_capsule_to_ground_with_accel};
-pub use kinematic::{move_capsule_kinematic, move_capsule_kinematic_with_accel};
+//
+// Public API: only fast paths are exposed.
+pub use broad::{WorldAccel, build_world_accel};
+pub use ground::snap_to_ground;
+pub use kinematic::{MoveRequest, move_capsule};
 pub use types::{CapsuleSpec, MoveHit, MoveResult, Quat, StaticShape, Transform, Vec3};
 
 /// Convenience: build a `StaticShape::Plane` from a world-space plane pose:

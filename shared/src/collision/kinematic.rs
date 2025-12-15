@@ -42,95 +42,15 @@ impl MoveRequest {
 
 /// Kinematic sweep-and-slide for a capsule against a set of static shapes.
 ///
+/// Notes
+/// - This is the only supported movement path in `shared`. It is always accelerated via `WorldAccel`.
+/// - The non-accelerated variant was intentionally removed to keep callsites fast by default.
+///
 /// Algorithm:
 /// - Shape-cast the capsule (TOI) along the desired translation.
-/// - On hit, move to just before the contact (minus `skin`) and slide along the contact plane.
+/// - On hit, move to just before the contact (minus `skin`) and slide along the contact normal.
 /// - Iterate to handle corners until `max_iterations` or the remaining motion is negligible.
-pub fn move_capsule_kinematic(statics: &[StaticShape], req: MoveRequest) -> MoveResult {
-    let mut pos = req.start_pos;
-    let mut remaining = req.desired_translation;
-    let mut last_hit = None;
-
-    // Y-aligned capsule (controller axis is +Y).
-    let capsule_shape = pshape::Capsule::new_y(req.capsule.half_height, req.capsule.radius);
-
-    for _ in 0..req.max_iterations {
-        // Early out if remaining motion is too small to matter.
-        if remaining.norm_squared() <= MIN_MOVE_SQ {
-            break;
-        }
-
-        let len = remaining.norm();
-        let dir = remaining / len;
-
-        let capsule_iso: Iso = Iso::from_parts(
-            na::Translation3::new(pos.x, pos.y, pos.z),
-            na::UnitQuaternion::identity(),
-        );
-        let vel = dir * len;
-
-        // Find earliest hit across all statics (narrow-phase TOI).
-        let mut best: Option<MoveHit> = None;
-        for s in statics {
-            if let Some(hit) =
-                narrow_phase::cast_capsule_against_static(capsule_iso, &capsule_shape, vel, 1.0, s)
-            {
-                if best.map_or(true, |b| hit.fraction < b.fraction) {
-                    best = Some(hit);
-                }
-            }
-        }
-
-        match best {
-            None => {
-                // No hit → move fully and finish.
-                pos += remaining;
-                remaining = na::Vector3::zeros();
-                last_hit = None;
-                break;
-            }
-            Some(hit) => {
-                // Travel up to the contact point (minus skin).
-                let travel = (len * hit.fraction).max(0.0);
-                let advance = dir * (travel - req.skin).max(0.0);
-                pos += advance;
-
-                // Slide along the hit plane: remove the normal component from the leftover.
-                let n = {
-                    let n_len_sq = hit.normal.norm_squared();
-                    if n_len_sq > 1.0e-12 {
-                        hit.normal / n_len_sq.sqrt()
-                    } else {
-                        na::Vector3::zeros()
-                    }
-                };
-
-                let leftover = dir * (len - travel);
-                let slide = leftover - n * leftover.dot(&n);
-
-                remaining = slide;
-                last_hit = Some(hit);
-
-                // If the slide is negligible, we're done.
-                if slide.norm_squared() <= MIN_MOVE_SQ {
-                    break;
-                }
-            }
-        }
-    }
-
-    MoveResult {
-        end_pos: pos,
-        last_hit,
-        remaining,
-    }
-}
-
-/// Broad-phase accelerated variant of `move_capsule_kinematic`.
-///
-/// Uses a prebuilt accelerator to prune candidate statics (planes + overlapping AABBs)
-/// before running the narrow-phase sweep-and-slide on the filtered set.
-pub fn move_capsule_kinematic_with_accel(
+pub fn move_capsule(
     statics: &[StaticShape],
     accel: &broad::WorldAccel,
     req: MoveRequest,

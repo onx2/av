@@ -57,7 +57,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
     }
 
     // Precompute planar acceptance radius (capsule + small buffer).
-    let acceptance = shared::motion::acceptance_from_capsule(actor.capsule_radius);
+    let acceptance = shared::collision::settings::acceptance_from_capsule(actor.capsule_radius);
 
     // Validate intent and normalize where applicable (e.g., trim close waypoints).
     match intent {

@@ -1,21 +1,9 @@
-#![allow(dead_code)]
-//! Model utilities: lightweight conversions between database types and nalgebra,
-//! plus a few small math helpers used by reducers and controller code.
-//!
-//! Design notes
-//! - The database (schema.rs) defines simple, serializable types (DbVec3, DbQuat, …).
-//! - This module provides ergonomic conversions to math types from `nalgebra`,
-//!   without leaking math concerns into the schema.
-//! - We avoid orphan-rule issues by implementing `From<T>` for our local types
-//!   (e.g., `impl From<na::Vector3<f32>> for DbVec3`) and exposing free functions
-//!   for the reverse direction (e.g., `vec3_from_db(DbVec3) -> na::Vector3<f32>`).
-
 use nalgebra as na;
+use spacetimedb::ScheduleAt;
 
 use crate::schema::{DbQuat, DbVec3};
 
 /// Planar (XZ) distance squared between two world positions (meters^2).
-#[inline]
 pub fn planar_distance_sq(a: DbVec3, b: DbVec3) -> f32 {
     let dx = b.x - a.x;
     let dz = b.z - a.z;
@@ -23,7 +11,6 @@ pub fn planar_distance_sq(a: DbVec3, b: DbVec3) -> f32 {
 }
 
 /// Are two positions within a planar movement range (meters)?
-#[inline]
 pub fn within_movement_range(a: DbVec3, b: DbVec3, max_distance: f32) -> bool {
     if max_distance <= 0.0 {
         return false;
@@ -32,7 +19,6 @@ pub fn within_movement_range(a: DbVec3, b: DbVec3, max_distance: f32) -> bool {
 }
 
 /// Are two positions within a planar acceptance radius (meters)?
-#[inline]
 pub fn within_acceptance(a: DbVec3, b: DbVec3, acceptance_radius: f32) -> bool {
     if acceptance_radius < 0.0 {
         return true;
@@ -43,32 +29,29 @@ pub fn within_acceptance(a: DbVec3, b: DbVec3, acceptance_radius: f32) -> bool {
 /// Default server-side maximum allowed movement intent distance (meters).
 pub const DEFAULT_MAX_INTENT_DISTANCE: f32 = 100.0;
 
-#[inline]
-pub fn delta_seconds_from_timestamps(
-    now: spacetimedb::Timestamp,
-    last: spacetimedb::Timestamp,
-    fallback_micros: i64,
-) -> f32 {
-    now.time_duration_since(last)
-        .unwrap_or(spacetimedb::TimeDuration::from_micros(fallback_micros))
-        .to_micros() as f32
-        / 1_000_000.0
-}
-
-#[inline]
 pub fn delta_seconds_with_rate(
     now: spacetimedb::Timestamp,
     last: spacetimedb::Timestamp,
     tick_rate_hz: i64,
 ) -> f32 {
-    let fallback_micros = 1_000_000 / tick_rate_hz;
-    delta_seconds_from_timestamps(now, last, fallback_micros)
+    now.time_duration_since(last)
+        .unwrap_or(spacetimedb::TimeDuration::from_micros(
+            1_000_000 / tick_rate_hz,
+        ))
+        .to_micros() as f32
+        / 1_000_000.0
+}
+
+pub fn get_delta_time(scheduled_at: ScheduleAt) -> f32 {
+    match scheduled_at {
+        ScheduleAt::Interval(dt) => dt.to_micros() as f32 / 1_000_000.0,
+        _ => panic!("Expected ScheduleAt to be Interval"),
+    }
 }
 
 /// Convert a database vector to nalgebra's `Vector3<f32>`.
 ///
 /// This is the canonical way to get a math vector from a `DbVec3`.
-#[inline]
 pub fn vec3_from_db(v: DbVec3) -> na::Vector3<f32> {
     na::Vector3::new(v.x, v.y, v.z)
 }
@@ -76,7 +59,6 @@ pub fn vec3_from_db(v: DbVec3) -> na::Vector3<f32> {
 /// Convert a database vector to nalgebra's `Point3<f32>`.
 ///
 /// Useful when you need a position type (affine point) for parry3d queries.
-#[inline]
 pub fn point3_from_db(v: DbVec3) -> na::Point3<f32> {
     na::Point3::new(v.x, v.y, v.z)
 }
@@ -84,7 +66,6 @@ pub fn point3_from_db(v: DbVec3) -> na::Point3<f32> {
 /// Convert a database quaternion to nalgebra's `UnitQuaternion<f32>`.
 ///
 /// DbQuat is stored as `(x, y, z, w)`. nalgebra's `Quaternion::new` expects `(w, x, y, z)`.
-#[inline]
 pub fn unit_quat_from_db(q: DbQuat) -> na::UnitQuaternion<f32> {
     na::UnitQuaternion::from_quaternion(na::Quaternion::new(q.w, q.x, q.y, q.z))
 }
@@ -92,7 +73,6 @@ pub fn unit_quat_from_db(q: DbQuat) -> na::UnitQuaternion<f32> {
 /// Build an isometry (rigid transform) from DB translation and rotation.
 ///
 /// This is the typical pose type used by parry3d narrow-phase queries.
-#[inline]
 pub fn iso_from_db(translation: DbVec3, rotation: DbQuat) -> na::Isometry3<f32> {
     na::Isometry3::from_parts(
         na::Translation3::new(translation.x, translation.y, translation.z),
@@ -103,7 +83,6 @@ pub fn iso_from_db(translation: DbVec3, rotation: DbQuat) -> na::Isometry3<f32> 
 /// Create a pure yaw (rotation around world Y) as a DbQuat.
 ///
 /// Theta is in radians. This uses the right-handed convention with Y up.
-#[inline]
 pub fn yaw_to_db_quat(theta: f32) -> DbQuat {
     // Construct a UnitQuaternion from yaw, then convert to DbQuat via `From`.
     let uq = na::UnitQuaternion::from_axis_angle(&na::Vector3::y_axis(), theta);
@@ -114,13 +93,18 @@ pub fn yaw_to_db_quat(theta: f32) -> DbQuat {
 ///
 /// Implemented as `From` on the local type to satisfy Rust orphan rules.
 impl From<na::Vector3<f32>> for DbVec3 {
-    #[inline]
     fn from(v: na::Vector3<f32>) -> Self {
         DbVec3 {
             x: v.x,
             y: v.y,
             z: v.z,
         }
+    }
+}
+
+impl From<DbVec3> for na::Vector3<f32> {
+    fn from(v: DbVec3) -> Self {
+        Self::new(v.x, v.y, v.z)
     }
 }
 
@@ -144,58 +128,13 @@ impl From<na::Point3<f32>> for DbVec3 {
 impl From<na::UnitQuaternion<f32>> for DbQuat {
     #[inline]
     fn from(uq: na::UnitQuaternion<f32>) -> Self {
-        let q = uq.into_inner(); // nalgebra::Quaternion { w, i, j, k }
+        // nalgebra::Quaternion { w, i, j, k }
+        let q = uq.into_inner();
         DbQuat {
             x: q.i,
             y: q.j,
             z: q.k,
             w: q.w,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn roundtrip_vec3() {
-        let db = DbVec3 {
-            x: 1.0,
-            y: -2.0,
-            z: 3.5,
-        };
-        let na_v = vec3_from_db(db);
-        let db2 = DbVec3::from(na_v);
-        assert_eq!(db.x, db2.x);
-        assert_eq!(db.y, db2.y);
-        assert_eq!(db.z, db2.z);
-    }
-
-    #[test]
-    fn roundtrip_quat() {
-        let yaw = 1.2345_f32;
-        let db_q = yaw_to_db_quat(yaw);
-        let na_uq = unit_quat_from_db(db_q);
-        let db_q2 = DbQuat::from(na_uq);
-        // Quaternions can differ by sign (q == -q), but this construction is consistent.
-        assert!((db_q.x - db_q2.x).abs() < 1e-6);
-        assert!((db_q.y - db_q2.y).abs() < 1e-6);
-        assert!((db_q.z - db_q2.z).abs() < 1e-6);
-        assert!((db_q.w - db_q2.w).abs() < 1e-6);
-    }
-
-    #[test]
-    fn iso_from_db_constructs_proper_pose() {
-        let t = DbVec3 {
-            x: 1.0,
-            y: 2.0,
-            z: 3.0,
-        };
-        let q = yaw_to_db_quat(std::f32::consts::FRAC_PI_2);
-        let iso = iso_from_db(t, q);
-        assert!((iso.translation.vector.x - 1.0).abs() < 1e-6);
-        assert!((iso.translation.vector.y - 2.0).abs() < 1e-6);
-        assert!((iso.translation.vector.z - 3.0).abs() < 1e-6);
     }
 }

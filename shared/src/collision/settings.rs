@@ -2,8 +2,9 @@
 Kinematic character controller (KCC) settings and tolerances.
 
 These constants centralize the parameters used by the kinematic controller,
-collision sweep-and-slide, and ground snapping. Keeping them together makes
-tuning easier and helps ensure deterministic behavior across platforms.
+collision sweep-and-slide, slope handling, step offset logic, and ground snapping.
+Keeping them together makes tuning easier and helps ensure deterministic behavior
+across platforms.
 
 Notes
 - Distances are in meters, time in seconds.
@@ -40,12 +41,54 @@ pub const SNAP_MAX_DISTANCE: f32 = 0.30;
 /// Prevents exact contact, which reduces jitter and depenetration needs.
 pub const SNAP_HOVER_HEIGHT: f32 = 0.02;
 
+/// Step offset (meters).
+///
+/// This is the maximum vertical height the controller is allowed to "step up"
+/// when encountering small ledges/stairs while moving horizontally.
+///
+/// Typical values are on the order of 0.2–0.5m depending on your world scale.
+pub const STEP_OFFSET: f32 = 0.35;
+
+/// Extra downward probe distance (meters) used to keep the controller "stuck" to walkable ground.
+///
+/// Many KCCs do a small post-move probe/cast downward to maintain stable grounding
+/// on slopes and small heightfield changes. This is separate from `SNAP_MAX_DISTANCE`
+/// (which is a more general snap range).
+pub const GROUND_PROBE_DISTANCE: f32 = 0.10;
+
+/// Maximum walkable slope angle in degrees.
+///
+/// Surfaces steeper than this are treated as non-walkable (i.e., walls) for grounding
+/// and step logic. They may still be collided with as blocking geometry.
+pub const MAX_SLOPE_DEGREES: f32 = 45.0;
+
+/// Cosine of the maximum walkable slope angle.
+///
+/// This is derived from `MAX_SLOPE_DEGREES` and is used for fast comparisons:
+/// A ground normal `n` is walkable if `n.y >= MAX_SLOPE_COS`.
+pub const MAX_SLOPE_COS: f32 = 0.70710677; // cos(45°)
+
+/// Small downward bias (meters) applied when grounded to maintain stable contact.
+///
+/// Some controllers apply a tiny downward component while grounded to avoid
+/// losing contact due to numeric jitter. Keep this small relative to skin/hover.
+pub const GROUNDED_DOWN_BIAS: f32 = 0.02;
+
 /// Default walking speed in meters per second for KCCs that don't override it.
 pub const DEFAULT_MOVEMENT_SPEED: f32 = 5.0;
 
 /// Gravity magnitude in meters per second squared (positive value).
 /// Integrate as a downward acceleration if you use continuous gravity.
 pub const GRAVITY_MPS2: f32 = 9.81;
+
+/// Constant falling speed magnitude in meters per second (positive value).
+///
+/// If you are using a position-based controller (no velocity state), a common
+/// approach is to apply a constant downward velocity when airborne:
+/// `delta_y = -FALL_SPEED_MPS * dt`.
+///
+/// This is simpler than integrating `GRAVITY_MPS2`, but is less physically accurate.
+pub const FALL_SPEED_MPS: f32 = 10.0;
 
 /// Helper: compute an acceptance radius for a capsule-based controller.
 ///

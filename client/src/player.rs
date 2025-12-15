@@ -272,9 +272,9 @@ fn handle_lmb_movement(
         return;
     };
 
-    if !ground_q.contains(*entity) {
-        return;
-    }
+    // if !ground_q.contains(*entity) {
+    //     return;
+    // }
     let Some(pos) = hit.position else {
         return;
     };

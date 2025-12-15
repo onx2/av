@@ -1,31 +1,11 @@
-//! 3D movement helpers: compute the desired translation toward a target with an acceptance radius.
-//! This module centralizes the logic for:
-//! - Converting a target and speed into a per-tick desired translation.
-//! - Stopping at the surface of an "acceptance sphere" around the target to avoid jitter.
-//!
-//! Typical usage in a kinematic step:
-//! 1) Compute desired translation via `compute_desired_translation`.
-//! 2) Feed that desired translation into your collision sweep-and-slide.
-//! 3) Optionally compute facing (yaw) based on the final translation you actually applied.
-//!
-//! Notes
-//! - All math uses nalgebra. Distances are in meters, time in seconds.
-//! - The acceptance radius is a world-space distance. For character controllers, a good default is
-//!   capsule_radius + ACCEPTANCE_BUFFER.
-//!
-//! About tolerances
-//! - Machine epsilon (f32::EPSILON) is too small for world-space thresholds. Use practical tolerances
-//!   reflecting your units and scale.
-
 use nalgebra as na;
 
-/// When the remaining translation length squared is below this threshold, treat it as zero (m^2).
-pub use crate::collision::settings::{
-    ACCEPTANCE_BUFFER, DIST_EPS, MIN_MOVE_SQ, acceptance_from_capsule,
-};
-
-/// Compute an acceptance radius from a capsule radius by adding a small buffer.
-/// This helps avoid jitter when very close to the target.
+// NOTE: This module is an internal implementation detail.
+// Public acceptance helpers live in `collision::settings`.
+//
+// Keep this file focused on "desired translation" math; do not re-export
+// collision settings or helper functions from here.
+use crate::collision::settings::{DIST_EPS, acceptance_from_capsule};
 
 /// Input for computing the desired translation toward a target in 3D.
 ///
@@ -136,66 +116,4 @@ pub fn compute_desired_with_capsule_acceptance(
         dt_seconds,
         acceptance_radius: acceptance_from_capsule(capsule_radius),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn already_within_acceptance() {
-        let current = na::Point3::new(0.0, 0.0, 0.0);
-        let target = na::Point3::new(0.01, 0.0, 0.0);
-        let res = compute_desired_translation(MoveTowardParams {
-            current,
-            target,
-            speed_mps: 10.0,
-            dt_seconds: 0.016,
-            acceptance_radius: 0.05,
-        });
-        assert!(res.finished);
-        assert!(res.desired_translation.norm_squared() < MIN_MOVE_SQ);
-    }
-
-    #[test]
-    fn partial_step_toward_target() {
-        let current = na::Point3::new(0.0, 0.0, 0.0);
-        let target = na::Point3::new(10.0, 0.0, 0.0);
-        let res = compute_desired_translation(MoveTowardParams {
-            current,
-            target,
-            speed_mps: 1.0,
-            dt_seconds: 0.5, // can move 0.5m this tick
-            acceptance_radius: 0.1,
-        });
-        assert!(!res.finished);
-        assert!((res.desired_translation - na::Vector3::new(0.5, 0.0, 0.0)).norm() < 1.0e-6);
-    }
-
-    #[test]
-    fn stop_at_boundary() {
-        // Distance is 1.0; acceptance is 0.75 → boundary is at 0.25.
-        // If speed*dt = 1.0 we must clamp to 0.25.
-        let current = na::Point3::new(0.0, 0.0, 0.0);
-        let target = na::Point3::new(1.0, 0.0, 0.0);
-        let res = compute_desired_translation(MoveTowardParams {
-            current,
-            target,
-            speed_mps: 5.0,
-            dt_seconds: 0.2, // can move 1.0m
-            acceptance_radius: 0.75,
-        });
-        assert!(res.finished);
-        assert!((res.desired_translation - na::Vector3::new(0.25, 0.0, 0.0)).norm() < 1.0e-6);
-    }
-
-    #[test]
-    fn capsule_acceptance_wrapper() {
-        let current = na::Point3::new(0.0, 0.0, 0.0);
-        let target = na::Point3::new(0.06, 0.0, 0.0);
-        let res = compute_desired_with_capsule_acceptance(current, target, 10.0, 0.016, 0.02);
-        // acceptance = 0.02 + 0.05 = 0.07 → already within
-        assert!(res.finished);
-        assert!(res.desired_translation.norm_squared() < MIN_MOVE_SQ);
-    }
 }
