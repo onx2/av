@@ -169,7 +169,7 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
             // Persist grounded for the next fixed step.
             if corrected.grounded {
                 actor.grounded = true;
-                actor.grounded_grace_steps = 4;
+                actor.grounded_grace_steps = 8;
             } else if actor.grounded_grace_steps > 0 {
                 let supported = has_support_within(
                     &query_pipeline,

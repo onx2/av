@@ -58,17 +58,17 @@ pub fn init(ctx: &ReducerContext) {
     ctx.db.kcc_settings().id().delete(1);
     ctx.db.kcc_settings().insert(KccSettings {
         id: 1,
-        offset: 0.02,
+        offset: 0.05,
         max_slope_climb_deg: 52.0,
         min_slope_slide_deg: 45.0,
-        snap_to_ground: 0.1,
-        autostep_max_height: 0.35,
-        autostep_min_width: 0.30,
+        snap_to_ground: 0.05,
+        autostep_max_height: 0.3,
+        autostep_min_width: 0.2,
         slide: true,
-        normal_nudge_factor: 0.075,
-        fall_speed_mps: 9.82,
-        grounded_down_bias_mps: 0.25,
-        hard_airborne_probe_distance: 0.36,
+        normal_nudge_factor: 0.1,
+        fall_speed_mps: 7.82,
+        grounded_down_bias_mps: 0.15,
+        hard_airborne_probe_distance: 0.5,
         point_acceptance_radius_sq: 0.0225,
     });
 
