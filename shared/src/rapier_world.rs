@@ -65,6 +65,11 @@ pub enum ColliderShapeDef {
     ///
     /// This is represented by an offset along the plane normal.
     /// The plane normal is derived from the pose as `rotation * +Y`.
+    ///
+    /// Notes on Bevy/Rapier "plane size" and rotation
+    /// - In Rapier, a plane/half-space is infinite. Any "X/Z size" you see in Bevy is purely a
+    ///   rendering/mesh concern, not collision.
+    /// - Rotation is fully supported: the half-space normal is derived from the rigid-body pose.
     Plane {
         /// Offset along the plane normal (meters).
         offset_along_normal: f32,
@@ -73,11 +78,39 @@ pub enum ColliderShapeDef {
     /// Oriented cuboid with given half-extents (meters).
     Cuboid { half_extents: Vector<f32> },
 
+    /// Sphere/ball (meters).
+    Sphere { radius: f32 },
+
     /// Y-aligned capsule (meters).
     CapsuleY { radius: f32, half_height: f32 },
 
-    /// Sphere/ball (meters).
-    Sphere { radius: f32 },
+    /// Y-aligned cylinder (meters).
+    CylinderY { radius: f32, half_height: f32 },
+
+    /// Y-aligned cone (meters).
+    ConeY { radius: f32, half_height: f32 },
+
+    /// Rounded cuboid (meters).
+    ///
+    /// `border_radius` rounds all edges/corners.
+    RoundCuboid {
+        half_extents: Vector<f32>,
+        border_radius: f32,
+    },
+
+    /// Y-aligned rounded cylinder (meters).
+    RoundCylinderY {
+        radius: f32,
+        half_height: f32,
+        border_radius: f32,
+    },
+
+    /// Y-aligned rounded cone (meters).
+    RoundConeY {
+        radius: f32,
+        half_height: f32,
+        border_radius: f32,
+    },
 }
 
 /// In-memory Rapier structures needed for scene queries and KCC against a static world.
@@ -200,11 +233,44 @@ fn collider_from_def(def: &WorldStaticDef) -> Collider {
             ColliderBuilder::cuboid(half_extents.x, half_extents.y, half_extents.z).build()
         }
 
+        ColliderShapeDef::Sphere { radius } => ColliderBuilder::ball(*radius).build(),
+
         ColliderShapeDef::CapsuleY {
             radius,
             half_height,
         } => ColliderBuilder::capsule_y(*half_height, *radius).build(),
 
-        ColliderShapeDef::Sphere { radius } => ColliderBuilder::ball(*radius).build(),
+        ColliderShapeDef::CylinderY {
+            radius,
+            half_height,
+        } => ColliderBuilder::cylinder(*half_height, *radius).build(),
+
+        ColliderShapeDef::ConeY {
+            radius,
+            half_height,
+        } => ColliderBuilder::cone(*half_height, *radius).build(),
+
+        ColliderShapeDef::RoundCuboid {
+            half_extents,
+            border_radius,
+        } => ColliderBuilder::round_cuboid(
+            half_extents.x,
+            half_extents.y,
+            half_extents.z,
+            *border_radius,
+        )
+        .build(),
+
+        ColliderShapeDef::RoundCylinderY {
+            radius,
+            half_height,
+            border_radius,
+        } => ColliderBuilder::round_cylinder(*half_height, *radius, *border_radius).build(),
+
+        ColliderShapeDef::RoundConeY {
+            radius,
+            half_height,
+            border_radius,
+        } => ColliderBuilder::round_cone(*half_height, *radius, *border_radius).build(),
     }
 }

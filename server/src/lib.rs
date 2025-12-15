@@ -1,7 +1,7 @@
 use spacetimedb::*;
 
-pub mod model;
 pub mod schema;
+pub mod types;
 pub mod utils;
 pub mod world;
 
@@ -15,10 +15,7 @@ pub mod reducers {
 }
 
 // Re-export reducers so callers (and generated bindings) can refer to them at the crate root.
-use crate::{
-    model::{DbQuat, DbVec3},
-    schema::{kcc_settings, world_static, ColliderShape, KccSettings, WorldStatic},
-};
+use crate::{schema::*, types::*};
 
 pub use reducers::{
     connection::{identity_connected, identity_disconnected},

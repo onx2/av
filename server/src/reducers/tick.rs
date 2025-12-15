@@ -1,4 +1,5 @@
-use crate::schema::{actor, MoveIntent};
+use crate::schema::actor;
+use crate::types::MoveIntent;
 use crate::utils::has_support_within;
 use crate::{
     schema::kcc_settings,

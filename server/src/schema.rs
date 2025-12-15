@@ -1,66 +1,6 @@
-use crate::model::{DbQuat, DbVec3};
 use spacetimedb::*;
 
-/// Capsule dimensions for collider definitions.
-///
-/// Semantics:
-/// - `radius`: radius of spherical caps and cylinder.
-/// - `half_height`: half of the cylinder length along local +Y.
-/// - Total capsule height = `2*half_height + 2*radius`.
-#[derive(SpacetimeType, Clone, Copy, PartialEq)]
-pub struct DbCapsule {
-    pub radius: f32,
-    pub half_height: f32,
-}
-
-/// Collider shape used by world statics (and potentially triggers in the future).
-///
-/// Notes:
-/// - Variants are newtype-like to keep storage compact and easy to serialize.
-/// - Shapes are combined with per-row `translation`, `rotation`, and `scale`.
-#[derive(SpacetimeType, PartialEq)]
-pub enum ColliderShape {
-    /// Infinite plane (half-space). `f32` is the offset along the plane normal:
-    /// the plane satisfies `n ⋅ x = dist`, where `n = rotation * +Y`.
-    Plane(f32),
-
-    /// Oriented box defined by local half-extents (hx, hy, hz).
-    /// The final physics size used by the server is `half_extents * scale`.
-    Cuboid(DbVec3),
-
-    /// Y-aligned capsule with `radius` and `half_height`.
-    Capsule(DbCapsule),
-}
-
-/// Movement intent for an actor.
-///
-/// Match arms are handled by the server's tick reducer; unsupported variants
-/// can be extended in the future.
-#[derive(SpacetimeType, PartialEq)]
-pub enum MoveIntent {
-    /// Follow a sequence of waypoints (in world space) across multiple frames.
-    Path(Vec<DbVec3>),
-
-    /// Follow a dynamic actor by id.
-    Actor(u64),
-
-    /// Move toward this point (direction) for a single frame.
-    Point(DbVec3),
-
-    /// No movement intent (idling).
-    None,
-}
-
-/// Logical kind/ownership for an actor.
-///
-/// Extend as needed for NPCs, bosses, and other categories.
-#[derive(SpacetimeType, PartialEq)]
-pub enum ActorKind {
-    /// A player-controlled actor keyed by the user's identity.
-    Player(Identity),
-    /// A simple monster/NPC variant.
-    Monster(u32),
-}
+use crate::types::*;
 
 /// Player account data persisted across sessions.
 ///

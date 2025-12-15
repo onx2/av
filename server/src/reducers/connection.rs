@@ -1,4 +1,4 @@
-use crate::{model::*, schema::*};
+use crate::{schema::*, types::*};
 use spacetimedb::{ReducerContext, Table};
 
 /// Fired when a client connects to the module.

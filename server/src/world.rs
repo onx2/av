@@ -1,4 +1,7 @@
-use crate::schema::{world_static, ColliderShape, WorldStatic};
+use crate::{
+    schema::{world_static, WorldStatic},
+    types::*,
+};
 use shared::{ColliderShapeDef, RapierQueryWorld, WorldStaticDef};
 use spacetimedb::{ReducerContext, Table};
 use std::sync::OnceLock;
@@ -44,9 +47,49 @@ fn row_to_def(row: WorldStatic) -> WorldStaticDef {
             ColliderShape::Cuboid(half_extents) => ColliderShapeDef::Cuboid {
                 half_extents: half_extents.into(),
             },
+            ColliderShape::Sphere(radius) => ColliderShapeDef::Sphere { radius },
             ColliderShape::Capsule(dim) => ColliderShapeDef::CapsuleY {
                 radius: dim.radius,
                 half_height: dim.half_height,
+            },
+            ColliderShape::Cylinder(DbCylinder {
+                radius,
+                half_height,
+            }) => ColliderShapeDef::CylinderY {
+                radius,
+                half_height,
+            },
+            ColliderShape::Cone(DbCone {
+                radius,
+                half_height,
+            }) => ColliderShapeDef::ConeY {
+                radius,
+                half_height,
+            },
+            ColliderShape::RoundCuboid(DbRoundCuboid {
+                half_extents,
+                border_radius,
+            }) => ColliderShapeDef::RoundCuboid {
+                half_extents: half_extents.into(),
+                border_radius,
+            },
+            ColliderShape::RoundCylinder(DbRoundCylinder {
+                radius,
+                half_height,
+                border_radius,
+            }) => ColliderShapeDef::RoundCylinderY {
+                radius,
+                half_height,
+                border_radius,
+            },
+            ColliderShape::RoundCone(DbRoundCone {
+                radius,
+                half_height,
+                border_radius,
+            }) => ColliderShapeDef::RoundConeY {
+                radius,
+                half_height,
+                border_radius,
             },
         },
     }

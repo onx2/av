@@ -1,4 +1,4 @@
-use crate::schema::*;
+use crate::{schema::*, types::MoveIntent};
 use spacetimedb::ReducerContext;
 
 #[spacetimedb::reducer]

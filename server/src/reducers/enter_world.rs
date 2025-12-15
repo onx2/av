@@ -1,4 +1,4 @@
-use crate::{model::*, schema::*};
+use crate::{schema::*, types::*};
 use spacetimedb::{ReducerContext, Table};
 
 /// Enter the world: (re)create the caller's live actor from their persisted Player state.
