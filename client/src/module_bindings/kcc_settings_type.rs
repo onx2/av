@@ -18,9 +18,6 @@ pub struct KccSettings {
     pub normal_nudge_factor: f32,
     pub fall_speed_mps: f32,
     pub grounded_down_bias_mps: f32,
-    pub ground_probe_distance: f32,
-    pub ground_normal_min_y: f32,
-    pub point_acceptance_radius: f32,
 }
 
 impl __sdk::InModule for KccSettings {

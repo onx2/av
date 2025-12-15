@@ -120,7 +120,7 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
             // `actor.grounded` is persisted and represents the grounded state from the previous fixed step.
             // This gives us the desired 1-tick lag without any global in-memory cache.
-            let fall = f32::from(actor.grounded) * -kcc.fall_speed_mps * fixed_dt;
+            let gravity = f32::from(!actor.grounded) * (-kcc.fall_speed_mps * fixed_dt);
 
             let corrected = controller.move_shape(
                 fixed_dt,
@@ -131,7 +131,7 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                     actor.translation.y,
                     actor.translation.z,
                 ),
-                vector![planar.x, down_bias + fall, planar.z],
+                vector![planar.x, down_bias + gravity, planar.z],
                 |_| {},
             );
 
@@ -143,7 +143,7 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
             // Persist grounded for the next fixed step.
             if corrected.grounded {
                 actor.grounded = true;
-                actor.grounded_grace_steps = 8;
+                actor.grounded_grace_steps = 4;
             } else if actor.grounded_grace_steps > 0 {
                 actor.grounded_grace_steps -= 1;
             } else {

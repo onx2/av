@@ -22,6 +22,7 @@ pub struct Actor {
     pub movement_speed: f32,
     pub move_intent: MoveIntent,
     pub grounded: bool,
+    pub grounded_grace_steps: u8,
 }
 
 impl __sdk::InModule for Actor {

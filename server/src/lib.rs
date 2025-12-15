@@ -24,7 +24,7 @@ pub use reducers::{
     tick::tick,
 };
 
-const TICK_RATE: i64 = 60;
+const TICK_RATE: i64 = 30;
 const DELTA_MICRO_SECS: i64 = 1_000_000 / TICK_RATE;
 
 #[table(name = tick_timer, scheduled(tick))]
