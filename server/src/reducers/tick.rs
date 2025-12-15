@@ -1,16 +1,19 @@
+use crate::schema::{actor, MoveIntent};
+use crate::utils::has_support_within;
 use crate::{
-    model::{get_fixed_delta_time, get_variable_delta_time, yaw_to_db_quat},
     schema::kcc_settings,
     tick_timer,
+    utils::{get_fixed_delta_time, get_variable_delta_time},
     world::world_query_world,
     TickTimer,
 };
 use spacetimedb::{ReducerContext, Table};
 
-use crate::schema::{actor, MoveIntent};
-
 // Use Rapier types/macros through the shared crate to keep dependency versions unified.
-use shared::rapier_world::rapier3d::prelude::*;
+use shared::{
+    rapier_world::rapier3d::prelude::*,
+    utils::{rotation_from_xz, UtilMath},
+};
 
 // In rapier3d 0.31.0 the character controller types live under `rapier3d::control`.
 use shared::rapier_world::rapier3d::control::{
@@ -20,38 +23,6 @@ use shared::rapier_world::rapier3d::control::{
 /// Safety cap to avoid spending unbounded time catching up after long stalls.
 const MAX_STEPS_PER_TICK: u32 = 5;
 
-/// Minimum planar motion required to update yaw (meters per tick).
-const YAW_EPS: f32 = 1.0e-6;
-
-/// The single-row primary key for `kcc_settings`.
-const KCC_SETTINGS_ID: u32 = 1;
-
-#[inline]
-fn has_support_within(
-    query_pipeline: &QueryPipeline<'_>,
-    actor: &crate::schema::Actor,
-    max_dist: f32,
-    min_ground_normal_y: f32,
-) -> bool {
-    // Probe from the capsule "feet" (slightly above to avoid starting inside geometry).
-    let center = actor.translation;
-    let feet_y = center.y - (actor.capsule_half_height + actor.capsule_radius);
-    let origin_y = feet_y + 0.02;
-
-    let ray = Ray::new(
-        point![center.x, origin_y, center.z],
-        vector![0.0, -1.0, 0.0],
-    );
-
-    if let Some((_handle, hit)) =
-        query_pipeline.cast_ray_and_get_normal(&ray, max_dist.max(0.0), true)
-    {
-        hit.normal.y >= min_ground_normal_y
-    } else {
-        false
-    }
-}
-
 #[spacetimedb::reducer]
 pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
     // Only the server (module identity) may invoke the scheduled reducer.
@@ -59,6 +30,9 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
         return Err("`tick` may not be invoked by clients.".into());
     }
 
+    let Some(kcc) = ctx.db.kcc_settings().id().find(1) else {
+        return Err("Missing kcc_settings row (expected id = 1)".into());
+    };
     // Fixed timestep.
     let fixed_dt: f32 = get_fixed_delta_time(timer.scheduled_at);
 
@@ -68,30 +42,23 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
     // Accumulate real time; drain it in fixed-size steps.
     timer.time_accumulator += real_dt;
 
-    // Load KCC settings once per reducer invocation (single-row table).
-    // This keeps the configuration stable for the whole catch-up loop without global caching.
-    let Some(kcc) = ctx.db.kcc_settings().id().find(KCC_SETTINGS_ID) else {
-        return Err("Missing kcc_settings row (expected id = 1)".into());
-    };
-
     // Cache the immutable world query state once per reducer invocation.
     let world = world_query_world(ctx);
 
-    // Build the KCC controller once per reducer invocation from DB-driven settings.
-    //
-    // IMPORTANT: interpret DB values as ABSOLUTE meters.
-    let mut controller = KinematicCharacterController::default();
-    controller.offset = CharacterLength::Absolute(kcc.offset);
-    controller.max_slope_climb_angle = kcc.max_slope_climb_deg.to_radians();
-    controller.min_slope_slide_angle = kcc.min_slope_slide_deg.to_radians();
-    controller.snap_to_ground = Some(CharacterLength::Absolute(kcc.snap_to_ground));
-    controller.autostep = Some(CharacterAutostep {
-        max_height: CharacterLength::Absolute(kcc.autostep_max_height),
-        min_width: CharacterLength::Absolute(kcc.autostep_min_width),
-        include_dynamic_bodies: false,
-    });
-    controller.slide = kcc.slide;
-    controller.normal_nudge_factor = kcc.normal_nudge_factor;
+    let controller = KinematicCharacterController {
+        offset: CharacterLength::Absolute(kcc.offset),
+        max_slope_climb_angle: kcc.max_slope_climb_deg.to_radians(),
+        min_slope_slide_angle: kcc.min_slope_slide_deg.to_radians(),
+        snap_to_ground: Some(CharacterLength::Absolute(kcc.snap_to_ground)),
+        autostep: Some(CharacterAutostep {
+            max_height: CharacterLength::Absolute(kcc.autostep_max_height),
+            min_width: CharacterLength::Absolute(kcc.autostep_min_width),
+            include_dynamic_bodies: false,
+        }),
+        slide: kcc.slide,
+        normal_nudge_factor: kcc.normal_nudge_factor,
+        ..KinematicCharacterController::default()
+    };
 
     let mut steps_ran: u32 = 0;
     while timer.time_accumulator >= fixed_dt {
@@ -115,7 +82,7 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
             let dz = target_z - actor.translation.z;
 
             // Avoid sqrt unless we actually need a direction.
-            let dist_sq = dx.powi(2) + dz.powi(2);
+            let dist_sq = dx.sq() + dz.sq();
 
             // Planar step length.
             let max_step = if has_point_intent {
@@ -135,10 +102,8 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
             // Update yaw based on *intent* direction (not post-collision motion).
             // This looks more natural when sliding along walls.
-            if planar.x * planar.x + planar.z * planar.z > YAW_EPS {
-                // Match your established server convention: yaw = (-dx).atan2(-dz)
-                let yaw = (-planar.x).atan2(-planar.z);
-                actor.rotation = yaw_to_db_quat(yaw);
+            if let Some(quat) = rotation_from_xz(planar.x, planar.z) {
+                actor.rotation = quat.into();
             }
 
             // Apply downward bias always; apply fall speed only if we were airborne last step.

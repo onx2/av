@@ -47,7 +47,7 @@ use rapier3d::na::{Translation3, UnitQuaternion};
 #[derive(Clone, Debug)]
 pub struct WorldStaticDef {
     /// Stable unique identifier used to ensure deterministic insertion order.
-    pub id: u64,
+    pub id: u32,
     /// World-space translation.
     pub translation: Vector<f32>,
     /// World-space rotation (unit quaternion).

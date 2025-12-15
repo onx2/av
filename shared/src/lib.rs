@@ -14,6 +14,7 @@
 ///
 /// Everything else should be considered internal and subject to change.
 pub mod rapier_world;
+pub mod utils;
 
 // Re-exports for callers building the world from DB rows.
 pub use rapier_world::{ColliderShapeDef, RapierQueryWorld, WorldStaticDef};

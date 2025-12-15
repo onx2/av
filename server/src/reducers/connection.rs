@@ -1,23 +1,4 @@
-//! Connection lifecycle reducers.
-//!
-//! These reducers handle Player row creation and cleanup for clients as they
-//! connect to, and disconnect from, the authoritative SpacetimeDB module.
-//!
-//! Behavior
-//! - On connect:
-//!   - Ensure a `Player` row exists for the caller's identity.
-//!   - Clear any dangling `actor_id` to start from a consistent state.
-//!   - Seed sensible defaults if the row is newly created.
-//! - On disconnect:
-//!   - If a live `Actor` exists, persist its authoritative state back to the
-//!     corresponding `Player` row (transform, collider, speed, grounded).
-//!   - Despawn the `Actor` row and clear `player.actor_id`.
-//!
-//! Determinism
-//! - These reducers only perform data-layer operations (no physics).
-//! - State transitions are explicit and logged for traceability.
-
-use crate::schema::*;
+use crate::{model::*, schema::*};
 use spacetimedb::{ReducerContext, Table};
 
 /// Fired when a client connects to the module.
