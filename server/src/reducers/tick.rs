@@ -120,13 +120,7 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
             // `actor.grounded` is persisted and represents the grounded state from the previous fixed step.
             // This gives us the desired 1-tick lag without any global in-memory cache.
-            let fall = if actor.grounded {
-                0.0
-            } else {
-                -kcc.fall_speed_mps * fixed_dt
-            };
-
-            let desired_translation = vector![planar.x, down_bias + fall, planar.z];
+            let fall = f32::from(actor.grounded) * -kcc.fall_speed_mps * fixed_dt;
 
             let corrected = controller.move_shape(
                 fixed_dt,
@@ -137,7 +131,7 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                     actor.translation.y,
                     actor.translation.z,
                 ),
-                desired_translation,
+                vector![planar.x, down_bias + fall, planar.z],
                 |_| {},
             );
 
@@ -147,10 +141,19 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
             actor.translation.z += corrected.translation.z;
 
             // Persist grounded for the next fixed step.
-            actor.grounded = corrected.grounded;
+            if corrected.grounded {
+                actor.grounded = true;
+                actor.grounded_grace_steps = 8;
+            } else if actor.grounded_grace_steps > 0 {
+                actor.grounded_grace_steps -= 1;
+            } else {
+                actor.grounded = false;
+            }
 
             // Clear MoveIntent::Point when within the acceptance radius (planar).
-            if has_point_intent && dist_sq <= kcc.point_acceptance_radius.powi(2) {
+            // TODO: Acceptance radius should be computed differently
+            let acceptance_radius_sq = 0.0225;
+            if has_point_intent && dist_sq <= acceptance_radius_sq {
                 actor.move_intent = MoveIntent::None;
             }
 

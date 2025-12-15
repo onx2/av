@@ -211,9 +211,11 @@ pub struct Actor {
     /// Current movement intent.
     pub move_intent: MoveIntent,
 
-    /// Whether the Actor was grounded last step
-    /// Used to apply gravity at a 1-step lag to prevent double collision detection.
+    /// Whether the Actor was grounded last X grounded_grace_steps ago
     pub grounded: bool,
+
+    /// The number of steps to wait before flipping grounded state
+    pub grounded_grace_steps: u8,
 }
 
 /// Kinematic Character Controller (KCC) settings shared by server and clients.
@@ -260,16 +262,6 @@ pub struct KccSettings {
 
     /// Small downward bias magnitude (m/s) applied while grounded to satisfy snap-to-ground preconditions.
     pub grounded_down_bias_mps: f32,
-
-    /// Ground probe distance (meters) used to derive "touching ground" at start of tick.
-    pub ground_probe_distance: f32,
-
-    /// Minimum acceptable Y component of a ground normal to be considered "ground".
-    /// (e.g. cos(max_slope_climb_angle)).
-    pub ground_normal_min_y: f32,
-
-    /// Planar acceptance radius for MoveIntent::Point completion (meters).
-    pub point_acceptance_radius: f32,
 }
 
 /// Static collider rows used to build the immutable world collision geometry.

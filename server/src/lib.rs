@@ -91,13 +91,6 @@ pub fn init(ctx: &ReducerContext) {
         // Constant fall speed and a slight downward bias to satisfy snap-to-ground prerequisites.
         fall_speed_mps: 9.82,
         grounded_down_bias_mps: 0.5,
-
-        // Ground probe parameters (used to decide whether to apply the slight downward bias).
-        ground_probe_distance: 0.12,
-        ground_normal_min_y: 0.70710677,
-
-        // Point intent completion.
-        point_acceptance_radius: 0.15,
     });
 
     for row in ctx.db.world_static().iter() {

@@ -49,6 +49,7 @@ pub fn enter_world(ctx: &ReducerContext) {
         movement_speed: player.movement_speed,
         move_intent: MoveIntent::None,
         grounded: false,
+        grounded_grace_steps: 0,
     });
 
     // Link back Player -> Actor.
