@@ -41,5 +41,5 @@ pub fn within_movement_range(a: &na::Vector3<f32>, b: &na::Vector3<f32>) -> bool
 
 /// Are two positions within a planar acceptance radius (meters)?
 pub fn within_movement_acceptance(a: &na::Vector3<f32>, b: &na::Vector3<f32>) -> bool {
-    planar_distance_sq(a, b) <= SMALLEST_REQUEST_DISTANCE_SQ
+    planar_distance_sq(a, b) > SMALLEST_REQUEST_DISTANCE_SQ
 }
