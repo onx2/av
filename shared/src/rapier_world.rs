@@ -136,9 +136,6 @@ impl RapierQueryWorld {
         }
 
         // Initialize broad/narrow phases so queries can run.
-        //
-        // In Rapier 0.31, we can run collision-detection only (no dynamics) using `CollisionPipeline`.
-        // This updates the broad-phase BVH and the narrow-phase contact graph.
         let mut broad_phase = BroadPhaseBvh::new();
         let mut narrow_phase = NarrowPhase::new();
         let mut collision_pipeline = CollisionPipeline::new();
@@ -147,8 +144,6 @@ impl RapierQueryWorld {
         let hooks = ();
         let events = ();
 
-        // NOTE: Rapier 0.31 signature:
-        // step(prediction_distance, broad_phase, narrow_phase, bodies, colliders, hooks, events)
         collision_pipeline.step(
             0.0,
             &mut broad_phase,

@@ -3,6 +3,9 @@
 // Disable console on Windows for non-dev builds.
 #![cfg_attr(not(feature = "dev"), windows_subsystem = "windows")]
 
+#[cfg(feature = "dev_native")]
+mod debug_tools;
+
 mod camera;
 mod cursor;
 mod input;
@@ -52,5 +55,8 @@ impl Plugin for AppPlugin {
             input::plugin,
             cursor::plugin,
         ));
+
+        #[cfg(feature = "dev_native")]
+        app.add_plugins(debug_tools::plugin);
     }
 }

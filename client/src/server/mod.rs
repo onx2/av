@@ -33,6 +33,7 @@ pub(super) fn plugin(app: &mut App) {
             .add_reducer::<RequestMove>()
             .add_reducer::<EnterWorld>()
             .add_reducer::<LeaveWorld>()
+            .add_reducer::<SpawnFakeRemotes>()
             // --------------------------------
             // Register all tables
             // --------------------------------

@@ -28,6 +28,7 @@ pub mod move_intent_type;
 pub mod player_table;
 pub mod player_type;
 pub mod request_move_reducer;
+pub mod spawn_fake_remotes_reducer;
 pub mod tick_reducer;
 pub mod tick_timer_table;
 pub mod tick_timer_type;
@@ -60,6 +61,9 @@ pub use move_intent_type::MoveIntent;
 pub use player_table::*;
 pub use player_type::Player;
 pub use request_move_reducer::{request_move, set_flags_for_request_move, RequestMoveCallbackId};
+pub use spawn_fake_remotes_reducer::{
+    set_flags_for_spawn_fake_remotes, spawn_fake_remotes, SpawnFakeRemotesCallbackId,
+};
 pub use tick_reducer::{set_flags_for_tick, tick, TickCallbackId};
 pub use tick_timer_table::*;
 pub use tick_timer_type::TickTimer;
@@ -79,6 +83,7 @@ pub enum Reducer {
     IdentityDisconnected,
     LeaveWorld,
     RequestMove { intent: MoveIntent },
+    SpawnFakeRemotes { count: u32 },
     Tick { timer: TickTimer },
 }
 
@@ -94,6 +99,7 @@ impl __sdk::Reducer for Reducer {
             Reducer::IdentityDisconnected => "identity_disconnected",
             Reducer::LeaveWorld => "leave_world",
             Reducer::RequestMove { .. } => "request_move",
+            Reducer::SpawnFakeRemotes { .. } => "spawn_fake_remotes",
             Reducer::Tick { .. } => "tick",
             _ => unreachable!(),
         }
@@ -132,6 +138,10 @@ impl TryFrom<__ws::ReducerCallInfo<__ws::BsatnFormat>> for Reducer {
                 )?
                 .into(),
             ),
+            "spawn_fake_remotes" => Ok(__sdk::parse_reducer_args::<
+                spawn_fake_remotes_reducer::SpawnFakeRemotesArgs,
+            >("spawn_fake_remotes", &value.args)?
+            .into()),
             "tick" => Ok(
                 __sdk::parse_reducer_args::<tick_reducer::TickArgs>("tick", &value.args)?.into(),
             ),

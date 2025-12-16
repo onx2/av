@@ -1,5 +1,5 @@
 use crate::schema::actor;
-use crate::types::MoveIntent;
+use crate::types::{ActorKind, DbVec3, MoveIntent};
 use crate::{
     schema::kcc_settings,
     tick_timer,
@@ -8,6 +8,17 @@ use crate::{
     TickTimer,
 };
 use spacetimedb::{ReducerContext, Table};
+
+/// Clear point intents after this many consecutive fixed-steps without meaningful progress.
+const STUCK_CLEAR_STEPS: u8 = 20;
+
+/// Squared progress epsilon (meters^2) used to determine "no progress".
+/// This is intentionally small; we use the stuck counter to avoid false positives.
+const STUCK_PROGRESS_EPS_SQ: f32 = 1.0e-6;
+
+/// When a monster is stuck, immediately re-roll a new wander target instead of idling.
+/// This makes them recover without waiting for the next tick loop to notice `MoveIntent::None`.
+const MONSTER_STUCK_RETARGET: bool = true;
 
 // Use Rapier types/macros through the shared crate to keep dependency versions unified.
 use shared::{
@@ -67,6 +78,19 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
         // Process all actors.
         for mut actor in ctx.db.actor().iter() {
+            // If this is one of our stress-test "fake remotes", make it wander forever by
+            // assigning a new random-ish target whenever it is idle.
+            //
+            // We intentionally keep this dependency-free (no RNG crate) and use a simple
+            // deterministic-ish hash of (timestamp, actor id) so each tick yields different
+            // scatter without having to store extra per-actor state.
+            if matches!(actor.kind, ActorKind::Monster(_))
+                && matches!(actor.move_intent, MoveIntent::None)
+            {
+                let (tx, tz) = wander_target(ctx, actor.id, actor.translation);
+                actor.move_intent = MoveIntent::Point(DbVec3::new(tx, actor.translation.y, tz));
+            }
+
             // Determine desired planar movement for this fixed step.
             // For now, handle only MoveIntent::Point; other intents result in no planar motion.
             //
@@ -83,6 +107,9 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
             // Avoid sqrt unless we actually need a direction.
             let dist_sq = dx.sq() + dz.sq();
+
+            // Stuck detection: remember starting distance to target for this step.
+            let dist_sq_before = dist_sq;
 
             // Planar step length.
             let max_step = if has_point_intent {
@@ -155,8 +182,38 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
             // Clear MoveIntent::Point when within the acceptance radius (planar).
             // TODO: Acceptance radius should be computed differently
-            if has_point_intent && dist_sq <= kcc.point_acceptance_radius_sq {
+            if has_point_intent && dist_sq_before <= kcc.point_acceptance_radius_sq {
                 actor.move_intent = MoveIntent::None;
+                actor.stuck_steps = 0;
+            } else if has_point_intent {
+                // Stuck detection: if we didn't meaningfully reduce distance-to-target this step,
+                // increment stuck counter; otherwise reset it.
+                let ndx = target_x - actor.translation.x;
+                let ndz = target_z - actor.translation.z;
+                let dist_sq_after = ndx.sq() + ndz.sq();
+
+                let made_progress = dist_sq_after + STUCK_PROGRESS_EPS_SQ < dist_sq_before;
+                if made_progress {
+                    actor.stuck_steps = 0;
+                } else {
+                    actor.stuck_steps = actor.stuck_steps.saturating_add(1);
+
+                    if actor.stuck_steps >= STUCK_CLEAR_STEPS {
+                        // If this is a wandering monster, immediately pick a new destination
+                        // so it visibly "unsticks" and keeps roaming without idling.
+                        if MONSTER_STUCK_RETARGET && matches!(actor.kind, ActorKind::Monster(_)) {
+                            let (tx, tz) = wander_target(ctx, actor.id, actor.translation);
+                            actor.move_intent =
+                                MoveIntent::Point(DbVec3::new(tx, actor.translation.y, tz));
+                        } else {
+                            actor.move_intent = MoveIntent::None;
+                        }
+
+                        actor.stuck_steps = 0;
+                    }
+                }
+            } else {
+                actor.stuck_steps = 0;
             }
 
             ctx.db.actor().id().update(actor);
@@ -178,4 +235,62 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
     ctx.db.tick_timer().scheduled_id().update(timer);
 
     Ok(())
+}
+
+/// Compute a new wander target around the given position for a fake remote actor.
+///
+/// Returns (x, z). Y is preserved by the caller.
+///
+/// Tuning:
+/// - Keeps targets reasonably close so you see constant motion near the player.
+/// - Uses a deterministic-ish pseudo-random source derived from timestamp + actor id.
+fn wander_target(ctx: &ReducerContext, actor_id: u64, from: DbVec3) -> (f32, f32) {
+    // Wander in a ring around current position.
+    let wander_radius_min: f32 = 2.0;
+    let wander_radius_max: f32 = 10.0;
+
+    let r0 = prand01(ctx, actor_id, 0);
+    let r1 = prand01(ctx, actor_id, 1);
+
+    let theta = r0 * core::f32::consts::TAU;
+    let radius = lerp(wander_radius_min, wander_radius_max, r1.sqrt());
+
+    (from.x + theta.cos() * radius, from.z + theta.sin() * radius)
+}
+
+/// Deterministic-ish pseudo-random float in [0, 1), derived from reducer timestamp and actor id.
+///
+/// This is intentionally simple and dependency-free; it's only for stress-test wandering.
+fn prand01(ctx: &ReducerContext, actor_id: u64, salt: u32) -> f32 {
+    // Hash Debug strings so we don't depend on Timestamp/Identity internals.
+    let ts_str = format!("{:?}", ctx.timestamp);
+
+    // 32-bit FNV-1a over timestamp, then mix in actor_id + salt.
+    let mut h: u32 = 2166136261u32;
+    for b in ts_str.as_bytes() {
+        h ^= *b as u32;
+        h = h.wrapping_mul(16777619u32);
+    }
+
+    // Mix in actor id (split to avoid relying on endianness).
+    let lo = actor_id as u32;
+    let hi = (actor_id >> 32) as u32;
+
+    h ^= lo.wrapping_mul(0x9E37_79B9);
+    h = h.rotate_left(13).wrapping_mul(0x85EB_CA6B);
+    h ^= hi.wrapping_mul(0xC2B2_AE35);
+    h = h.rotate_left(17).wrapping_mul(0x27D4_EB2D);
+
+    // Mix in salt.
+    h ^= salt.wrapping_mul(0x1656_67B1);
+    h ^= h >> 16;
+
+    // Map to [0,1) using 24 bits of precision.
+    let mantissa = (h >> 8) as u32;
+    (mantissa as f32) / ((1u32 << 24) as f32)
+}
+
+#[inline]
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
 }
