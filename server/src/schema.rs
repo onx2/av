@@ -1,6 +1,5 @@
-use spacetimedb::*;
-
 use crate::types::*;
+use spacetimedb::*;
 
 /// Player account data persisted across sessions.
 ///
