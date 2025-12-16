@@ -25,7 +25,10 @@ pub trait UtilMath {
     fn sq(self) -> Self;
 }
 
-impl UtilMath for f32 {
+impl<T> UtilMath for T
+where
+    T: std::ops::Mul<Output = T> + Copy,
+{
     fn sq(self) -> Self {
         self * self
     }

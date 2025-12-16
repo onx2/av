@@ -187,29 +187,21 @@ pub enum ColliderShape {
     /// Infinite plane (half-space). `f32` is the offset along the plane normal:
     /// the plane satisfies `n ⋅ x = dist`, where `n = rotation * +Y`.
     Plane(f32),
-
     /// Oriented box defined by local half-extents (hx, hy, hz).
     /// The final physics size used by the server is `half_extents * scale`.
     Cuboid(DbVec3),
-
     /// Sphere/ball with the given radius (meters).
     Sphere(f32),
-
     /// Y-aligned capsule with `radius` and `half_height`.
     Capsule(DbCapsule),
-
     /// Y-aligned cylinder.
     Cylinder(DbCylinder),
-
     /// Y-aligned cone.
     Cone(DbCone),
-
     /// Rounded cuboid (box with rounded edges/corners).
     RoundCuboid(DbRoundCuboid),
-
     /// Rounded Y-aligned cylinder.
     RoundCylinder(DbRoundCylinder),
-
     /// Rounded Y-aligned cone.
     RoundCone(DbRoundCone),
 }

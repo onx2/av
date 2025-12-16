@@ -36,61 +36,63 @@ fn build_world_query_world(ctx: &ReducerContext) -> RapierQueryWorld {
 
 /// Convert a single `WorldStatic` row to the shared schema-agnostic definition.
 fn row_to_def(row: WorldStatic) -> WorldStaticDef {
+    let shape = match row.shape {
+        ColliderShape::Plane(offset_along_normal) => ColliderShapeDef::Plane {
+            offset_along_normal,
+        },
+        ColliderShape::Cuboid(half_extents) => ColliderShapeDef::Cuboid {
+            half_extents: half_extents.into(),
+        },
+        ColliderShape::Sphere(radius) => ColliderShapeDef::Sphere { radius },
+        ColliderShape::Capsule(dim) => ColliderShapeDef::CapsuleY {
+            radius: dim.radius,
+            half_height: dim.half_height,
+        },
+        ColliderShape::Cylinder(DbCylinder {
+            radius,
+            half_height,
+        }) => ColliderShapeDef::CylinderY {
+            radius,
+            half_height,
+        },
+        ColliderShape::Cone(DbCone {
+            radius,
+            half_height,
+        }) => ColliderShapeDef::ConeY {
+            radius,
+            half_height,
+        },
+        ColliderShape::RoundCuboid(DbRoundCuboid {
+            half_extents,
+            border_radius,
+        }) => ColliderShapeDef::RoundCuboid {
+            half_extents: half_extents.into(),
+            border_radius,
+        },
+        ColliderShape::RoundCylinder(DbRoundCylinder {
+            radius,
+            half_height,
+            border_radius,
+        }) => ColliderShapeDef::RoundCylinderY {
+            radius,
+            half_height,
+            border_radius,
+        },
+        ColliderShape::RoundCone(DbRoundCone {
+            radius,
+            half_height,
+            border_radius,
+        }) => ColliderShapeDef::RoundConeY {
+            radius,
+            half_height,
+            border_radius,
+        },
+    };
+
     WorldStaticDef {
         id: row.id,
         translation: row.translation.into(),
         rotation: row.rotation.into(),
-        shape: match row.shape {
-            ColliderShape::Plane(offset_along_normal) => ColliderShapeDef::Plane {
-                offset_along_normal,
-            },
-            ColliderShape::Cuboid(half_extents) => ColliderShapeDef::Cuboid {
-                half_extents: half_extents.into(),
-            },
-            ColliderShape::Sphere(radius) => ColliderShapeDef::Sphere { radius },
-            ColliderShape::Capsule(dim) => ColliderShapeDef::CapsuleY {
-                radius: dim.radius,
-                half_height: dim.half_height,
-            },
-            ColliderShape::Cylinder(DbCylinder {
-                radius,
-                half_height,
-            }) => ColliderShapeDef::CylinderY {
-                radius,
-                half_height,
-            },
-            ColliderShape::Cone(DbCone {
-                radius,
-                half_height,
-            }) => ColliderShapeDef::ConeY {
-                radius,
-                half_height,
-            },
-            ColliderShape::RoundCuboid(DbRoundCuboid {
-                half_extents,
-                border_radius,
-            }) => ColliderShapeDef::RoundCuboid {
-                half_extents: half_extents.into(),
-                border_radius,
-            },
-            ColliderShape::RoundCylinder(DbRoundCylinder {
-                radius,
-                half_height,
-                border_radius,
-            }) => ColliderShapeDef::RoundCylinderY {
-                radius,
-                half_height,
-                border_radius,
-            },
-            ColliderShape::RoundCone(DbRoundCone {
-                radius,
-                half_height,
-                border_radius,
-            }) => ColliderShapeDef::RoundConeY {
-                radius,
-                half_height,
-                border_radius,
-            },
-        },
+        shape,
     }
 }

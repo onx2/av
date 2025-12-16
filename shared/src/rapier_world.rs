@@ -7,23 +7,6 @@
 //! - Deterministic: given the same inputs (sorted by `id`), build identical in-memory sets.
 //! - Query-focused: supports scene queries and the Rapier `KinematicCharacterController`.
 //! - Immutable world: this builder assumes statics do not move after construction.
-//!
-//! Rapier version targeted: `rapier3d = "0.31.0"`.
-//!
-//! Notes about Rapier 0.31
-//! - `QueryPipeline` in 0.31 is a *borrowed view* obtained from the broad-phase,
-//!   so we store the broad-phase + narrow-phase needed to create it.
-//! - You can run scene queries without stepping the physics simulation.
-//! - The kinematic character controller uses scene queries (shape casts/ray casts),
-//!   so this module focuses on providing the query structures.
-//!
-//! If you later add dynamic bodies, you will likely want to store additional pipeline
-//! structures (islands, joints, CCD, etc.) and advance them with `PhysicsPipeline::step`.
-//!
-//! Implementation note
-//! - `CollisionPipeline::step` in Rapier 0.31 mutates the body/collider sets because it updates
-//!   internal broad-phase/narrow-phase caches and collider metadata. Therefore we keep the
-//!   sets mutable when running the one-time collision detection initialization.
 
 // Re-export Rapier so downstream crates (server/client) can use Rapier macros/types
 // without needing to depend on `rapier3d` directly.
