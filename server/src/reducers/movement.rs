@@ -1,24 +1,59 @@
 use crate::{schema::*, types::MoveIntent};
+use nalgebra::{self as na, distance_squared};
+use shared::{
+    constants::{MAX_INTENT_DISTANCE_SQ, MAX_INTENT_PATH_LEN, SMALLEST_REQUEST_DISTANCE_SQ},
+    utils::{within_movement_acceptance, within_movement_range},
+};
 use spacetimedb::ReducerContext;
 
 #[spacetimedb::reducer]
 pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), String> {
-    // Locate the Player row for this identity.
     let Some(player) = ctx.db.player().identity().find(ctx.sender) else {
-        return Err("Player not found".to_string());
+        return Err("Player not found".into());
+    };
+    let Some(source_actor_id) = player.actor_id else {
+        return Err("Actor not found".into());
+    };
+    let Some(mut source_actor) = ctx.db.actor().id().find(source_actor_id) else {
+        return Err("Actor not found".into());
     };
 
-    // Ensure the caller currently has a live actor.
-    let Some(actor_id) = player.actor_id else {
-        return Err("Actor not found".to_string());
-    };
+    let current: na::Vector3<f32> = source_actor.translation.into();
+    match (&source_actor.move_intent, &intent) {
+        // 1. Idling Check
+        (MoveIntent::None, MoveIntent::None) => {
+            return Err("Already idling".into());
+        }
 
-    let Some(mut actor) = ctx.db.actor().id().find(actor_id) else {
-        return Err("Actor not found".to_string());
-    };
+        // 2. History Check: Is the new point too close to the old intent point?
+        (MoveIntent::Point(old), MoveIntent::Point(new))
+            if !within_movement_acceptance(&old.into(), &new.into()) =>
+        {
+            return Err("Distance from last point too close".into());
+        }
 
-    actor.move_intent = intent;
-    ctx.db.actor().id().update(actor);
+        // 3. Path Validation: Complexity check
+        (_, MoveIntent::Path(p)) if p.len() > MAX_INTENT_PATH_LEN => {
+            return Err("Path is too complex".into());
+        }
 
-    Ok(())
+        // 4. Path Validation: Range check (are any points too far?)
+        (_, MoveIntent::Path(p))
+            if p.iter()
+                .any(|x| !within_movement_range(&current, &x.into())) =>
+        {
+            return Err("Distance from current position too far".into());
+        }
+
+        // 5. Point Validation: Minimum movement check (from current position)
+        (_, MoveIntent::Point(p)) if !within_movement_acceptance(&current, &p.into()) => {
+            return Err("Distance from current position too close".into());
+        }
+
+        _ => {
+            source_actor.move_intent = intent;
+            ctx.db.actor().id().update(source_actor);
+            Ok(())
+        }
+    }
 }

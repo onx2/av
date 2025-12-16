@@ -37,8 +37,24 @@ impl From<DbVec3> for na::Translation3<f32> {
     }
 }
 
+impl From<DbVec3> for na::Point3<f32> {
+    fn from(v: DbVec3) -> Self {
+        Self::new(v.x, v.y, v.z)
+    }
+}
+impl From<&DbVec3> for na::Point3<f32> {
+    fn from(v: &DbVec3) -> Self {
+        Self::new(v.x, v.y, v.z)
+    }
+}
+
 impl From<DbVec3> for na::Vector3<f32> {
     fn from(v: DbVec3) -> Self {
+        Self::new(v.x, v.y, v.z)
+    }
+}
+impl From<&DbVec3> for na::Vector3<f32> {
+    fn from(v: &DbVec3) -> Self {
         Self::new(v.x, v.y, v.z)
     }
 }

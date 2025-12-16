@@ -7,11 +7,8 @@ use crate::{
 use bevy::{picking::pointer::PointerInteraction, platform::collections::HashMap, prelude::*};
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage, ReadUpdateMessage};
 use leafwing_input_manager::prelude::ActionState;
+use shared::constants::{DIRECTIONAL_MOVEMENT_INTERVAL, SMALLEST_REQUEST_DISTANCE_SQ};
 use std::time::Duration;
-
-/// How frequently, in milliseconds, to send directional movement updates to the server.
-const DIRECTIONAL_MOVEMENT_INTERVAL: Duration = Duration::from_millis(50);
-const SMALLEST_REQUEST_DISTANCE_SQ: f32 = 0.1;
 
 /// The time since the last directional movement was sent to the server.
 #[derive(Resource, Default)]
@@ -184,8 +181,8 @@ fn handle_lmb_movement(
 
     if just_pressed {
         match stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
-            Ok(_) => println!("JUST PRESSED: {:?}", pos),
             Err(e) => println!("Error: {}", e),
+            Ok(_) => {}
         }
     } else if just_released {
         // Reset the "Direct Movement" tracker so the next click feels fresh
@@ -223,7 +220,6 @@ fn handle_lmb_movement(
             Ok(_) => {
                 last_sent_at.position = pos;
                 last_sent_at.duration = held_dur;
-                println!("PRESSED: {:?}", pos);
             }
             Err(e) => println!("Error: {}", e),
         }

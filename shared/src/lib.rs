@@ -1,3 +1,4 @@
+pub mod constants;
 /// Shared, deterministic logic intended to run identically on server and client.
 ///
 /// Rapier transition
