@@ -4,7 +4,6 @@
 #![allow(unused, clippy::all)]
 use super::actor_kind_type::ActorKind;
 use super::actor_type::Actor;
-use super::db_quat_type::DbQuat;
 use super::db_vec_3_type::DbVec3;
 use super::move_intent_type::MoveIntent;
 use spacetimedb_sdk::__codegen::{self as __sdk, __lib, __sats, __ws};

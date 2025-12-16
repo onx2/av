@@ -5,6 +5,11 @@
 use spacetimedb_sdk::__codegen::{self as __sdk, __lib, __sats, __ws};
 
 use super::db_capsule_type::DbCapsule;
+use super::db_cone_type::DbCone;
+use super::db_cylinder_type::DbCylinder;
+use super::db_round_cone_type::DbRoundCone;
+use super::db_round_cuboid_type::DbRoundCuboid;
+use super::db_round_cylinder_type::DbRoundCylinder;
 use super::db_vec_3_type::DbVec3;
 
 #[derive(__lib::ser::Serialize, __lib::de::Deserialize, Clone, PartialEq, Debug)]
@@ -14,7 +19,19 @@ pub enum ColliderShape {
 
     Cuboid(DbVec3),
 
+    Sphere(f32),
+
     Capsule(DbCapsule),
+
+    Cylinder(DbCylinder),
+
+    Cone(DbCone),
+
+    RoundCuboid(DbRoundCuboid),
+
+    RoundCylinder(DbRoundCylinder),
+
+    RoundCone(DbRoundCone),
 }
 
 impl __sdk::InModule for ColliderShape {

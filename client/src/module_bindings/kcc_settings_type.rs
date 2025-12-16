@@ -11,7 +11,6 @@ pub struct KccSettings {
     pub offset: f32,
     pub max_slope_climb_deg: f32,
     pub min_slope_slide_deg: f32,
-    pub snap_to_ground: f32,
     pub autostep_max_height: f32,
     pub autostep_min_width: f32,
     pub slide: bool,
@@ -19,6 +18,7 @@ pub struct KccSettings {
     pub fall_speed_mps: f32,
     pub grounded_down_bias_mps: f32,
     pub hard_airborne_probe_distance: f32,
+    pub point_acceptance_radius_sq: f32,
 }
 
 impl __sdk::InModule for KccSettings {

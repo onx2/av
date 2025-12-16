@@ -4,20 +4,13 @@
 #![allow(unused, clippy::all)]
 use spacetimedb_sdk::__codegen::{self as __sdk, __lib, __sats, __ws};
 
-use super::db_vec_3_type::DbVec3;
-
 #[derive(__lib::ser::Serialize, __lib::de::Deserialize, Clone, PartialEq, Debug)]
 #[sats(crate = __lib)]
-pub struct Player {
-    pub identity: __sdk::Identity,
-    pub actor_id: Option<u64>,
-    pub translation: DbVec3,
-    pub yaw: f32,
-    pub capsule_radius: f32,
-    pub capsule_half_height: f32,
-    pub movement_speed: f32,
+pub struct DbCone {
+    pub radius: f32,
+    pub half_height: f32,
 }
 
-impl __sdk::InModule for Player {
+impl __sdk::InModule for DbCone {
     type Module = super::RemoteModule;
 }

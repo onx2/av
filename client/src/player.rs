@@ -86,8 +86,7 @@ fn on_actor_inserted(
             let actor_id = new_actor.id;
             let move_intent = new_actor.move_intent;
             let translation = new_actor.translation.into();
-            let rotation = new_actor.rotation.into();
-            let scale = new_actor.scale.into();
+            let rotation = Quat::from_rotation_y(new_actor.yaw);
             let bevy_entity = commands
                 .spawn((
                     Mesh3d(meshes.add(Mesh::from(Capsule3d {
@@ -101,14 +100,14 @@ fn on_actor_inserted(
                     Transform {
                         translation,
                         rotation,
-                        scale,
+                        scale: Vec3::ONE,
                     },
                     NetworkActor {
                         actor_id,
                         move_intent,
                         translation,
                         rotation,
-                        scale,
+                        scale: Vec3::ONE,
                     },
                     Player,
                 ))
@@ -259,8 +258,8 @@ fn sync(
             continue;
         };
         if let Ok(mut network_actor) = transform_query.get_mut(*bevy_entity) {
-            network_actor.rotation = actor.rotation.into();
-            network_actor.scale = actor.scale.into();
+            network_actor.rotation = Quat::from_rotation_y(actor.yaw);
+            network_actor.scale = Vec3::ONE;
             network_actor.translation = actor.translation.into();
             network_actor.move_intent = actor.move_intent;
             network_actor.actor_id = actor.id; // Not necessary but could be helpful

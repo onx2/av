@@ -34,8 +34,7 @@ pub fn leave_world(ctx: &ReducerContext) {
 
     // Persist actor state back to Player.
     player.translation = actor.translation;
-    player.rotation = actor.rotation;
-    player.scale = actor.scale;
+    player.yaw = actor.yaw;
     player.capsule_radius = actor.capsule_radius;
     player.capsule_half_height = actor.capsule_half_height;
     player.movement_speed = actor.movement_speed;

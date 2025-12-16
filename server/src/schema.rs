@@ -19,10 +19,9 @@ pub struct Player {
     // ------ Persisted actor state (server-authoritative) ------
     /// Last known translation of the actor (meters).
     pub translation: DbVec3,
-    /// Last known rotation of the actor (unit quaternion).
-    pub rotation: DbQuat,
-    /// Visual/logic scale of the actor (component-wise).
-    pub scale: DbVec3,
+
+    /// Last known rotation of the actor (yaw).
+    pub yaw: f32,
 
     /// Capsule radius used by the actor's kinematic collider (meters).
     pub capsule_radius: f32,
@@ -49,10 +48,10 @@ pub struct Actor {
     pub kind: ActorKind,
 
     /// World transform (meters / unit quaternion).
-    pub translation: DbVec3,
-    pub rotation: DbQuat,
-    pub scale: DbVec3,
-
+    pub translation: DbVec3, // 12 bytes
+    // pub rotation: DbQuat, // 16 bytes
+    pub yaw: f32, // 16 bytes
+    // pub scale: DbVec3,    // 12 bytes
     /// Capsule collider parameters (meters).
     pub capsule_radius: f32,
     pub capsule_half_height: f32,

@@ -5,7 +5,6 @@
 use spacetimedb_sdk::__codegen::{self as __sdk, __lib, __sats, __ws};
 
 use super::actor_kind_type::ActorKind;
-use super::db_quat_type::DbQuat;
 use super::db_vec_3_type::DbVec3;
 use super::move_intent_type::MoveIntent;
 
@@ -15,8 +14,7 @@ pub struct Actor {
     pub id: u64,
     pub kind: ActorKind,
     pub translation: DbVec3,
-    pub rotation: DbQuat,
-    pub scale: DbVec3,
+    pub yaw: f32,
     pub capsule_radius: f32,
     pub capsule_half_height: f32,
     pub movement_speed: f32,

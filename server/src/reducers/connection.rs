@@ -23,8 +23,7 @@ pub fn identity_connected(ctx: &ReducerContext) {
             identity: ctx.sender,
             actor_id: None,
             translation: DbVec3::new(0.0, 3.85, 0.0),
-            rotation: DbQuat::default(),
-            scale: DbVec3::ONE,
+            yaw: 0.0,
             capsule_radius: 0.35,
             capsule_half_height: 0.75,
             movement_speed: 5.0,
@@ -51,8 +50,7 @@ pub fn identity_disconnected(ctx: &ReducerContext) {
     if let Some(actor) = ctx.db.actor().id().find(actor_id) {
         // Persist authoritative actor state to Player.
         player.translation = actor.translation;
-        player.rotation = actor.rotation;
-        player.scale = actor.scale;
+        player.yaw = actor.yaw;
         player.capsule_radius = actor.capsule_radius;
         player.capsule_half_height = actor.capsule_half_height;
         player.movement_speed = actor.movement_speed;

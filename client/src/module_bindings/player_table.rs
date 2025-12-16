@@ -2,7 +2,6 @@
 // WILL NOT BE SAVED. MODIFY TABLES IN YOUR MODULE SOURCE CODE INSTEAD.
 
 #![allow(unused, clippy::all)]
-use super::db_quat_type::DbQuat;
 use super::db_vec_3_type::DbVec3;
 use super::player_type::Player;
 use spacetimedb_sdk::__codegen::{self as __sdk, __lib, __sats, __ws};

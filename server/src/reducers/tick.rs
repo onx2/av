@@ -1,10 +1,9 @@
 use crate::schema::actor;
 use crate::types::MoveIntent;
-use crate::utils::has_support_within;
 use crate::{
     schema::kcc_settings,
     tick_timer,
-    utils::{get_fixed_delta_time, get_variable_delta_time},
+    utils::{get_fixed_delta_time, get_variable_delta_time, has_support_within},
     world::world_query_world,
     TickTimer,
 };
@@ -13,7 +12,7 @@ use spacetimedb::{ReducerContext, Table};
 // Use Rapier types/macros through the shared crate to keep dependency versions unified.
 use shared::{
     rapier_world::rapier3d::prelude::*,
-    utils::{rotation_from_xz, UtilMath},
+    utils::{yaw_from_xz, UtilMath},
 };
 
 // In rapier3d 0.31.0 the character controller types live under `rapier3d::control`.
@@ -103,8 +102,8 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
             // Update yaw based on *intent* direction (not post-collision motion).
             // This looks more natural when sliding along walls.
-            if let Some(quat) = rotation_from_xz(planar.x, planar.z) {
-                actor.rotation = quat.into();
+            if let Some(yaw) = yaw_from_xz(planar.x, planar.z) {
+                actor.yaw = yaw;
             }
 
             // Apply downward bias always; apply fall speed only if we were airborne last step.

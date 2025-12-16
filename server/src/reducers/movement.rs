@@ -1,8 +1,8 @@
 use crate::{schema::*, types::MoveIntent};
-use nalgebra::{self as na, distance_squared};
+use nalgebra as na;
 use shared::{
-    constants::{MAX_INTENT_DISTANCE_SQ, MAX_INTENT_PATH_LEN, SMALLEST_REQUEST_DISTANCE_SQ},
-    utils::{within_movement_acceptance, within_movement_range},
+    constants::MAX_INTENT_PATH_LEN,
+    utils::{is_move_too_close, is_move_too_far},
 };
 use spacetimedb::ReducerContext;
 
@@ -27,7 +27,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
 
         // 2. History Check: Is the new point too close to the old intent point?
         (MoveIntent::Point(old), MoveIntent::Point(new))
-            if !within_movement_acceptance(&old.into(), &new.into()) =>
+            if is_move_too_close(&old.into(), &new.into()) =>
         {
             return Err("Distance from last point too close".into());
         }
@@ -38,15 +38,12 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
         }
 
         // 4. Path Validation: Range check (are any points too far?)
-        (_, MoveIntent::Path(p))
-            if p.iter()
-                .any(|x| !within_movement_range(&current, &x.into())) =>
-        {
+        (_, MoveIntent::Path(p)) if p.iter().any(|x| is_move_too_far(&current, &x.into())) => {
             return Err("Distance from current position too far".into());
         }
 
         // 5. Point Validation: Minimum movement check (from current position)
-        (_, MoveIntent::Point(p)) if !within_movement_acceptance(&current, &p.into()) => {
+        (_, MoveIntent::Point(p)) if is_move_too_close(&current, &p.into()) => {
             return Err("Distance from current position too close".into());
         }
 
