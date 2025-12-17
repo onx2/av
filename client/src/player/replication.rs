@@ -1,3 +1,4 @@
+use super::{ActorEntityMapping, LocalPlayer, NetworkActor, Player, RemotePlayer};
 use crate::{
     module_bindings::{Actor, ActorKind, ActorTableAccess},
     server::SpacetimeDB,
@@ -5,24 +6,15 @@ use crate::{
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage, ReadUpdateMessage};
 
-use super::{ActorEntityMapping, LocalPlayer, NetworkActor, Player, RemotePlayer};
-
-#[inline]
 fn is_monster(kind: &ActorKind) -> bool {
     matches!(kind, ActorKind::Monster(_))
 }
-
-#[inline]
 fn is_local_player(kind: &ActorKind, stdb: &SpacetimeDB) -> bool {
     matches!(kind, ActorKind::Player(identity) if *identity == stdb.identity())
 }
-
-#[inline]
 fn is_remote_player(kind: &ActorKind, stdb: &SpacetimeDB) -> bool {
     matches!(kind, ActorKind::Player(identity) if *identity != stdb.identity())
 }
-
-#[inline]
 fn actor_color(kind: &ActorKind, stdb: &SpacetimeDB) -> Color {
     if is_monster(kind) {
         Color::linear_rgb(0.8, 0.6, 0.1)
