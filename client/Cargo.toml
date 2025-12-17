@@ -10,7 +10,7 @@ spacetimedb-sdk = "1.11.0"
 leafwing-input-manager = {version ="0.19.0", features = ["timing"]}
 
 # In-game performance UI overlay (Bevy 0.17 support via downstream fork)
-iyes_perf_ui = { git = "https://github.com/onx2/iyes_perf_ui", branch = "main" }
+iyes_perf_ui = { git = "https://github.com/BigWoofStudios/iyes_perf_ui", rev = "240b9c31475c9f0ccb0b94d39a7309f9fcc03081" }
 
 shared = { path = "../shared" }
 nalgebra = {workspace = true}

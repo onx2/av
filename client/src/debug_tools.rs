@@ -1,8 +1,3 @@
-//! Debug/performance tooling for native dev builds.
-//!
-//! This plugin is compiled/used only when the caller gates it behind `dev_native`
-//! (recommended: `#[cfg(feature = "dev_native")] mod debug_tools;` in `main.rs`).
-
 use bevy::diagnostic::{
     EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin,
 };
