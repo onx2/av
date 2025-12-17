@@ -88,7 +88,6 @@ pub fn spawn_fake_remotes(ctx: &ReducerContext, count: u32) -> Result<(), String
             move_intent: MoveIntent::Point(DbVec3::new(target_x, spawn_y, target_z)),
             grounded: false,
             grounded_grace_steps: 0,
-            stuck_steps: 0,
         });
     }
 

@@ -35,7 +35,6 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         move_intent: MoveIntent::None,
         grounded: false,
         grounded_grace_steps: 0,
-        stuck_steps: 0,
     });
 
     // Link back Player -> Actor.

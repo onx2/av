@@ -9,17 +9,6 @@ use crate::{
 };
 use spacetimedb::{ReducerContext, Table};
 
-/// Clear point intents after this many consecutive fixed-steps without meaningful progress.
-const STUCK_CLEAR_STEPS: u8 = 20;
-
-/// Squared progress epsilon (meters^2) used to determine "no progress".
-/// This is intentionally small; we use the stuck counter to avoid false positives.
-const STUCK_PROGRESS_EPS_SQ: f32 = 1.0e-6;
-
-/// When a monster is stuck, immediately re-roll a new wander target instead of idling.
-/// This makes them recover without waiting for the next tick loop to notice `MoveIntent::None`.
-const MONSTER_STUCK_RETARGET: bool = true;
-
 // Use Rapier types/macros through the shared crate to keep dependency versions unified.
 use shared::{
     rapier_world::rapier3d::prelude::*,
@@ -108,9 +97,6 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
             // Avoid sqrt unless we actually need a direction.
             let dist_sq = dx.sq() + dz.sq();
 
-            // Stuck detection: remember starting distance to target for this step.
-            let dist_sq_before = dist_sq;
-
             // Planar step length.
             let max_step = if has_point_intent {
                 actor.movement_speed.max(0.0) * fixed_dt
@@ -182,38 +168,8 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
             // Clear MoveIntent::Point when within the acceptance radius (planar).
             // TODO: Acceptance radius should be computed differently
-            if has_point_intent && dist_sq_before <= kcc.point_acceptance_radius_sq {
+            if has_point_intent && dist_sq <= kcc.point_acceptance_radius_sq {
                 actor.move_intent = MoveIntent::None;
-                actor.stuck_steps = 0;
-            } else if has_point_intent {
-                // Stuck detection: if we didn't meaningfully reduce distance-to-target this step,
-                // increment stuck counter; otherwise reset it.
-                let ndx = target_x - actor.translation.x;
-                let ndz = target_z - actor.translation.z;
-                let dist_sq_after = ndx.sq() + ndz.sq();
-
-                let made_progress = dist_sq_after + STUCK_PROGRESS_EPS_SQ < dist_sq_before;
-                if made_progress {
-                    actor.stuck_steps = 0;
-                } else {
-                    actor.stuck_steps = actor.stuck_steps.saturating_add(1);
-
-                    if actor.stuck_steps >= STUCK_CLEAR_STEPS {
-                        // If this is a wandering monster, immediately pick a new destination
-                        // so it visibly "unsticks" and keeps roaming without idling.
-                        if MONSTER_STUCK_RETARGET && matches!(actor.kind, ActorKind::Monster(_)) {
-                            let (tx, tz) = wander_target(ctx, actor.id, actor.translation);
-                            actor.move_intent =
-                                MoveIntent::Point(DbVec3::new(tx, actor.translation.y, tz));
-                        } else {
-                            actor.move_intent = MoveIntent::None;
-                        }
-
-                        actor.stuck_steps = 0;
-                    }
-                }
-            } else {
-                actor.stuck_steps = 0;
             }
 
             ctx.db.actor().id().update(actor);

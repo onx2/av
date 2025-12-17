@@ -3,6 +3,7 @@ use spacetimedb::*;
 pub mod schema;
 pub mod types;
 pub mod utils;
+pub mod views;
 pub mod world;
 
 // Reducers split by concern.

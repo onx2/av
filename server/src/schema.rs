@@ -67,10 +67,6 @@ pub struct Actor {
 
     /// The number of steps to wait before flipping grounded state
     pub grounded_grace_steps: u8,
-
-    /// Counts consecutive fixed-steps with a Point intent but no meaningful progress.
-    /// Used by `tick` to clear `move_intent` when stuck against collision.
-    pub stuck_steps: u8,
 }
 
 /// Kinematic Character Controller (KCC) settings shared by server and clients.
