@@ -11,7 +11,6 @@ pub mod reducers {
     pub mod enter_world;
     pub mod leave_world;
     pub mod movement;
-    pub mod spawn_fake_remotes;
     pub mod tick;
 }
 
@@ -22,7 +21,6 @@ pub use reducers::{
     connection::{identity_connected, identity_disconnected},
     enter_world, leave_world,
     movement::request_move,
-    spawn_fake_remotes::spawn_fake_remotes,
     tick::tick,
 };
 
