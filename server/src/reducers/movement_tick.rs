@@ -79,15 +79,15 @@ pub fn movement_tick_reducer(
             let dx = target_x - actor.translation.x;
             let dz = target_z - actor.translation.z;
 
-            // Avoid sqrt unless we actually need a direction.
-            let dist_sq = dx.sq() + dz.sq();
-
             // Planar step length.
             let max_step = if has_point_intent {
                 actor.movement_speed.max(0.0) * fixed_dt
             } else {
                 0.0
             };
+
+            // Avoid sqrt unless we actually need a direction.
+            let dist_sq = dx.sq() + dz.sq();
 
             let planar = if dist_sq > 1.0e-12 && max_step > 0.0 {
                 let dist = dist_sq.sqrt();
