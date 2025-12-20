@@ -3,7 +3,7 @@
 use crate::module_bindings::{
     DbConnection, MoveIntent, Reducer, RemoteModule, RemoteReducers,
     enter_world_reducer::enter_world, leave_world_reducer::leave_world,
-    request_move_reducer::request_move, spawn_fake_remotes_reducer::spawn_fake_remotes,
+    request_move_reducer::request_move,
 };
 use bevy_spacetimedb::RegisterReducerMessage;
 use spacetimedb_sdk::ReducerEvent;
@@ -22,10 +22,4 @@ pub struct EnterWorld {
 #[derive(Debug, RegisterReducerMessage)]
 pub struct LeaveWorld {
     pub event: ReducerEvent<Reducer>,
-}
-
-#[derive(Debug, RegisterReducerMessage)]
-pub struct SpawnFakeRemotes {
-    pub event: ReducerEvent<Reducer>,
-    pub count: u32,
 }

@@ -1,7 +1,7 @@
 use crate::{
     cursor::{CurrentCursor, set_cursor_to_ability, set_cursor_to_combat, set_cursor_to_default},
     input::InputAction,
-    module_bindings::{MoveIntent, enter_world, request_move, spawn_fake_remotes},
+    module_bindings::{MoveIntent, enter_world, request_move},
     server::SpacetimeDB,
 };
 use bevy::{picking::pointer::PointerInteraction, prelude::*};
@@ -100,10 +100,5 @@ pub(super) fn handle_enter_world(
         set_cursor_to_ability(current_cursor);
     } else if keys.just_pressed(KeyCode::Digit3) {
         set_cursor_to_combat(current_cursor);
-    } else if keys.just_pressed(KeyCode::Digit0) {
-        match stdb.reducers().spawn_fake_remotes(10) {
-            Ok(_) => println!("Success: called spawn fake monsters"),
-            Err(e) => eprintln!("{e:?}"),
-        }
     }
 }
