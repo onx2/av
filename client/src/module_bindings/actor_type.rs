@@ -21,6 +21,7 @@ pub struct Actor {
     pub move_intent: MoveIntent,
     pub grounded: bool,
     pub grounded_grace_steps: u8,
+    pub cell_id: u32,
 }
 
 impl __sdk::InModule for Actor {

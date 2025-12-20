@@ -1,4 +1,5 @@
 use crate::types::*;
+use shared::utils::get_aoi_block;
 use spacetimedb::*;
 
 /// Player account data persisted across sessions.
@@ -30,6 +31,23 @@ pub struct Player {
 
     /// Nominal horizontal movement speed in meters/second.
     pub movement_speed: f32,
+}
+
+#[client_visibility_filter]
+const ACTOR_AOI_FILTER: Filter = Filter::Sql(
+    "SELECT actor.* FROM actor
+     JOIN actor_in_aoi ON actor.id = actor_in_aoi.actor_id
+     WHERE actor_in_aoi.identity = :sender",
+);
+
+#[table(name = actor_in_aoi,  public)]
+pub struct ActorInAoi {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    #[index(btree)]
+    pub identity: Identity,
+    pub actor_id: u64,
 }
 
 /// Live actor entity driven by the server's kinematic controller.
@@ -67,6 +85,9 @@ pub struct Actor {
 
     /// The number of steps to wait before flipping grounded state
     pub grounded_grace_steps: u8,
+
+    #[index(btree)]
+    pub cell_id: u32,
 }
 
 /// Kinematic Character Controller (KCC) settings shared by server and clients.
@@ -143,3 +164,23 @@ pub struct WorldStatic {
     /// Collider shape definition.
     pub shape: ColliderShape,
 }
+
+// #[view(name = aoi_actors, public)]
+// fn aoi_actors_view(ctx: &ViewContext) -> Vec<Actor> {
+//     let Some(player) = ctx.db.player().identity().find(ctx.sender) else {
+//         return Vec::new();
+//     };
+//     let Some(actor_id) = player.actor_id else {
+//         return Vec::new();
+//     };
+//     let Some(actor) = ctx.db.actor().id().find(actor_id) else {
+//         return Vec::new();
+//     };
+
+//     let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
+
+//     aoi_block
+//         .into_iter()
+//         .flat_map(|cell_id| ctx.db.actor().cell_id().filter(cell_id))
+//         .collect()
+// }

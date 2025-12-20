@@ -6,6 +6,8 @@
 #![allow(unused, clippy::all)]
 use spacetimedb_sdk::__codegen::{self as __sdk, __lib, __sats, __ws};
 
+pub mod actor_in_aoi_table;
+pub mod actor_in_aoi_type;
 pub mod actor_kind_type;
 pub mod actor_table;
 pub mod actor_type;
@@ -34,6 +36,8 @@ pub mod tick_timer_type;
 pub mod world_static_table;
 pub mod world_static_type;
 
+pub use actor_in_aoi_table::*;
+pub use actor_in_aoi_type::ActorInAoi;
 pub use actor_kind_type::ActorKind;
 pub use actor_table::*;
 pub use actor_type::Actor;
@@ -150,6 +154,7 @@ impl TryFrom<__ws::ReducerCallInfo<__ws::BsatnFormat>> for Reducer {
 #[doc(hidden)]
 pub struct DbUpdate {
     actor: __sdk::TableUpdate<Actor>,
+    actor_in_aoi: __sdk::TableUpdate<ActorInAoi>,
     kcc_settings: __sdk::TableUpdate<KccSettings>,
     player: __sdk::TableUpdate<Player>,
     tick_timer: __sdk::TableUpdate<TickTimer>,
@@ -165,6 +170,9 @@ impl TryFrom<__ws::DatabaseUpdate<__ws::BsatnFormat>> for DbUpdate {
                 "actor" => db_update
                     .actor
                     .append(actor_table::parse_table_update(table_update)?),
+                "actor_in_aoi" => db_update
+                    .actor_in_aoi
+                    .append(actor_in_aoi_table::parse_table_update(table_update)?),
                 "kcc_settings" => db_update
                     .kcc_settings
                     .append(kcc_settings_table::parse_table_update(table_update)?),
@@ -206,6 +214,9 @@ impl __sdk::DbUpdate for DbUpdate {
         diff.actor = cache
             .apply_diff_to_table::<Actor>("actor", &self.actor)
             .with_updates_by_pk(|row| &row.id);
+        diff.actor_in_aoi = cache
+            .apply_diff_to_table::<ActorInAoi>("actor_in_aoi", &self.actor_in_aoi)
+            .with_updates_by_pk(|row| &row.id);
         diff.kcc_settings = cache
             .apply_diff_to_table::<KccSettings>("kcc_settings", &self.kcc_settings)
             .with_updates_by_pk(|row| &row.id);
@@ -228,6 +239,7 @@ impl __sdk::DbUpdate for DbUpdate {
 #[doc(hidden)]
 pub struct AppliedDiff<'r> {
     actor: __sdk::TableAppliedDiff<'r, Actor>,
+    actor_in_aoi: __sdk::TableAppliedDiff<'r, ActorInAoi>,
     kcc_settings: __sdk::TableAppliedDiff<'r, KccSettings>,
     player: __sdk::TableAppliedDiff<'r, Player>,
     tick_timer: __sdk::TableAppliedDiff<'r, TickTimer>,
@@ -246,6 +258,11 @@ impl<'r> __sdk::AppliedDiff<'r> for AppliedDiff<'r> {
         callbacks: &mut __sdk::DbCallbacks<RemoteModule>,
     ) {
         callbacks.invoke_table_row_callbacks::<Actor>("actor", &self.actor, event);
+        callbacks.invoke_table_row_callbacks::<ActorInAoi>(
+            "actor_in_aoi",
+            &self.actor_in_aoi,
+            event,
+        );
         callbacks.invoke_table_row_callbacks::<KccSettings>(
             "kcc_settings",
             &self.kcc_settings,
@@ -978,6 +995,7 @@ impl __sdk::SpacetimeModule for RemoteModule {
 
     fn register_tables(client_cache: &mut __sdk::ClientCache<Self>) {
         actor_table::register_table(client_cache);
+        actor_in_aoi_table::register_table(client_cache);
         kcc_settings_table::register_table(client_cache);
         player_table::register_table(client_cache);
         tick_timer_table::register_table(client_cache);

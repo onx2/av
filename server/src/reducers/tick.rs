@@ -1,4 +1,7 @@
-use crate::types::MoveIntent;
+use std::collections::HashSet;
+
+use crate::schema::{actor_in_aoi, ActorInAoi};
+use crate::types::{ActorKind, MoveIntent};
 use crate::{
     schema::{actor, kcc_settings},
     tick_timer,
@@ -6,6 +9,7 @@ use crate::{
     world::world_query_world,
     TickTimer,
 };
+use shared::utils::{encode_cell_id, get_aoi_block};
 use shared::{
     rapier_world::rapier3d::{
         control::{CharacterAutostep, CharacterLength, KinematicCharacterController},
@@ -125,6 +129,29 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
             actor.translation.x += corrected.translation.x;
             actor.translation.y += corrected.translation.y;
             actor.translation.z += corrected.translation.z;
+
+            let new_cell_id = encode_cell_id(actor.translation.x, actor.translation.z);
+            if new_cell_id != actor.cell_id {
+                actor.cell_id = new_cell_id;
+            }
+
+            match actor.kind {
+                ActorKind::Player(identity) => {
+                    ctx.db.actor_in_aoi().identity().delete(identity);
+                    let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
+                    aoi_block
+                        .into_iter()
+                        .flat_map(|cell| ctx.db.actor().cell_id().filter(cell))
+                        .for_each(|target_actor| {
+                            ctx.db.actor_in_aoi().insert(ActorInAoi {
+                                id: 0,
+                                identity,
+                                actor_id: target_actor.id,
+                            });
+                        });
+                }
+                _ => {}
+            }
 
             // Persist grounded for the next fixed step.
             if corrected.grounded {

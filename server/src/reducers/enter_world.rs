@@ -1,4 +1,5 @@
 use crate::{schema::*, types::*};
+use shared::utils::encode_cell_id;
 use spacetimedb::{ReducerContext, Table};
 
 /// Enter the world: (re)create the caller's live actor from their persisted Player state.
@@ -35,6 +36,7 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         move_intent: MoveIntent::None,
         grounded: false,
         grounded_grace_steps: 0,
+        cell_id: encode_cell_id(player.translation.x, player.translation.z),
     });
 
     // Link back Player -> Actor.
