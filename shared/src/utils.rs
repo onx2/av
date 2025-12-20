@@ -2,11 +2,11 @@ use super::constants::*;
 use nalgebra as na;
 
 pub fn yaw_from_xz(x: f32, z: f32) -> Option<f32> {
-    if x * x + z * z > YAW_EPS {
-        Some((-x).atan2(-z))
-    } else {
-        None
+    if x.sq() + z.sq() > YAW_EPS {
+        return Some((-x).atan2(-z))
     }
+
+    None
 }
 
 pub trait UtilMath {
