@@ -66,10 +66,9 @@ pub struct Actor {
     pub kind: ActorKind,
 
     /// World transform (meters / unit quaternion).
-    pub translation: DbVec3, // 12 bytes
-    // pub rotation: DbQuat, // 16 bytes
-    pub yaw: f32, // 16 bytes
-    // pub scale: DbVec3,    // 12 bytes
+    pub translation: DbVec3,
+    pub yaw: f32,
+
     /// Capsule collider parameters (meters).
     pub capsule_radius: f32,
     pub capsule_half_height: f32,
@@ -164,23 +163,3 @@ pub struct WorldStatic {
     /// Collider shape definition.
     pub shape: ColliderShape,
 }
-
-// #[view(name = aoi_actors, public)]
-// fn aoi_actors_view(ctx: &ViewContext) -> Vec<Actor> {
-//     let Some(player) = ctx.db.player().identity().find(ctx.sender) else {
-//         return Vec::new();
-//     };
-//     let Some(actor_id) = player.actor_id else {
-//         return Vec::new();
-//     };
-//     let Some(actor) = ctx.db.actor().id().find(actor_id) else {
-//         return Vec::new();
-//     };
-
-//     let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
-
-//     aoi_block
-//         .into_iter()
-//         .flat_map(|cell_id| ctx.db.actor().cell_id().filter(cell_id))
-//         .collect()
-// }

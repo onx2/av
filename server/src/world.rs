@@ -1,10 +1,50 @@
 use crate::{
-    schema::{world_static, WorldStatic},
+    schema::{kcc_settings, world_static, WorldStatic},
     types::*,
 };
-use shared::{ColliderShapeDef, RapierQueryWorld, WorldStaticDef};
+use shared::{
+    rapier_world::rapier3d::control::{
+        CharacterAutostep, CharacterLength, KinematicCharacterController,
+    },
+    ColliderShapeDef, RapierQueryWorld, WorldStaticDef,
+};
 use spacetimedb::{ReducerContext, Table};
 use std::sync::OnceLock;
+
+/// Cached in-memory Rapier query world built from immutable `world_static` rows.
+static SHARED_KCC: OnceLock<KinematicCharacterController> = OnceLock::new();
+
+/// Return the cached Rapier query world.
+///
+/// The first call reads the `world_static` table, converts rows to shared definitions,
+/// builds the Rapier query world, and caches it. Subsequent calls return the cached world.
+///
+/// Note: This assumes world statics do not change at runtime.
+pub fn get_kcc(ctx: &ReducerContext) -> &'static KinematicCharacterController {
+    SHARED_KCC.get_or_init(|| {
+        let kcc = ctx
+            .db
+            .kcc_settings()
+            .id()
+            .find(1)
+            .expect("Missing kcc_settings row (expected id = 1)");
+
+        KinematicCharacterController {
+            offset: CharacterLength::Absolute(kcc.offset),
+            max_slope_climb_angle: kcc.max_slope_climb_deg.to_radians(),
+            min_slope_slide_angle: kcc.min_slope_slide_deg.to_radians(),
+            snap_to_ground: None,
+            autostep: Some(CharacterAutostep {
+                max_height: CharacterLength::Absolute(kcc.autostep_max_height),
+                min_width: CharacterLength::Absolute(kcc.autostep_min_width),
+                include_dynamic_bodies: false,
+            }),
+            slide: kcc.slide,
+            normal_nudge_factor: kcc.normal_nudge_factor,
+            ..KinematicCharacterController::default()
+        }
+    })
+}
 
 /// Cached in-memory Rapier query world built from immutable `world_static` rows.
 static WORLD_QUERY_WORLD: OnceLock<RapierQueryWorld> = OnceLock::new();
@@ -15,23 +55,11 @@ static WORLD_QUERY_WORLD: OnceLock<RapierQueryWorld> = OnceLock::new();
 /// builds the Rapier query world, and caches it. Subsequent calls return the cached world.
 ///
 /// Note: This assumes world statics do not change at runtime.
-pub fn world_query_world(ctx: &ReducerContext) -> &'static RapierQueryWorld {
-    WORLD_QUERY_WORLD.get_or_init(|| build_world_query_world(ctx))
-}
-
-/// Build the Rapier query world from DB rows (`world_static`).
-///
-/// Mapping rules:
-/// - Plane(offset): uses `normal = rotation * +Y` and `dist = dot(normal, translation) + offset`.
-/// - Cuboid(half_extents): oriented box using the row's translation+rotation.
-/// - Capsule(dim): Y-aligned capsule using the row's translation+rotation.
-///
-/// Scale:
-/// - This builder intentionally ignores scaling (assumes scale is 1) for determinism and simplicity.
-///   If your DB schema still contains scale fields, they are ignored here.
-fn build_world_query_world(ctx: &ReducerContext) -> RapierQueryWorld {
-    let defs = ctx.db.world_static().iter().map(row_to_def).collect();
-    RapierQueryWorld::build(defs)
+pub fn get_rapier_world(ctx: &ReducerContext) -> &'static RapierQueryWorld {
+    WORLD_QUERY_WORLD.get_or_init(|| {
+        let defs = ctx.db.world_static().iter().map(row_to_def).collect();
+        RapierQueryWorld::build(defs)
+    })
 }
 
 /// Convert a single `WorldStatic` row to the shared schema-agnostic definition.

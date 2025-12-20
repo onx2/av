@@ -1,26 +1,22 @@
-use std::collections::HashSet;
-
 use crate::schema::{actor_in_aoi, ActorInAoi};
 use crate::types::{ActorKind, MoveIntent};
+use crate::world::get_kcc;
 use crate::{
     schema::{actor, kcc_settings},
     tick_timer,
     utils::{get_fixed_delta_time, get_variable_delta_time, has_support_within},
-    world::world_query_world,
+    world::get_rapier_world,
     TickTimer,
 };
 use shared::utils::{encode_cell_id, get_aoi_block};
 use shared::{
-    rapier_world::rapier3d::{
-        control::{CharacterAutostep, CharacterLength, KinematicCharacterController},
-        prelude::*,
-    },
+    rapier_world::rapier3d::prelude::*,
     utils::{yaw_from_xz, UtilMath},
 };
 use spacetimedb::{ReducerContext, Table};
 
 /// Safety cap to avoid spending unbounded time catching up after long stalls.
-const MAX_STEPS_PER_TICK: u32 = 5;
+const MAX_STEPS_PER_TICK: u32 = 3;
 
 #[spacetimedb::reducer]
 pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
@@ -29,9 +25,6 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
         return Err("`tick` may not be invoked by clients.".into());
     }
 
-    let Some(kcc) = ctx.db.kcc_settings().id().find(1) else {
-        return Err("Missing kcc_settings row (expected id = 1)".into());
-    };
     // Fixed timestep.
     let fixed_dt: f32 = get_fixed_delta_time(timer.scheduled_at);
 
@@ -40,37 +33,22 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
     // Accumulate real time; drain it in fixed-size steps.
     timer.time_accumulator += real_dt;
-
-    // Cache the immutable world query state once per reducer invocation.
-    let world = world_query_world(ctx);
-
-    let controller = KinematicCharacterController {
-        offset: CharacterLength::Absolute(kcc.offset),
-        max_slope_climb_angle: kcc.max_slope_climb_deg.to_radians(),
-        min_slope_slide_angle: kcc.min_slope_slide_deg.to_radians(),
-        snap_to_ground: None,
-        autostep: Some(CharacterAutostep {
-            max_height: CharacterLength::Absolute(kcc.autostep_max_height),
-            min_width: CharacterLength::Absolute(kcc.autostep_min_width),
-            include_dynamic_bodies: false,
-        }),
-        slide: kcc.slide,
-        normal_nudge_factor: kcc.normal_nudge_factor,
-        ..KinematicCharacterController::default()
+    let Some(kcc) = ctx.db.kcc_settings().id().find(1) else {
+        return Err("`tick` couldn't find kcc settings.".into());
     };
+    // Cache the immutable world query state once per reducer invocation.
+    let world = get_rapier_world(ctx);
+    let controller = get_kcc(ctx);
 
     let mut steps_ran: u32 = 0;
     while timer.time_accumulator >= fixed_dt {
-        // Borrowed query pipeline view for this step (Rapier 0.31).
+        // Borrowed query pipeline view for this step
         let query_pipeline = world.query_pipeline(QueryFilter::default());
 
         // Process all actors.
         for mut actor in ctx.db.actor().iter() {
             // Determine desired planar movement for this fixed step.
             // For now, handle only MoveIntent::Point; other intents result in no planar motion.
-            //
-            // IMPORTANT: Copy target coordinates out into locals so we don't hold a borrow of
-            // `actor.translation` across the rest of this block (we mutate translation later).
             let (target_x, target_z, has_point_intent) = match &actor.move_intent {
                 MoveIntent::Point(p) => (p.x, p.z, true),
                 _ => (actor.translation.x, actor.translation.z, false),
