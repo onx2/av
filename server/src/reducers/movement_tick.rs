@@ -67,7 +67,7 @@ pub fn movement_tick_reducer(
         let query_pipeline = world.query_pipeline(QueryFilter::default());
 
         // Process all actors.
-        for mut actor in ctx.db.actor().iter() {
+        for mut actor in ctx.db.actor().should_move().filter(true) {
             // Determine desired planar movement for this fixed step.
             // For now, handle only MoveIntent::Point; other intents result in no planar motion.
             let (target_x, target_z, has_point_intent) = match &actor.move_intent {
@@ -162,6 +162,7 @@ pub fn movement_tick_reducer(
                 actor.move_intent = MoveIntent::None;
             }
 
+            actor.should_move = actor.move_intent != MoveIntent::None || !actor.grounded;
             ctx.db.actor().id().update(actor);
         }
 

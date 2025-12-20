@@ -48,6 +48,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
         }
 
         _ => {
+            source_actor.should_move = intent != MoveIntent::None || !source_actor.grounded;
             source_actor.move_intent = intent;
             ctx.db.actor().id().update(source_actor);
             Ok(())

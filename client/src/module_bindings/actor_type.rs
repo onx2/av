@@ -14,6 +14,7 @@ pub struct Actor {
     pub id: u64,
     pub kind: ActorKind,
     pub is_player: bool,
+    pub should_move: bool,
     pub translation: DbVec3,
     pub yaw: f32,
     pub capsule_radius: f32,

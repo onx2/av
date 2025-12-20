@@ -65,6 +65,9 @@ pub struct Actor {
     #[index(btree)]
     pub is_player: bool,
 
+    #[index(btree)]
+    pub should_move: bool,
+
     /// World transform (meters / unit quaternion).
     pub translation: DbVec3,
     pub yaw: f32,

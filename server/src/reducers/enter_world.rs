@@ -36,6 +36,7 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         move_intent: MoveIntent::None,
         grounded: false,
         is_player: true,
+        should_move: true,
         grounded_grace_steps: 0,
         cell_id: encode_cell_id(player.translation.x, player.translation.z),
     });
