@@ -1,6 +1,6 @@
 use super::{ActorEntityMapping, LocalPlayer, NetworkActor, Player, RemotePlayer};
 use crate::{
-    module_bindings::{Actor, ActorKind, ActorTableAccess},
+    module_bindings::{Actor, ActorInAoi, ActorKind},
     server::SpacetimeDB,
 };
 use bevy::prelude::*;
@@ -28,7 +28,7 @@ fn actor_color(kind: &ActorKind, stdb: &SpacetimeDB) -> Color {
 
 pub(super) fn on_actor_deleted(
     mut commands: Commands,
-    mut msgs: ReadDeleteMessage<Actor>,
+    mut msgs: ReadDeleteMessage<ActorInAoi>,
     mut entity_mapping: ResMut<ActorEntityMapping>,
 ) {
     for msg in msgs.read() {
@@ -43,16 +43,23 @@ pub(super) fn on_actor_inserted(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     stdb: SpacetimeDB,
-    mut msgs: ReadInsertMessage<Actor>,
+    mut msgs: ReadInsertMessage<ActorInAoi>,
     mut actor_entity_mapping: ResMut<ActorEntityMapping>,
 ) {
     for msg in msgs.read() {
         let new_actor = msg.row.clone();
 
+        let actor_id = new_actor.id;
+
+        // AOI views can cause the same actor row to be (re)inserted when the AOI set changes.
+        // If we already have a Bevy entity for this actor id, skip spawning to avoid duplicates/flicker.
+        if actor_entity_mapping.0.contains_key(&actor_id) {
+            continue;
+        }
+
         let base_color = actor_color(&new_actor.kind, &stdb);
 
-        let actor_id = new_actor.id;
-        let move_intent = new_actor.move_intent;
+        // let move_intent = new_actor.move_intent;
         let translation: Vec3 = new_actor.translation.into();
         let rotation = Quat::from_rotation_y(new_actor.yaw);
 
@@ -71,10 +78,10 @@ pub(super) fn on_actor_inserted(
                 scale: Vec3::ONE,
             },
             NetworkActor {
-                actor_id,
+                // actor_id,
                 translation,
                 rotation,
-                move_intent,
+                // move_intent: MoveIntent::None,
             },
             Player,
         ));
@@ -116,15 +123,11 @@ pub(super) fn on_actor_inserted(
 
 pub(super) fn sync(
     mut actor_q: Query<&mut NetworkActor, With<Player>>,
-    mut messages: ReadUpdateMessage<Actor>,
-    stdb: SpacetimeDB,
+    mut messages: If<ReadUpdateMessage<ActorInAoi>>,
     actor_entity_mapping: Res<ActorEntityMapping>,
 ) {
     for msg in messages.read() {
-        // Pull the authoritative row from the local STDB cache.
-        let Some(actor) = stdb.db().actor().id().find(&msg.new.id) else {
-            continue;
-        };
+        let actor = msg.new.clone();
         let Some(bevy_entity) = actor_entity_mapping.0.get(&actor.id) else {
             continue;
         };
@@ -134,7 +137,7 @@ pub(super) fn sync(
 
         network_actor.translation = actor.translation.into();
         network_actor.rotation = Quat::from_rotation_y(actor.yaw);
-        network_actor.move_intent = actor.move_intent;
-        network_actor.actor_id = actor.id;
+        // network_actor.move_intent = actor.move_intent;
+        // network_actor.actor_id = actor.id;
     }
 }

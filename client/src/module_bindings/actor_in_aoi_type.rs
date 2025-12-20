@@ -6,24 +6,20 @@ use spacetimedb_sdk::__codegen::{self as __sdk, __lib, __sats, __ws};
 
 use super::actor_kind_type::ActorKind;
 use super::db_vec_3_type::DbVec3;
-use super::move_intent_type::MoveIntent;
 
 #[derive(__lib::ser::Serialize, __lib::de::Deserialize, Clone, PartialEq, Debug)]
 #[sats(crate = __lib)]
-pub struct Actor {
+pub struct ActorInAoi {
     pub id: u64,
-    pub kind: ActorKind,
+    pub identity: __sdk::Identity,
+    pub actor_id: u64,
     pub translation: DbVec3,
+    pub kind: ActorKind,
     pub yaw: f32,
     pub capsule_radius: f32,
     pub capsule_half_height: f32,
-    pub movement_speed: f32,
-    pub move_intent: MoveIntent,
-    pub grounded: bool,
-    pub grounded_grace_steps: u8,
-    pub cell_id: u32,
 }
 
-impl __sdk::InModule for Actor {
+impl __sdk::InModule for ActorInAoi {
     type Module = super::RemoteModule;
 }

@@ -1,4 +1,5 @@
 use crate::types::*;
+use shared::utils::get_aoi_block;
 use spacetimedb::*;
 
 /// Player account data persisted across sessions.
@@ -67,6 +68,13 @@ pub struct Actor {
 
     /// The number of steps to wait before flipping grounded state
     pub grounded_grace_steps: u8,
+
+    #[index(btree)]
+    pub cell_id: u32,
+}
+
+pub struct MyTable {
+    // ... fields
 }
 
 /// Kinematic Character Controller (KCC) settings shared by server and clients.
@@ -143,3 +151,51 @@ pub struct WorldStatic {
     /// Collider shape definition.
     pub shape: ColliderShape,
 }
+
+#[client_visibility_filter]
+const ACTOR_FILTER: Filter = Filter::Sql("SELECT * FROM actor_in_aoi WHERE identity = :sender");
+
+#[table(name = actor_in_aoi, index(name = identity_actor, btree(columns = [identity, actor_id])), public)]
+pub struct ActorInAoi {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    #[index(btree)]
+    pub identity: Identity,
+    pub actor_id: u64,
+    pub translation: DbVec3,
+    pub kind: ActorKind,
+    pub yaw: f32,
+    pub capsule_radius: f32,
+    pub capsule_half_height: f32,
+}
+
+// #[view(name = aoi_actors, public)]
+// fn aoi_actors_view(ctx: &ViewContext) -> Vec<ActorInAoi> {
+//     let Some(player) = ctx.db.player().identity().find(ctx.sender) else {
+//         return Vec::new();
+//     };
+//     let Some(actor_id) = player.actor_id else {
+//         return Vec::new();
+//     };
+//     let Some(actor) = ctx.db.actor().id().find(actor_id) else {
+//         return Vec::new();
+//     };
+
+//     let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
+
+//     aoi_block
+//         .into_iter()
+//         // flat_map turns each cell_id lookup into a single stream of actors
+//         .flat_map(|cell_id| ctx.db.actor().cell_id().filter(cell_id))
+//         .map(|actor| ActorInAoi {
+//             id: actor.id,
+//             kind: actor.kind,
+//             identity: ctx.sender,
+//             translation: actor.translation,
+//             yaw: actor.yaw,
+//             capsule_radius: actor.capsule_radius,
+//             capsule_half_height: actor.capsule_half_height,
+//         })
+//         .collect()
+// }

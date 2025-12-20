@@ -13,3 +13,12 @@ pub const MAX_INTENT_PATH_LEN: usize = 20;
 
 /// Minimum planar motion required to update yaw (meters per tick).
 pub const YAW_EPS: f32 = 1.0e-6;
+
+/// Size of one grid cell in world units (meters).
+/// All cells are square
+pub const CELL_SIZE: f32 = 2.0;
+
+/// Offset applied when converting world positions to grid coordinates.
+/// Shifts the world origin so that grid (0,0) corresponds to world position (-32768, -32768).
+/// Allows unsigned u16 grid coords to cover a world range of ~655360 units (±327680).
+pub const WORLD_OFFSET: f32 = 32768.0;

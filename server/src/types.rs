@@ -244,7 +244,7 @@ pub enum MoveIntent {
 /// Logical kind/ownership for an actor.
 ///
 /// Extend as needed for NPCs, bosses, and other categories.
-#[derive(SpacetimeType, PartialEq)]
+#[derive(SpacetimeType, PartialEq, Clone, Copy)]
 pub enum ActorKind {
     /// A player-controlled actor keyed by the user's identity.
     Player(Identity),

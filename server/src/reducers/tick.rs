@@ -1,4 +1,7 @@
-use crate::types::MoveIntent;
+use std::collections::HashSet;
+
+use crate::schema::{actor_in_aoi, Actor, ActorInAoi};
+use crate::types::{ActorKind, MoveIntent};
 use crate::{
     schema::{actor, kcc_settings},
     tick_timer,
@@ -6,12 +9,13 @@ use crate::{
     world::world_query_world,
     TickTimer,
 };
+use shared::utils::get_aoi_block;
 use shared::{
     rapier_world::rapier3d::{
         control::{CharacterAutostep, CharacterLength, KinematicCharacterController},
         prelude::*,
     },
-    utils::{yaw_from_xz, UtilMath},
+    utils::{encode_cell_id, yaw_from_xz, UtilMath},
 };
 use spacetimedb::{ReducerContext, Table};
 
@@ -30,10 +34,8 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
     };
     // Fixed timestep.
     let fixed_dt: f32 = get_fixed_delta_time(timer.scheduled_at);
-
     // Real time elapsed since last tick; used to advance the accumulator.
     let real_dt: f32 = get_variable_delta_time(ctx.timestamp, timer.last_tick).unwrap_or(fixed_dt);
-
     // Accumulate real time; drain it in fixed-size steps.
     timer.time_accumulator += real_dt;
 
@@ -64,9 +66,6 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
         for mut actor in ctx.db.actor().iter() {
             // Determine desired planar movement for this fixed step.
             // For now, handle only MoveIntent::Point; other intents result in no planar motion.
-            //
-            // IMPORTANT: Copy target coordinates out into locals so we don't hold a borrow of
-            // `actor.translation` across the rest of this block (we mutate translation later).
             let (target_x, target_z, has_point_intent) = match &actor.move_intent {
                 MoveIntent::Point(p) => (p.x, p.z, true),
                 _ => (actor.translation.x, actor.translation.z, false),
@@ -126,6 +125,118 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
             actor.translation.y += corrected.translation.y;
             actor.translation.z += corrected.translation.z;
 
+            let new_cell_id = encode_cell_id(actor.translation.x, actor.translation.z);
+            if new_cell_id != actor.cell_id {
+                actor.cell_id = new_cell_id;
+            }
+
+            match actor.kind {
+                // ActorKind::Player(identity) => {
+                //     let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
+
+                //     // 1. Target: The actors that ARE in the 9 neighbor cells
+                //     let target_actors: Vec<Actor> = aoi_block
+                //         .into_iter()
+                //         .flat_map(|cell_id| ctx.db.actor().cell_id().filter(cell_id))
+                //         .collect();
+
+                //     // 2. Current: The actors this player THINKS are in their AOI
+                //     let current_aoi_rows: Vec<ActorInAoi> =
+                //         ctx.db.actor_in_aoi().identity().filter(identity).collect();
+
+                //     // Maps for fast lookups
+                //     let target_ids: std::collections::HashSet<u64> =
+                //         target_actors.iter().map(|a| a.id).collect();
+
+                //     // 3. DELETE phase: Actors that moved too far away
+                //     for row in current_aoi_rows.iter() {
+                //         if !target_ids.contains(&row.actor_id) {
+                //             ctx.db.actor_in_aoi().delete(ActorInAoi { ..*row });
+                //         }
+                //     }
+
+                //     // 4. INSERT / UPDATE phase
+                //     for actor_to_sync in target_actors {
+                //         // Find if we already have a record for this specific actor in this player's AOI
+                //         let existing_record = current_aoi_rows
+                //             .iter()
+                //             .find(|r| r.actor_id == actor_to_sync.id);
+
+                //         match existing_record {
+                //             Some(existing) => {
+                //                 ctx.db.actor_in_aoi().id().update(ActorInAoi {
+                //                     id: existing.id,
+                //                     identity,
+                //                     actor_id: actor_to_sync.id,
+                //                     translation: actor_to_sync.translation,
+                //                     yaw: actor_to_sync.yaw,
+                //                     kind: existing.kind,
+                //                     capsule_radius: existing.capsule_radius,
+                //                     capsule_half_height: existing.capsule_half_height,
+                //                 });
+                //             }
+                //             None => {
+                //                 // INSERT: Brand new actor entering the player's view
+                //                 ctx.db.actor_in_aoi().insert(ActorInAoi {
+                //                     id: 0,
+                //                     identity,
+                //                     actor_id: actor_to_sync.id,
+                //                     translation: actor_to_sync.translation,
+                //                     kind: actor_to_sync.kind,
+                //                     yaw: actor_to_sync.yaw,
+                //                     capsule_radius: actor_to_sync.capsule_radius,
+                //                     capsule_half_height: actor_to_sync.capsule_half_height,
+                //                 });
+                //             }
+                //         }
+                //     }
+                // }
+                ActorKind::Player(identity) => {
+                    let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
+                    let target_actors: Vec<Actor> = aoi_block
+                        .into_iter()
+                        .flat_map(|cell_id| ctx.db.actor().cell_id().filter(cell_id))
+                        .collect();
+
+                    let target_ids: HashSet<u64> = target_actors.iter().map(|a| a.id).collect();
+
+                    // Delete outdated
+                    for row in ctx.db.actor_in_aoi().identity().filter(identity) {
+                        if !target_ids.contains(&row.actor_id) {
+                            ctx.db.actor_in_aoi().delete(row);
+                        }
+                    }
+
+                    // Insert/update new
+                    let idx = ctx.db.actor_in_aoi().identity_actor();
+                    for actor_to_sync in target_actors {
+                        if let Some(existing) = idx.filter((identity, actor_to_sync.id)).next() {
+                            ctx.db.actor_in_aoi().id().update(ActorInAoi {
+                                id: existing.id,
+                                identity,
+                                actor_id: actor_to_sync.id,
+                                translation: actor_to_sync.translation,
+                                yaw: actor_to_sync.yaw,
+                                kind: existing.kind, // or actor_to_sync.kind if updatable
+                                capsule_radius: existing.capsule_radius,
+                                capsule_half_height: existing.capsule_half_height,
+                            });
+                        } else {
+                            ctx.db.actor_in_aoi().insert(ActorInAoi {
+                                id: 0,
+                                identity,
+                                actor_id: actor_to_sync.id,
+                                translation: actor_to_sync.translation,
+                                kind: actor_to_sync.kind,
+                                yaw: actor_to_sync.yaw,
+                                capsule_radius: actor_to_sync.capsule_radius,
+                                capsule_half_height: actor_to_sync.capsule_half_height,
+                            });
+                        }
+                    }
+                }
+                _ => {}
+            }
             // Persist grounded for the next fixed step.
             if corrected.grounded {
                 actor.grounded = true;

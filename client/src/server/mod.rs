@@ -2,7 +2,7 @@ pub mod reducers;
 pub mod types;
 
 use crate::module_bindings::{
-    ActorTableAccess, DbConnection, PlayerTableAccess, RemoteTables, WorldStaticTableAccess,
+    ActorInAoiTableAccess, DbConnection, PlayerTableAccess, RemoteTables, WorldStaticTableAccess,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadStdbConnectedMessage, StdbConnection, StdbPlugin};
@@ -37,8 +37,9 @@ pub(super) fn plugin(app: &mut App) {
             // Register all tables
             // --------------------------------
             .add_table(RemoteTables::player)
-            .add_table(RemoteTables::actor)
+            // .add_table(RemoteTables::actor)
             .add_table(RemoteTables::world_static)
+            .add_table(RemoteTables::actor_in_aoi)
             .with_run_fn(DbConnection::run_threaded),
     );
     app.add_systems(Update, on_connect);
@@ -50,7 +51,7 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
 
         stdb.subscription_builder().subscribe(vec![
             "SELECT * FROM player",
-            "SELECT * FROM actor",
+            "SELECT * FROM actor_in_aoi",
             "SELECT * FROM world_static",
         ]);
     }

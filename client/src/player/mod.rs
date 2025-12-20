@@ -38,10 +38,10 @@ pub struct Player;
 
 #[derive(Component)]
 pub struct NetworkActor {
-    pub actor_id: u64,
+    // pub actor_id: u64,
     pub translation: Vec3,
     pub rotation: Quat,
-    pub move_intent: MoveIntent,
+    // pub move_intent: MoveIntent,
 }
 
 #[derive(Component)]

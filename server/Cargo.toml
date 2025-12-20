@@ -9,7 +9,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-spacetimedb = "1.11.0"
+spacetimedb = {version="1.11.0", features = ["unstable"]}
 log = "0.4"
 
 shared = { path = "../shared" }
