@@ -32,6 +32,8 @@ pub fn leave_world(ctx: &ReducerContext) {
         return;
     };
 
+    ctx.db.actor_in_aoi().identity().delete(player.identity);
+
     // Persist actor state back to Player.
     player.translation = actor.translation;
     player.yaw = actor.yaw;
