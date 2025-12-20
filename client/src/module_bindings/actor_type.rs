@@ -13,6 +13,7 @@ use super::move_intent_type::MoveIntent;
 pub struct Actor {
     pub id: u64,
     pub kind: ActorKind,
+    pub is_player: bool,
     pub translation: DbVec3,
     pub yaw: f32,
     pub capsule_radius: f32,

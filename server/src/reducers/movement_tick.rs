@@ -1,25 +1,46 @@
-use crate::schema::{actor_in_aoi, ActorInAoi};
-use crate::types::{ActorKind, MoveIntent};
-use crate::world::get_kcc;
 use crate::{
     schema::{actor, kcc_settings},
-    tick_timer,
+    types::MoveIntent,
     utils::{get_fixed_delta_time, get_variable_delta_time, has_support_within},
-    world::get_rapier_world,
-    TickTimer,
+    world::{get_kcc, get_rapier_world},
 };
-use shared::utils::{encode_cell_id, get_aoi_block};
-use shared::{
-    rapier_world::rapier3d::prelude::*,
-    utils::{yaw_from_xz, UtilMath},
-};
-use spacetimedb::{ReducerContext, Table};
+use rapier3d::prelude::*;
+use shared::utils::{encode_cell_id, yaw_from_xz, UtilMath};
+use spacetimedb::*;
 
 /// Safety cap to avoid spending unbounded time catching up after long stalls.
 const MAX_STEPS_PER_TICK: u32 = 3;
 
+#[table(name = movement_tick_timer, scheduled(movement_tick_reducer))]
+pub struct MovementTickTimer {
+    /// Primary key for the scheduled job (single row used).
+    #[primary_key]
+    #[auto_inc]
+    pub scheduled_id: u64,
+    /// When/how often to invoke the scheduled reducer.
+    pub scheduled_at: spacetimedb::ScheduleAt,
+    /// Timestamp of the previous invocation (authoritative delta time source).
+    pub last_tick: Timestamp,
+    /// The time deficit left over from the last run.
+    pub time_accumulator: f32,
+}
+
+pub fn init(ctx: &ReducerContext) {
+    let tick_interval = TimeDuration::from_micros(1_000_000 / 30);
+    ctx.db.movement_tick_timer().scheduled_id().delete(1);
+    ctx.db.movement_tick_timer().insert(MovementTickTimer {
+        scheduled_id: 1,
+        scheduled_at: spacetimedb::ScheduleAt::Interval(tick_interval),
+        last_tick: ctx.timestamp,
+        time_accumulator: 0.,
+    });
+}
+
 #[spacetimedb::reducer]
-pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
+pub fn movement_tick_reducer(
+    ctx: &ReducerContext,
+    mut timer: MovementTickTimer,
+) -> Result<(), String> {
     // Only the server (module identity) may invoke the scheduled reducer.
     if ctx.sender != ctx.identity() {
         return Err("`tick` may not be invoked by clients.".into());
@@ -113,24 +134,6 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
                 actor.cell_id = new_cell_id;
             }
 
-            match actor.kind {
-                ActorKind::Player(identity) => {
-                    ctx.db.actor_in_aoi().identity().delete(identity);
-                    let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
-                    aoi_block
-                        .into_iter()
-                        .flat_map(|cell| ctx.db.actor().cell_id().filter(cell))
-                        .for_each(|target_actor| {
-                            ctx.db.actor_in_aoi().insert(ActorInAoi {
-                                id: 0,
-                                identity,
-                                actor_id: target_actor.id,
-                            });
-                        });
-                }
-                _ => {}
-            }
-
             // Persist grounded for the next fixed step.
             if corrected.grounded {
                 actor.grounded = true;
@@ -175,7 +178,7 @@ pub fn tick(ctx: &ReducerContext, mut timer: TickTimer) -> Result<(), String> {
 
     // Persist timer state.
     timer.last_tick = ctx.timestamp;
-    ctx.db.tick_timer().scheduled_id().update(timer);
+    ctx.db.movement_tick_timer().scheduled_id().update(timer);
 
     Ok(())
 }

@@ -1,5 +1,5 @@
 use nalgebra::point;
-use shared::rapier_world::rapier3d::prelude::*;
+use rapier3d::prelude::*;
 use spacetimedb::ScheduleAt;
 
 pub fn get_variable_delta_time(

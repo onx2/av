@@ -13,4 +13,6 @@ spacetimedb = {version = "1.11.1", features = ["unstable"]}
 log = "0.4"
 
 shared = { path = "../shared" }
+
 nalgebra = {workspace = true}
+rapier3d = { workspace = true }

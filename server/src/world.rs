@@ -2,12 +2,8 @@ use crate::{
     schema::{kcc_settings, world_static, WorldStatic},
     types::*,
 };
-use shared::{
-    rapier_world::rapier3d::control::{
-        CharacterAutostep, CharacterLength, KinematicCharacterController,
-    },
-    ColliderShapeDef, RapierQueryWorld, WorldStaticDef,
-};
+use rapier3d::control::{CharacterAutostep, CharacterLength, KinematicCharacterController};
+use shared::{ColliderShapeDef, RapierQueryWorld, WorldStaticDef};
 use spacetimedb::{ReducerContext, Table};
 use std::sync::OnceLock;
 

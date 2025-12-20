@@ -11,6 +11,9 @@ pub mod actor_in_aoi_type;
 pub mod actor_kind_type;
 pub mod actor_table;
 pub mod actor_type;
+pub mod aoi_tick_reducer_reducer;
+pub mod aoi_tick_timer_table;
+pub mod aoi_tick_timer_type;
 pub mod collider_shape_type;
 pub mod db_capsule_type;
 pub mod db_cone_type;
@@ -27,12 +30,12 @@ pub mod kcc_settings_table;
 pub mod kcc_settings_type;
 pub mod leave_world_reducer;
 pub mod move_intent_type;
+pub mod movement_tick_reducer_reducer;
+pub mod movement_tick_timer_table;
+pub mod movement_tick_timer_type;
 pub mod player_table;
 pub mod player_type;
 pub mod request_move_reducer;
-pub mod tick_reducer;
-pub mod tick_timer_table;
-pub mod tick_timer_type;
 pub mod world_static_table;
 pub mod world_static_type;
 
@@ -41,6 +44,11 @@ pub use actor_in_aoi_type::ActorInAoi;
 pub use actor_kind_type::ActorKind;
 pub use actor_table::*;
 pub use actor_type::Actor;
+pub use aoi_tick_reducer_reducer::{
+    aoi_tick_reducer, set_flags_for_aoi_tick_reducer, AoiTickReducerCallbackId,
+};
+pub use aoi_tick_timer_table::*;
+pub use aoi_tick_timer_type::AoiTickTimer;
 pub use collider_shape_type::ColliderShape;
 pub use db_capsule_type::DbCapsule;
 pub use db_cone_type::DbCone;
@@ -61,12 +69,14 @@ pub use kcc_settings_table::*;
 pub use kcc_settings_type::KccSettings;
 pub use leave_world_reducer::{leave_world, set_flags_for_leave_world, LeaveWorldCallbackId};
 pub use move_intent_type::MoveIntent;
+pub use movement_tick_reducer_reducer::{
+    movement_tick_reducer, set_flags_for_movement_tick_reducer, MovementTickReducerCallbackId,
+};
+pub use movement_tick_timer_table::*;
+pub use movement_tick_timer_type::MovementTickTimer;
 pub use player_table::*;
 pub use player_type::Player;
 pub use request_move_reducer::{request_move, set_flags_for_request_move, RequestMoveCallbackId};
-pub use tick_reducer::{set_flags_for_tick, tick, TickCallbackId};
-pub use tick_timer_table::*;
-pub use tick_timer_type::TickTimer;
 pub use world_static_table::*;
 pub use world_static_type::WorldStatic;
 
@@ -78,12 +88,13 @@ pub use world_static_type::WorldStatic;
 /// to indicate which reducer caused the event.
 
 pub enum Reducer {
+    AoiTickReducer { aoi_tick_timer: AoiTickTimer },
     EnterWorld,
     IdentityConnected,
     IdentityDisconnected,
     LeaveWorld,
+    MovementTickReducer { timer: MovementTickTimer },
     RequestMove { intent: MoveIntent },
-    Tick { timer: TickTimer },
 }
 
 impl __sdk::InModule for Reducer {
@@ -93,12 +104,13 @@ impl __sdk::InModule for Reducer {
 impl __sdk::Reducer for Reducer {
     fn reducer_name(&self) -> &'static str {
         match self {
+            Reducer::AoiTickReducer { .. } => "aoi_tick_reducer",
             Reducer::EnterWorld => "enter_world",
             Reducer::IdentityConnected => "identity_connected",
             Reducer::IdentityDisconnected => "identity_disconnected",
             Reducer::LeaveWorld => "leave_world",
+            Reducer::MovementTickReducer { .. } => "movement_tick_reducer",
             Reducer::RequestMove { .. } => "request_move",
-            Reducer::Tick { .. } => "tick",
             _ => unreachable!(),
         }
     }
@@ -107,6 +119,10 @@ impl TryFrom<__ws::ReducerCallInfo<__ws::BsatnFormat>> for Reducer {
     type Error = __sdk::Error;
     fn try_from(value: __ws::ReducerCallInfo<__ws::BsatnFormat>) -> __sdk::Result<Self> {
         match &value.reducer_name[..] {
+            "aoi_tick_reducer" => Ok(__sdk::parse_reducer_args::<
+                aoi_tick_reducer_reducer::AoiTickReducerArgs,
+            >("aoi_tick_reducer", &value.args)?
+            .into()),
             "enter_world" => Ok(
                 __sdk::parse_reducer_args::<enter_world_reducer::EnterWorldArgs>(
                     "enter_world",
@@ -129,15 +145,16 @@ impl TryFrom<__ws::ReducerCallInfo<__ws::BsatnFormat>> for Reducer {
                 )?
                 .into(),
             ),
+            "movement_tick_reducer" => Ok(__sdk::parse_reducer_args::<
+                movement_tick_reducer_reducer::MovementTickReducerArgs,
+            >("movement_tick_reducer", &value.args)?
+            .into()),
             "request_move" => Ok(
                 __sdk::parse_reducer_args::<request_move_reducer::RequestMoveArgs>(
                     "request_move",
                     &value.args,
                 )?
                 .into(),
-            ),
-            "tick" => Ok(
-                __sdk::parse_reducer_args::<tick_reducer::TickArgs>("tick", &value.args)?.into(),
             ),
             unknown => {
                 Err(
@@ -155,9 +172,10 @@ impl TryFrom<__ws::ReducerCallInfo<__ws::BsatnFormat>> for Reducer {
 pub struct DbUpdate {
     actor: __sdk::TableUpdate<Actor>,
     actor_in_aoi: __sdk::TableUpdate<ActorInAoi>,
+    aoi_tick_timer: __sdk::TableUpdate<AoiTickTimer>,
     kcc_settings: __sdk::TableUpdate<KccSettings>,
+    movement_tick_timer: __sdk::TableUpdate<MovementTickTimer>,
     player: __sdk::TableUpdate<Player>,
-    tick_timer: __sdk::TableUpdate<TickTimer>,
     world_static: __sdk::TableUpdate<WorldStatic>,
 }
 
@@ -173,15 +191,18 @@ impl TryFrom<__ws::DatabaseUpdate<__ws::BsatnFormat>> for DbUpdate {
                 "actor_in_aoi" => db_update
                     .actor_in_aoi
                     .append(actor_in_aoi_table::parse_table_update(table_update)?),
+                "aoi_tick_timer" => db_update
+                    .aoi_tick_timer
+                    .append(aoi_tick_timer_table::parse_table_update(table_update)?),
                 "kcc_settings" => db_update
                     .kcc_settings
                     .append(kcc_settings_table::parse_table_update(table_update)?),
+                "movement_tick_timer" => db_update
+                    .movement_tick_timer
+                    .append(movement_tick_timer_table::parse_table_update(table_update)?),
                 "player" => db_update
                     .player
                     .append(player_table::parse_table_update(table_update)?),
-                "tick_timer" => db_update
-                    .tick_timer
-                    .append(tick_timer_table::parse_table_update(table_update)?),
                 "world_static" => db_update
                     .world_static
                     .append(world_static_table::parse_table_update(table_update)?),
@@ -217,15 +238,21 @@ impl __sdk::DbUpdate for DbUpdate {
         diff.actor_in_aoi = cache
             .apply_diff_to_table::<ActorInAoi>("actor_in_aoi", &self.actor_in_aoi)
             .with_updates_by_pk(|row| &row.id);
+        diff.aoi_tick_timer = cache
+            .apply_diff_to_table::<AoiTickTimer>("aoi_tick_timer", &self.aoi_tick_timer)
+            .with_updates_by_pk(|row| &row.scheduled_id);
         diff.kcc_settings = cache
             .apply_diff_to_table::<KccSettings>("kcc_settings", &self.kcc_settings)
             .with_updates_by_pk(|row| &row.id);
+        diff.movement_tick_timer = cache
+            .apply_diff_to_table::<MovementTickTimer>(
+                "movement_tick_timer",
+                &self.movement_tick_timer,
+            )
+            .with_updates_by_pk(|row| &row.scheduled_id);
         diff.player = cache
             .apply_diff_to_table::<Player>("player", &self.player)
             .with_updates_by_pk(|row| &row.identity);
-        diff.tick_timer = cache
-            .apply_diff_to_table::<TickTimer>("tick_timer", &self.tick_timer)
-            .with_updates_by_pk(|row| &row.scheduled_id);
         diff.world_static = cache
             .apply_diff_to_table::<WorldStatic>("world_static", &self.world_static)
             .with_updates_by_pk(|row| &row.id);
@@ -240,9 +267,10 @@ impl __sdk::DbUpdate for DbUpdate {
 pub struct AppliedDiff<'r> {
     actor: __sdk::TableAppliedDiff<'r, Actor>,
     actor_in_aoi: __sdk::TableAppliedDiff<'r, ActorInAoi>,
+    aoi_tick_timer: __sdk::TableAppliedDiff<'r, AoiTickTimer>,
     kcc_settings: __sdk::TableAppliedDiff<'r, KccSettings>,
+    movement_tick_timer: __sdk::TableAppliedDiff<'r, MovementTickTimer>,
     player: __sdk::TableAppliedDiff<'r, Player>,
-    tick_timer: __sdk::TableAppliedDiff<'r, TickTimer>,
     world_static: __sdk::TableAppliedDiff<'r, WorldStatic>,
     __unused: std::marker::PhantomData<&'r ()>,
 }
@@ -263,13 +291,22 @@ impl<'r> __sdk::AppliedDiff<'r> for AppliedDiff<'r> {
             &self.actor_in_aoi,
             event,
         );
+        callbacks.invoke_table_row_callbacks::<AoiTickTimer>(
+            "aoi_tick_timer",
+            &self.aoi_tick_timer,
+            event,
+        );
         callbacks.invoke_table_row_callbacks::<KccSettings>(
             "kcc_settings",
             &self.kcc_settings,
             event,
         );
+        callbacks.invoke_table_row_callbacks::<MovementTickTimer>(
+            "movement_tick_timer",
+            &self.movement_tick_timer,
+            event,
+        );
         callbacks.invoke_table_row_callbacks::<Player>("player", &self.player, event);
-        callbacks.invoke_table_row_callbacks::<TickTimer>("tick_timer", &self.tick_timer, event);
         callbacks.invoke_table_row_callbacks::<WorldStatic>(
             "world_static",
             &self.world_static,
@@ -996,9 +1033,10 @@ impl __sdk::SpacetimeModule for RemoteModule {
     fn register_tables(client_cache: &mut __sdk::ClientCache<Self>) {
         actor_table::register_table(client_cache);
         actor_in_aoi_table::register_table(client_cache);
+        aoi_tick_timer_table::register_table(client_cache);
         kcc_settings_table::register_table(client_cache);
+        movement_tick_timer_table::register_table(client_cache);
         player_table::register_table(client_cache);
-        tick_timer_table::register_table(client_cache);
         world_static_table::register_table(client_cache);
     }
 }

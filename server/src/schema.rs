@@ -1,5 +1,4 @@
 use crate::types::*;
-use shared::utils::get_aoi_block;
 use spacetimedb::*;
 
 /// Player account data persisted across sessions.
@@ -17,7 +16,6 @@ pub struct Player {
     #[index(btree)]
     pub actor_id: Option<u64>,
 
-    // ------ Persisted actor state (server-authoritative) ------
     /// Last known translation of the actor (meters).
     pub translation: DbVec3,
 
@@ -33,13 +31,6 @@ pub struct Player {
     pub movement_speed: f32,
 }
 
-#[client_visibility_filter]
-const ACTOR_AOI_FILTER: Filter = Filter::Sql(
-    "SELECT actor.* FROM actor
-     JOIN actor_in_aoi ON actor.id = actor_in_aoi.actor_id
-     WHERE actor_in_aoi.identity = :sender",
-);
-
 #[table(name = actor_in_aoi,  public)]
 pub struct ActorInAoi {
     #[primary_key]
@@ -50,6 +41,12 @@ pub struct ActorInAoi {
     pub actor_id: u64,
 }
 
+#[client_visibility_filter]
+const ACTOR_AOI_FILTER: Filter = Filter::Sql(
+    "SELECT actor.* FROM actor
+     JOIN actor_in_aoi ON actor.id = actor_in_aoi.actor_id
+     WHERE actor_in_aoi.identity = :sender",
+);
 /// Live actor entity driven by the server's kinematic controller.
 ///
 /// An `Actor` exists only while the player is "in world". The authoritative
@@ -64,6 +61,9 @@ pub struct Actor {
 
     /// Logical kind/ownership of this actor.
     pub kind: ActorKind,
+
+    #[index(btree)]
+    pub is_player: bool,
 
     /// World transform (meters / unit quaternion).
     pub translation: DbVec3,
