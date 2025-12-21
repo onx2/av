@@ -92,7 +92,7 @@ pub fn identity_disconnected(ctx: &ReducerContext) {
         ctx.db.actor().id().delete(actor.id);
     }
 
-    ctx.db.actor_in_aoi().identity().delete(player.identity);
+    // ctx.db.actor_in_aoi().identity().delete(player.identity);
     player.actor_id = None;
     ctx.db.player().identity().update(player);
 }

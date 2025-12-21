@@ -1,11 +1,12 @@
 use super::{LocalPlayer, NetworkTransform, Player, RemotePlayer};
 use crate::{
-    module_bindings::{Actor, TransformData, TransformDataTableAccess},
+    module_bindings::{Actor, AoiTransformDataTableAccess, TransformData},
     player::NetworkTransformEntityMapping,
     server::SpacetimeDB,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage, ReadUpdateMessage};
+use spacetimedb_sdk::Table;
 
 pub(super) fn on_actor_deleted(
     mut commands: Commands,
@@ -13,6 +14,7 @@ pub(super) fn on_actor_deleted(
     mut entity_mapping: ResMut<NetworkTransformEntityMapping>,
 ) {
     for msg in msgs.read() {
+        println!("REMOVED: {:?}", msg.row);
         if let Some(bevy_entity) = entity_mapping.0.remove(&msg.row.transform_data_id) {
             commands.entity(bevy_entity).despawn();
         }
@@ -28,6 +30,7 @@ pub(super) fn on_actor_inserted(
     mut actor_entity_mapping: ResMut<NetworkTransformEntityMapping>,
 ) {
     for msg in msgs.read() {
+        println!("INSERTED: {:?}", msg.row);
         let new_actor = msg.row.clone();
         let is_local = new_actor.identity == Some(stdb.identity());
         let base_color = if is_local {
@@ -38,10 +41,11 @@ pub(super) fn on_actor_inserted(
 
         let Some(transform_data) = stdb
             .db()
-            .transform_data()
-            .id()
-            .find(&msg.row.transform_data_id)
+            .aoi_transform_data()
+            .iter()
+            .find(|data| data.id == msg.row.transform_data_id)
         else {
+            println!("Failed to find transform data for actor {:?}", new_actor);
             continue;
         };
 
@@ -112,6 +116,7 @@ pub(super) fn sync(
     net_transform_entity_mapping: Res<NetworkTransformEntityMapping>,
 ) {
     for msg in messages.read() {
+        println!("UPDATED: {:?}", msg.new);
         let transform_data = msg.new.clone();
         // Pull the authoritative row from the local STDB cache.
         let Some(bevy_entity) = net_transform_entity_mapping.0.get(&transform_data.id) else {

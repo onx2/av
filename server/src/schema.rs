@@ -1,4 +1,5 @@
 use crate::types::*;
+use shared::utils::get_aoi_block;
 use spacetimedb::*;
 
 /// Player account data persisted across sessions.
@@ -28,32 +29,12 @@ pub struct Player {
     pub capsule_half_height: f32,
 }
 
-#[table(name = actor_in_aoi,  public)]
-pub struct ActorInAoi {
-    #[primary_key]
-    #[auto_inc]
-    pub id: u64,
-    #[index(btree)]
-    pub transform_data_id: u32,
-
-    #[index(btree)]
-    pub identity: Identity,
-    pub actor_id: u64,
-}
-
-#[client_visibility_filter]
-const ACTOR_AOI_FILTER: Filter = Filter::Sql(
-    "SELECT actor.* FROM actor
-     JOIN actor_in_aoi ON actor.id = actor_in_aoi.actor_id
-     WHERE actor_in_aoi.identity = :sender",
-);
-
 /// Live actor entity driven by the server's kinematic controller.
 ///
 /// An `Actor` exists only while the player is "in world". The authoritative
 /// values here are updated every tick by the server and may be mirrored
 /// back to the `Player` row when leaving or disconnecting.
-#[table(name = actor, public)]
+#[table(name = actor)]
 pub struct Actor {
     /// Auto-incremented unique id (primary key).
     #[primary_key]
@@ -85,13 +66,8 @@ pub struct Actor {
     pub capsule_half_height: f32,
 }
 
-#[client_visibility_filter]
-const TRANSFORM_DATA_FILTER: Filter = Filter::Sql(
-    "SELECT transform_data.* FROM transform_data
-     JOIN actor_in_aoi ON transform_data.id = actor_in_aoi.transform_data_id
-     WHERE actor_in_aoi.identity = :sender",
-);
-#[table(name = transform_data, public)]
+#[derive(Default)]
+#[table(name = transform_data)]
 pub struct TransformData {
     #[primary_key]
     #[auto_inc]
@@ -101,6 +77,7 @@ pub struct TransformData {
 
     pub yaw: f32,
 }
+
 #[table(name = movement_data)]
 pub struct MovementData {
     #[primary_key]
@@ -251,4 +228,51 @@ pub struct WorldStatic {
 
     /// Collider shape definition.
     pub shape: ColliderShape,
+}
+
+#[view(name = aoi_actor, public)]
+fn aoi_actor_view(ctx: &ViewContext) -> Vec<Actor> {
+    let Some(player) = ctx.db.player().identity().find(ctx.sender) else {
+        return Vec::new();
+    };
+    let Some(actor_id) = player.actor_id else {
+        return Vec::new();
+    };
+    let Some(actor) = ctx.db.actor().id().find(actor_id) else {
+        return Vec::new();
+    };
+
+    let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
+
+    aoi_block
+        .into_iter()
+        .flat_map(|cell_id| ctx.db.actor().cell_id().filter(cell_id))
+        .collect()
+}
+
+#[view(name = aoi_transform_data, public)]
+fn aoi_transform_data_view(ctx: &ViewContext) -> Vec<TransformData> {
+    let Some(player) = ctx.db.player().identity().find(ctx.sender) else {
+        return Vec::new();
+    };
+    let Some(actor_id) = player.actor_id else {
+        return Vec::new();
+    };
+    let Some(actor) = ctx.db.actor().id().find(actor_id) else {
+        return Vec::new();
+    };
+
+    let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
+    aoi_block
+        .into_iter()
+        .flat_map(|cell_id| {
+            ctx.db.actor().cell_id().filter(cell_id).map(|actor| {
+                ctx.db
+                    .transform_data()
+                    .id()
+                    .find(actor.transform_data_id)
+                    .unwrap_or_default()
+            })
+        })
+        .collect()
 }

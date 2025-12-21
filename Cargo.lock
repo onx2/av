@@ -1317,8 +1317,7 @@ dependencies = [
 [[package]]
 name = "bevy_spacetimedb"
 version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2aee7e9cf362911e4b4ed28f25a16bdc1ada1178375302385c8f5595e35f4d1f"
+source = "git+https://github.com/BigWoofStudios/bevy_spacetimedb?rev=1de3cd0455e216eac572a40896fa6fd1ac75211d#1de3cd0455e216eac572a40896fa6fd1ac75211d"
 dependencies = [
  "bevy",
  "bevy_spacetimedb_macros",

@@ -32,7 +32,7 @@ pub fn leave_world(ctx: &ReducerContext) {
         return;
     };
 
-    ctx.db.actor_in_aoi().identity().delete(player.identity);
+    // ctx.db.actor_in_aoi().identity().delete(player.identity);
 
     // Persist actor state back to Player.
     player.capsule_radius = actor.capsule_radius;
