@@ -26,7 +26,9 @@ use spacetimedb::*;
 
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {
-    // Configure scheduled ticks.
+    // Configure scheduled ticks:
+    // - player movement @ 30 Hz
+    // - non-player movement @ 15 Hz
     movement_tick::init(ctx);
     // aoi_tick::init(ctx);
 

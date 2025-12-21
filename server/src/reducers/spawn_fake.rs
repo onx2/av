@@ -4,9 +4,25 @@ use crate::{
         MovementData, PrimaryStats, SecondaryStats, TransformData, VitalStats,
     },
     types::{DbVec3, MoveIntent},
+    utils::LogStopwatch,
 };
 use shared::utils::encode_cell_id;
+use spacetimedb::Table;
 use spacetimedb::*;
+
+/// Convert a SpacetimeDB `Timestamp` into an integer suitable for btree ranged-index scans.
+///
+/// We intentionally store the scheduled time as `u64` microseconds since epoch because:
+/// - `Timestamp` itself is not filterable for `RangedIndex::filter`
+/// - integers are filterable and support ranges efficiently
+///
+/// Implementation note:
+/// - `Timestamp` itself is not filterable for `RangedIndex::filter`, so we store a filterable
+///   surrogate (`u64` microseconds since unix epoch).
+/// - This uses the stable numeric accessor `to_micros_since_unix_epoch()`.
+fn ts_us(ts: Timestamp) -> u64 {
+    ts.to_micros_since_unix_epoch() as u64
+}
 
 /// How often the scheduled reducer wakes up to check which fakes need new targets.
 const FAKE_WANDER_TICK_HZ: i64 = 2; // 2 Hz = every 500ms
@@ -20,6 +36,15 @@ const DEFAULT_WANDER_RADIUS_M: f32 = 35.0;
 /// Random delay range between wander target picks (seconds).
 const WANDER_DELAY_MIN_S: i64 = 3;
 const WANDER_DELAY_MAX_S: i64 = 10;
+
+/// Chance that a fake will idle instead of picking a new movement target when its timer elapses.
+/// This is to simulate more realistic stop/start behavior and reduce the number of NPCs moving
+/// continuously in stress tests.
+const WANDER_IDLE_CHANCE: f32 = 0.35;
+
+/// Random idle duration range (seconds) when idling is chosen.
+const IDLE_DELAY_MIN_S: i64 = 2;
+const IDLE_DELAY_MAX_S: i64 = 6;
 
 /// Default movement speed for fakes (m/s).
 const DEFAULT_FAKE_SPEED_MPS: f32 = 3.5;
@@ -42,8 +67,14 @@ pub struct FakeWanderState {
     pub wander_radius_m: f32,
 
     /// Next time this actor should pick a new random target (server timestamp).
-    #[index(btree)]
     pub next_wander_at: Timestamp,
+
+    /// Filterable surrogate key for `next_wander_at` (microseconds since epoch).
+    ///
+    /// SpacetimeDB ranged index scans require a `FilterableValue` type; `Timestamp` is not
+    /// filterable, so we store an integer representation specifically for indexed range scans.
+    #[index(btree)]
+    pub next_wander_at_us: u64,
 }
 
 /// Scheduled driver for fake wandering.
@@ -137,6 +168,8 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
             movement_data_id: movement.id,
             identity: None,
             is_player: false,
+            // Keep the duplicated flag consistent with the newly created MovementData row.
+            should_move: movement.should_move,
             cell_id: encode_cell_id(spawn_translation.x, spawn_translation.z),
             capsule_radius: DEFAULT_CAPSULE_RADIUS_M,
             capsule_half_height: DEFAULT_CAPSULE_HALF_HEIGHT_M,
@@ -154,6 +187,7 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
             home_translation: spawn_translation,
             wander_radius_m: DEFAULT_WANDER_RADIUS_M,
             next_wander_at: next_at,
+            next_wander_at_us: ts_us(next_at),
         });
     }
 
@@ -166,19 +200,30 @@ pub fn fake_wander_tick_reducer(
     ctx: &ReducerContext,
     _timer: FakeWanderTickTimer,
 ) -> Result<(), String> {
+    // Sampled span logging (LogStopwatch-style; WASM-safe).
+    // With ~5000 rows, avoid per-row span logging (it dominates log volume and adds overhead).
+    let mut sw = LogStopwatch::new(ctx, "fake_wander_tick_reducer", false, 0.02);
+
+    sw.span("auth");
     // Only the server (module identity) may invoke scheduled reducers.
     if ctx.sender != ctx.identity() {
         return Err("`fake_wander_tick_reducer` may not be invoked by clients.".into());
     }
 
+    sw.span("rng_init");
     let mut rng = SimpleRng::from_timestamp(ctx.timestamp);
 
-    // Iterate all fakes whose timer has elapsed and pick a new target within radius of home.
-    // NOTE: If this grows large, add a btree index on `next_wander_at` and filter by it.
-    for mut state in ctx.db.fake_wander_state().iter() {
-        if state.next_wander_at > ctx.timestamp {
-            continue;
-        }
+    sw.span("iterate_due_states");
+    // Iterate ONLY states that are due (next_wander_at_us <= now_us) using the btree index.
+    let now_us = ts_us(ctx.timestamp);
+    for mut state in ctx
+        .db
+        .fake_wander_state()
+        .next_wander_at_us()
+        .filter(..=now_us)
+    {
+        // Only instrument the expensive/meaningful path (due rows).
+        // sw.span("process_due_state");
 
         let Some(a) = ctx.db.actor().id().find(state.actor_id) else {
             // Orphan state; clean it up.
@@ -208,10 +253,46 @@ pub fn fake_wander_tick_reducer(
             state.home_translation.z + dz,
         );
 
-        // Set a new target.
+        // Decide whether to idle or to pick a new movement target.
+        // This reduces the fraction of non-players that are continuously moving.
+        if rng.next_f32_01() < WANDER_IDLE_CHANCE {
+            // Enter idle: clear intent and ensure should_move is false (unless airborne).
+            m.move_intent = MoveIntent::None;
+            let should_move = !m.grounded;
+            m.should_move = should_move;
+            ctx.db.movement_data().id().update(m);
+
+            // Keep the duplicated flag on `Actor` consistent with `MovementData.should_move`.
+            if a.should_move != should_move {
+                ctx.db.actor().id().update(Actor { should_move, ..a });
+            }
+
+            // Schedule when we should decide again (idle duration).
+            let delay_s = rng.gen_range_i64_inclusive(IDLE_DELAY_MIN_S, IDLE_DELAY_MAX_S);
+            state.next_wander_at = ctx
+                .timestamp
+                .checked_add(TimeDuration::from_micros(delay_s.saturating_mul(1_000_000)))
+                .ok_or_else(|| "timestamp overflow computing next wander time".to_string())?;
+            state.next_wander_at_us = ts_us(state.next_wander_at);
+            ctx.db.fake_wander_state().actor_id().update(state);
+
+            continue;
+        }
+
+        // Otherwise: pick a new target and start moving.
         m.move_intent = MoveIntent::Point(target);
         m.should_move = true;
         ctx.db.movement_data().id().update(m);
+
+        // Keep the duplicated flag on `Actor` consistent with `MovementData.should_move`.
+        // Movement ticks iterate `actor(should_move, is_player)`, so if this isn't set,
+        // the actor will never be processed.
+        if !a.should_move {
+            ctx.db.actor().id().update(Actor {
+                should_move: true,
+                ..a
+            });
+        }
 
         // Schedule the next change.
         let delay_s = rng.gen_range_i64_inclusive(WANDER_DELAY_MIN_S, WANDER_DELAY_MAX_S);
@@ -219,9 +300,11 @@ pub fn fake_wander_tick_reducer(
             .timestamp
             .checked_add(TimeDuration::from_micros(delay_s.saturating_mul(1_000_000)))
             .ok_or_else(|| "timestamp overflow computing next wander time".to_string())?;
+        state.next_wander_at_us = ts_us(state.next_wander_at);
         ctx.db.fake_wander_state().actor_id().update(state);
     }
 
+    sw.end_span();
     Ok(())
 }
 

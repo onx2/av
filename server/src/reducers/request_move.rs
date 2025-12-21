@@ -64,9 +64,23 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
         }
 
         _ => {
-            movement_data.should_move = intent != MoveIntent::None || !movement_data.grounded;
+            // Compute before updating to avoid using `movement_data` after it's moved into `update(...)`.
+            let should_move = intent != MoveIntent::None || !movement_data.grounded;
+
+            movement_data.should_move = should_move;
             movement_data.move_intent = intent;
             ctx.db.movement_data().id().update(movement_data);
+
+            // Keep the duplicated flag on `Actor` consistent with `MovementData.should_move`.
+            // Movement ticks iterate `actor(should_move, is_player)`, so if this isn't set,
+            // the actor will never be processed.
+            if source_actor.should_move != should_move {
+                ctx.db.actor().id().update(Actor {
+                    should_move,
+                    ..source_actor
+                });
+            }
+
             Ok(())
         }
     }

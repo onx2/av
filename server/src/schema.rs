@@ -2,6 +2,48 @@ use crate::types::*;
 use shared::utils::get_aoi_block;
 use spacetimedb::*;
 
+/// Aggregated timing statistics for reducers/spans over time.
+///
+/// This is intended for lightweight, always-on profiling via sampling:
+/// - `event` is typically the reducer name (e.g. "movement_tick").
+/// - `span` is either "event" (whole reducer) or a named section (e.g. "kcc_move_shape").
+/// - `key` is a stable unique identifier: "{event}::{span}".
+///
+/// Notes:
+/// - Durations are stored in microseconds as integers to avoid float drift.
+/// - `ema_us` is a best-effort exponential moving average in microseconds.
+/// - You can periodically query/log these rows to identify hotspots.
+#[table(name = timing_stats)]
+pub struct TimingStats {
+    /// Unique key per (event, span) pair.
+    #[primary_key]
+    pub key: String,
+
+    /// Reducer/event name.
+    #[index(btree)]
+    pub event: String,
+
+    /// Span name (or "event").
+    #[index(btree)]
+    pub span: String,
+
+    /// Number of samples aggregated.
+    pub samples: u64,
+
+    /// Sum of durations (microseconds).
+    pub total_us: u128,
+
+    /// Running min/max duration in microseconds.
+    pub min_us: u64,
+    pub max_us: u64,
+
+    /// Exponential moving average in microseconds (best-effort).
+    pub ema_us: f64,
+
+    /// Timestamp of the last update.
+    pub last_updated_at: Timestamp,
+}
+
 /// Player account data persisted across sessions.
 ///
 /// This table persists the last known actor state so players can rejoin
@@ -34,7 +76,7 @@ pub struct Player {
 /// An `Actor` exists only while the player is "in world". The authoritative
 /// values here are updated every tick by the server and may be mirrored
 /// back to the `Player` row when leaving or disconnecting.
-#[table(name = actor)]
+#[table(name = actor, index(name=should_move_and_is_player, btree(columns=[should_move, is_player])))]
 pub struct Actor {
     /// Auto-incremented unique id (primary key).
     #[primary_key]
@@ -57,6 +99,9 @@ pub struct Actor {
     /// Used alongside identity for faster btree lookups
     #[index(btree)]
     pub is_player: bool,
+
+    #[index(btree)]
+    pub should_move: bool,
 
     #[index(btree)]
     pub cell_id: u32,

@@ -47,10 +47,8 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         // yaw: player.yaw,
         capsule_radius: player.capsule_radius,
         capsule_half_height: player.capsule_half_height,
-        // move_intent: MoveIntent::None,
-        // grounded: false,
-        // should_move: true,
-        // grounded_grace_steps: 0,
+        // Keep the duplicated flag consistent with the persisted MovementData row.
+        should_move: movement_data.should_move,
         cell_id: encode_cell_id(transform_data.translation.x, transform_data.translation.z),
     });
 
