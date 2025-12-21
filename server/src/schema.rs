@@ -12,23 +12,20 @@ pub struct Player {
     #[primary_key]
     pub identity: Identity,
 
+    pub primary_stats_id: u32,
+    pub secondary_stats_id: u32,
+    pub vital_stats_id: u32,
+    pub transform_data_id: u32,
+    pub movement_data_id: u32,
+
     /// Optional live actor id. None if not currently in-world.
     #[index(btree)]
     pub actor_id: Option<u64>,
-
-    /// Last known translation of the actor (meters).
-    pub translation: DbVec3,
-
-    /// Last known rotation of the actor (yaw).
-    pub yaw: f32,
 
     /// Capsule radius used by the actor's kinematic collider (meters).
     pub capsule_radius: f32,
     /// Capsule half-height used by the actor's kinematic collider (meters).
     pub capsule_half_height: f32,
-
-    /// Nominal horizontal movement speed in meters/second.
-    pub movement_speed: f32,
 }
 
 #[table(name = actor_in_aoi,  public)]
@@ -36,6 +33,9 @@ pub struct ActorInAoi {
     #[primary_key]
     #[auto_inc]
     pub id: u64,
+    #[index(btree)]
+    pub transform_data_id: u32,
+
     #[index(btree)]
     pub identity: Identity,
     pub actor_id: u64,
@@ -47,6 +47,7 @@ const ACTOR_AOI_FILTER: Filter = Filter::Sql(
      JOIN actor_in_aoi ON actor.id = actor_in_aoi.actor_id
      WHERE actor_in_aoi.identity = :sender",
 );
+
 /// Live actor entity driven by the server's kinematic controller.
 ///
 /// An `Actor` exists only while the player is "in world". The authoritative
@@ -59,25 +60,68 @@ pub struct Actor {
     #[auto_inc]
     pub id: u64,
 
-    /// Logical kind/ownership of this actor.
-    pub kind: ActorKind,
+    pub primary_stats_id: u32,
+    pub secondary_stats_id: u32,
+    pub vital_stats_id: u32,
 
+    #[unique]
+    pub movement_data_id: u32,
+
+    #[unique]
+    pub transform_data_id: u32,
+
+    // pub kind: ActorKind,
+    /// An optional player identity when this actor is controlled, NOT a server actor.
+    pub identity: Option<Identity>,
+    /// Used alongside identity for faster btree lookups
     #[index(btree)]
     pub is_player: bool,
 
-    #[index(btree)]
-    pub should_move: bool,
+    // #[index(btree)]
+    // pub should_move: bool,
 
-    /// World transform (meters / unit quaternion).
-    pub translation: DbVec3,
-    pub yaw: f32,
+    // pub translation: DbVec3,
+    // pub yaw: f32,
+    // /// Current movement intent.
+    // pub move_intent: MoveIntent,
+
+    // /// Whether the Actor was grounded last X grounded_grace_steps ago
+    // pub grounded: bool,
+
+    // /// The number of steps to wait before flipping grounded state
+    // pub grounded_grace_steps: u8,
+    #[index(btree)]
+    pub cell_id: u32,
 
     /// Capsule collider parameters (meters).
     pub capsule_radius: f32,
     pub capsule_half_height: f32,
+}
 
-    /// Nominal horizontal movement speed (m/s).
-    pub movement_speed: f32,
+#[client_visibility_filter]
+const TRANSFORM_DATA_FILTER: Filter = Filter::Sql(
+    "SELECT transform_data.* FROM transform_data
+     JOIN actor_in_aoi ON transform_data.id = actor_in_aoi.transform_data_id
+     WHERE actor_in_aoi.identity = :sender",
+    // JOIN actor ON actor.transform_data_id = transform_data.id",
+);
+#[table(name = transform_data, public)]
+pub struct TransformData {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u32,
+
+    pub translation: DbVec3,
+    pub yaw: f32,
+}
+#[table(name = movement_data)]
+pub struct MovementData {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u32,
+
+    #[index(btree)]
+    pub should_move: bool,
 
     /// Current movement intent.
     pub move_intent: MoveIntent,
@@ -87,9 +131,56 @@ pub struct Actor {
 
     /// The number of steps to wait before flipping grounded state
     pub grounded_grace_steps: u8,
+}
 
-    #[index(btree)]
-    pub cell_id: u32,
+#[table(name = primary_stats)]
+pub struct PrimaryStats {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u32,
+
+    pub strength: u8,
+    pub dexterity: u8,
+    pub fortitude: u8,
+    pub intelligence: u8,
+    pub piety: u8,
+}
+
+#[table(name = secondary_stats)]
+pub struct SecondaryStats {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u32,
+
+    /// Nominal horizontal movement speed (m/s), computed value
+    pub movement_speed: f32,
+
+    pub max_health: u16,
+    pub max_mana: u16,
+    pub max_stamina: u16,
+}
+
+impl Default for SecondaryStats {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            movement_speed: 0.0,
+            max_health: 0,
+            max_mana: 0,
+            max_stamina: 0,
+        }
+    }
+}
+
+#[table(name = vital_stats)]
+pub struct VitalStats {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u32,
+
+    pub health: u16,
+    pub mana: u16,
+    pub stamina: u16,
 }
 
 /// Kinematic Character Controller (KCC) settings shared by server and clients.

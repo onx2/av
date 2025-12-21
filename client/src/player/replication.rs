@@ -1,38 +1,19 @@
-use super::{ActorEntityMapping, LocalPlayer, NetworkActor, Player, RemotePlayer};
+use super::{LocalPlayer, NetworkTransform, Player, RemotePlayer};
 use crate::{
-    module_bindings::{Actor, ActorKind, ActorTableAccess},
+    module_bindings::{Actor, TransformData, TransformDataTableAccess},
+    player::NetworkTransformEntityMapping,
     server::SpacetimeDB,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage, ReadUpdateMessage};
 
-fn is_monster(kind: &ActorKind) -> bool {
-    matches!(kind, ActorKind::Monster(_))
-}
-fn is_local_player(kind: &ActorKind, stdb: &SpacetimeDB) -> bool {
-    matches!(kind, ActorKind::Player(identity) if *identity == stdb.identity())
-}
-fn is_remote_player(kind: &ActorKind, stdb: &SpacetimeDB) -> bool {
-    matches!(kind, ActorKind::Player(identity) if *identity != stdb.identity())
-}
-fn actor_color(kind: &ActorKind, stdb: &SpacetimeDB) -> Color {
-    if is_monster(kind) {
-        Color::linear_rgb(0.8, 0.6, 0.1)
-    } else if is_local_player(kind, stdb) {
-        Color::linear_rgb(0.2, 0.9, 0.8)
-    } else {
-        // Remote player
-        Color::linear_rgb(0.9, 0.2, 0.2)
-    }
-}
-
 pub(super) fn on_actor_deleted(
     mut commands: Commands,
     mut msgs: ReadDeleteMessage<Actor>,
-    mut entity_mapping: ResMut<ActorEntityMapping>,
+    mut entity_mapping: ResMut<NetworkTransformEntityMapping>,
 ) {
     for msg in msgs.read() {
-        if let Some(bevy_entity) = entity_mapping.0.remove(&msg.row.id) {
+        if let Some(bevy_entity) = entity_mapping.0.remove(&msg.row.transform_data_id) {
             commands.entity(bevy_entity).despawn();
         }
     }
@@ -44,17 +25,28 @@ pub(super) fn on_actor_inserted(
     mut materials: ResMut<Assets<StandardMaterial>>,
     stdb: SpacetimeDB,
     mut msgs: ReadInsertMessage<Actor>,
-    mut actor_entity_mapping: ResMut<ActorEntityMapping>,
+    mut actor_entity_mapping: ResMut<NetworkTransformEntityMapping>,
 ) {
     for msg in msgs.read() {
         let new_actor = msg.row.clone();
+        let is_local = new_actor.identity == Some(stdb.identity());
+        let base_color = if is_local {
+            Color::linear_rgb(0.2, 0.9, 0.8)
+        } else {
+            Color::linear_rgb(0.9, 0.2, 0.2)
+        };
 
-        let base_color = actor_color(&new_actor.kind, &stdb);
+        let Some(transform_data) = stdb
+            .db()
+            .transform_data()
+            .id()
+            .find(&msg.row.transform_data_id)
+        else {
+            continue;
+        };
 
-        let actor_id = new_actor.id;
-        let move_intent = new_actor.move_intent;
-        let translation: Vec3 = new_actor.translation.into();
-        let rotation = Quat::from_rotation_y(new_actor.yaw);
+        let translation: Vec3 = transform_data.translation.into();
+        let rotation = Quat::from_rotation_y(transform_data.yaw);
 
         let mut entity_commands = commands.spawn((
             Mesh3d(meshes.add(Mesh::from(Capsule3d {
@@ -70,11 +62,9 @@ pub(super) fn on_actor_inserted(
                 rotation,
                 scale: Vec3::ONE,
             },
-            NetworkActor {
-                actor_id,
+            NetworkTransform {
                 translation,
                 rotation,
-                move_intent,
             },
             Player,
         ));
@@ -106,35 +96,32 @@ pub(super) fn on_actor_inserted(
         });
 
         // Only players get local/remote tags (monsters get neither).
-        entity_commands.insert_if(LocalPlayer, || is_local_player(&new_actor.kind, &stdb));
-        entity_commands.insert_if(RemotePlayer, || is_remote_player(&new_actor.kind, &stdb));
+        entity_commands.insert_if(LocalPlayer, || is_local);
+        entity_commands.insert_if(RemotePlayer, || !is_local);
 
         let bevy_entity = entity_commands.id();
-        actor_entity_mapping.0.insert(actor_id, bevy_entity);
+        actor_entity_mapping
+            .0
+            .insert(new_actor.transform_data_id, bevy_entity);
     }
 }
 
 pub(super) fn sync(
-    mut actor_q: Query<&mut NetworkActor, With<Player>>,
-    mut messages: ReadUpdateMessage<Actor>,
-    stdb: SpacetimeDB,
-    actor_entity_mapping: Res<ActorEntityMapping>,
+    mut actor_q: Query<&mut NetworkTransform, With<Player>>,
+    mut messages: ReadUpdateMessage<TransformData>,
+    net_transform_entity_mapping: Res<NetworkTransformEntityMapping>,
 ) {
     for msg in messages.read() {
+        let transform_data = msg.new.clone();
         // Pull the authoritative row from the local STDB cache.
-        let Some(actor) = stdb.db().actor().id().find(&msg.new.id) else {
+        let Some(bevy_entity) = net_transform_entity_mapping.0.get(&transform_data.id) else {
             continue;
         };
-        let Some(bevy_entity) = actor_entity_mapping.0.get(&actor.id) else {
-            continue;
-        };
-        let Ok(mut network_actor) = actor_q.get_mut(*bevy_entity) else {
+        let Ok(mut network_transform) = actor_q.get_mut(*bevy_entity) else {
             continue;
         };
 
-        network_actor.translation = actor.translation.into();
-        network_actor.rotation = Quat::from_rotation_y(actor.yaw);
-        network_actor.move_intent = actor.move_intent;
-        network_actor.actor_id = actor.id;
+        network_transform.translation = transform_data.translation.into();
+        network_transform.rotation = Quat::from_rotation_y(transform_data.yaw);
     }
 }

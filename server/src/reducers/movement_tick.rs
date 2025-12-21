@@ -1,5 +1,5 @@
 use crate::{
-    schema::{actor, kcc_settings},
+    schema::{actor, kcc_settings, movement_data, secondary_stats, transform_data},
     types::MoveIntent,
     utils::{get_fixed_delta_time, get_variable_delta_time, has_support_within},
     world::{get_kcc, get_rapier_world},
@@ -67,21 +67,43 @@ pub fn movement_tick_reducer(
         let query_pipeline = world.query_pipeline(QueryFilter::default());
 
         // Process all actors.
-        for mut actor in ctx.db.actor().should_move().filter(true) {
+        for mut movement_data in ctx.db.movement_data().should_move().filter(true) {
+            let Some(mut actor) = ctx.db.actor().movement_data_id().find(movement_data.id) else {
+                continue;
+            };
+            let Some(mut transform_data) =
+                ctx.db.transform_data().id().find(actor.transform_data_id)
+            else {
+                continue;
+            };
+
+            let capsule_half_height = actor.capsule_half_height;
+            let capsule_radius = actor.capsule_radius;
             // Determine desired planar movement for this fixed step.
             // For now, handle only MoveIntent::Point; other intents result in no planar motion.
-            let (target_x, target_z, has_point_intent) = match &actor.move_intent {
+            let (target_x, target_z, has_point_intent) = match &movement_data.move_intent {
                 MoveIntent::Point(p) => (p.x, p.z, true),
-                _ => (actor.translation.x, actor.translation.z, false),
+                _ => (
+                    transform_data.translation.x,
+                    transform_data.translation.z,
+                    false,
+                ),
             };
 
             // Compute intended planar direction toward the target.
-            let dx = target_x - actor.translation.x;
-            let dz = target_z - actor.translation.z;
+            let dx = target_x - transform_data.translation.x;
+            let dz = target_z - transform_data.translation.z;
+
+            let secondary_stats = ctx
+                .db
+                .secondary_stats()
+                .id()
+                .find(actor.secondary_stats_id)
+                .unwrap_or_default();
 
             // Planar step length.
             let max_step = if has_point_intent {
-                actor.movement_speed.max(0.0) * fixed_dt
+                secondary_stats.movement_speed * fixed_dt
             } else {
                 0.0
             };
@@ -101,7 +123,7 @@ pub fn movement_tick_reducer(
             // Update yaw based on *intent* direction (not post-collision motion).
             // This looks more natural when sliding along walls.
             if let Some(yaw) = yaw_from_xz(planar.x, planar.z) {
-                actor.yaw = yaw;
+                transform_data.yaw = yaw;
             }
 
             // Apply downward bias always; apply fall speed only if we were airborne last step.
@@ -109,61 +131,67 @@ pub fn movement_tick_reducer(
 
             // `actor.grounded` is persisted and represents the grounded state from the previous fixed step.
             // This gives us the desired 1-tick lag without any global in-memory cache.
-            let gravity = f32::from(!actor.grounded) * (-kcc.fall_speed_mps * fixed_dt);
+            let gravity = f32::from(!movement_data.grounded) * (-kcc.fall_speed_mps * fixed_dt);
 
             let corrected = controller.move_shape(
                 fixed_dt,
                 &query_pipeline,
                 &Capsule::new_y(actor.capsule_half_height, actor.capsule_radius),
                 &Isometry::translation(
-                    actor.translation.x,
-                    actor.translation.y,
-                    actor.translation.z,
+                    transform_data.translation.x,
+                    transform_data.translation.y,
+                    transform_data.translation.z,
                 ),
                 vector![planar.x, down_bias + gravity, planar.z],
                 |_| {},
             );
 
             // Apply corrected movement.
-            actor.translation.x += corrected.translation.x;
-            actor.translation.y += corrected.translation.y;
-            actor.translation.z += corrected.translation.z;
+            transform_data.translation.x += corrected.translation.x;
+            transform_data.translation.y += corrected.translation.y;
+            transform_data.translation.z += corrected.translation.z;
 
-            let new_cell_id = encode_cell_id(actor.translation.x, actor.translation.z);
+            let new_cell_id =
+                encode_cell_id(transform_data.translation.x, transform_data.translation.z);
             if new_cell_id != actor.cell_id {
                 actor.cell_id = new_cell_id;
+                ctx.db.actor().id().update(actor);
             }
 
             // Persist grounded for the next fixed step.
             if corrected.grounded {
-                actor.grounded = true;
-                actor.grounded_grace_steps = 8;
-            } else if actor.grounded_grace_steps > 0 {
+                movement_data.grounded = true;
+                movement_data.grounded_grace_steps = 8;
+            } else if movement_data.grounded_grace_steps > 0 {
                 let supported = has_support_within(
                     &query_pipeline,
-                    &actor,
+                    &transform_data.translation,
+                    capsule_half_height,
+                    capsule_radius,
                     kcc.hard_airborne_probe_distance,
                     kcc.max_slope_climb_deg.to_radians().cos(),
                 );
 
                 if supported {
-                    actor.grounded_grace_steps -= 1;
+                    movement_data.grounded_grace_steps -= 1;
                 } else {
-                    actor.grounded_grace_steps = 0;
-                    actor.grounded = false;
+                    movement_data.grounded_grace_steps = 0;
+                    movement_data.grounded = false;
                 }
             } else {
-                actor.grounded = false;
+                movement_data.grounded = false;
             }
 
             // Clear MoveIntent::Point when within the acceptance radius (planar).
             // TODO: Acceptance radius should be computed differently
             if has_point_intent && dist_sq <= kcc.point_acceptance_radius_sq {
-                actor.move_intent = MoveIntent::None;
+                movement_data.move_intent = MoveIntent::None;
             }
 
-            actor.should_move = actor.move_intent != MoveIntent::None || !actor.grounded;
-            ctx.db.actor().id().update(actor);
+            movement_data.should_move =
+                movement_data.move_intent != MoveIntent::None || !movement_data.grounded;
+            ctx.db.transform_data().id().update(transform_data);
+            ctx.db.movement_data().id().update(movement_data);
         }
 
         // Consume fixed time step.

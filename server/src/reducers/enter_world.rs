@@ -1,4 +1,4 @@
-use crate::{schema::*, types::*};
+use crate::schema::*;
 use shared::utils::encode_cell_id;
 use spacetimedb::{ReducerContext, Table};
 
@@ -24,21 +24,34 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         return Err("Player is already in world".into());
     }
 
+    let Some(transform_data) = ctx.db.transform_data().id().find(player.transform_data_id) else {
+        return Err("No transform found!".into());
+    };
+
+    let Some(movement_data) = ctx.db.movement_data().id().find(player.movement_data_id) else {
+        return Err("No movement data found!".into());
+    };
+
     // Rebuild actor from persisted Player state.
     let actor = ctx.db.actor().insert(Actor {
         id: 0,
-        kind: ActorKind::Player(player.identity),
-        translation: player.translation,
-        yaw: player.yaw,
+        primary_stats_id: player.primary_stats_id,
+        secondary_stats_id: player.secondary_stats_id,
+        vital_stats_id: player.vital_stats_id,
+        transform_data_id: player.transform_data_id,
+        movement_data_id: movement_data.id,
+        // kind: ActorKind::Player(player.identity),
+        is_player: true,
+        identity: Some(player.identity),
+        // translation: player.translation,
+        // yaw: player.yaw,
         capsule_radius: player.capsule_radius,
         capsule_half_height: player.capsule_half_height,
-        movement_speed: player.movement_speed,
-        move_intent: MoveIntent::None,
-        grounded: false,
-        is_player: true,
-        should_move: true,
-        grounded_grace_steps: 0,
-        cell_id: encode_cell_id(player.translation.x, player.translation.z),
+        // move_intent: MoveIntent::None,
+        // grounded: false,
+        // should_move: true,
+        // grounded_grace_steps: 0,
+        cell_id: encode_cell_id(transform_data.translation.x, transform_data.translation.z),
     });
 
     // Link back Player -> Actor.

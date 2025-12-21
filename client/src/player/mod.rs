@@ -1,13 +1,12 @@
-use crate::module_bindings::MoveIntent;
-use bevy::{platform::collections::HashMap, prelude::*};
-
 mod input;
 mod interpolate;
 mod replication;
 
+use bevy::{platform::collections::HashMap, prelude::*};
+
 pub(super) fn plugin(app: &mut App) {
     app.init_resource::<input::LastDirectionSentAt>();
-    app.insert_resource(ActorEntityMapping::default());
+    app.insert_resource(NetworkTransformEntityMapping::default());
 
     // STDB replication systems
     app.add_systems(
@@ -31,17 +30,15 @@ pub(super) fn plugin(app: &mut App) {
 
 /// Used to tie the server entity id to the local bevy entity
 #[derive(Resource, Default)]
-pub struct ActorEntityMapping(pub HashMap<u64, Entity>);
+pub struct NetworkTransformEntityMapping(pub HashMap<u32, Entity>);
 
 #[derive(Component)]
 pub struct Player;
 
 #[derive(Component)]
-pub struct NetworkActor {
-    pub actor_id: u64,
+pub struct NetworkTransform {
     pub translation: Vec3,
     pub rotation: Quat,
-    pub move_intent: MoveIntent,
 }
 
 #[derive(Component)]

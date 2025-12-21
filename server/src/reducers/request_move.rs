@@ -14,12 +14,28 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
     let Some(source_actor_id) = player.actor_id else {
         return Err("Actor not found".into());
     };
-    let Some(mut source_actor) = ctx.db.actor().id().find(source_actor_id) else {
+    let Some(source_actor) = ctx.db.actor().id().find(source_actor_id) else {
         return Err("Actor not found".into());
     };
+    let Some(transform_data) = ctx
+        .db
+        .transform_data()
+        .id()
+        .find(source_actor.transform_data_id)
+    else {
+        return Err("Transform data not found".into());
+    };
+    let Some(mut movement_data) = ctx
+        .db
+        .movement_data()
+        .id()
+        .find(source_actor.movement_data_id)
+    else {
+        return Err("Transform data not found".into());
+    };
 
-    let current: na::Vector3<f32> = source_actor.translation.into();
-    match (&source_actor.move_intent, &intent) {
+    let current: na::Vector3<f32> = transform_data.translation.into();
+    match (&movement_data.move_intent, &intent) {
         // 1. Idling Check
         (MoveIntent::None, MoveIntent::None) => {
             return Err("Already idling".into());
@@ -48,9 +64,9 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
         }
 
         _ => {
-            source_actor.should_move = intent != MoveIntent::None || !source_actor.grounded;
-            source_actor.move_intent = intent;
-            ctx.db.actor().id().update(source_actor);
+            movement_data.should_move = intent != MoveIntent::None || !movement_data.grounded;
+            movement_data.move_intent = intent;
+            ctx.db.movement_data().id().update(movement_data);
             Ok(())
         }
     }

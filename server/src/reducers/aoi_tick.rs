@@ -1,10 +1,6 @@
+use crate::schema::{actor, actor_in_aoi, ActorInAoi};
 use shared::utils::get_aoi_block;
 use spacetimedb::*;
-
-use crate::{
-    schema::{actor, actor_in_aoi, ActorInAoi},
-    types::ActorKind,
-};
 
 #[table(name = aoi_tick_timer, scheduled(aoi_tick_reducer))]
 pub struct AoiTickTimer {
@@ -34,7 +30,11 @@ pub fn aoi_tick_reducer(ctx: &ReducerContext, _aoi_tick_timer: AoiTickTimer) -> 
 
     for actor in ctx.db.actor().is_player().filter(true) {
         // Guaranteed to be true, but we need to btree index a boolean to get performance improvements.
-        let ActorKind::Player(identity) = actor.kind else {
+        // let ActorKind::Player(identity) = actor.kind else {
+        //     continue;
+        // };
+        let Some(identity) = actor.identity else {
+            log::error!("Actor {} is a player but has no identity", actor.id);
             continue;
         };
 
@@ -47,6 +47,7 @@ pub fn aoi_tick_reducer(ctx: &ReducerContext, _aoi_tick_timer: AoiTickTimer) -> 
                 ctx.db.actor_in_aoi().insert(ActorInAoi {
                     id: 0,
                     identity,
+                    transform_data_id: a.transform_data_id,
                     actor_id: a.id,
                 });
             });

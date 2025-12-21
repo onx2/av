@@ -35,11 +35,8 @@ pub fn leave_world(ctx: &ReducerContext) {
     ctx.db.actor_in_aoi().identity().delete(player.identity);
 
     // Persist actor state back to Player.
-    player.translation = actor.translation;
-    player.yaw = actor.yaw;
     player.capsule_radius = actor.capsule_radius;
     player.capsule_half_height = actor.capsule_half_height;
-    player.movement_speed = actor.movement_speed;
 
     // Despawn actor and clear link.
     ctx.db.actor().id().delete(actor.id);
