@@ -11,17 +11,27 @@ pub mod reducers {
     pub mod leave_world;
     pub mod movement_tick;
     pub mod request_move;
+
+    // Temporary dev tooling: spawn and drive fake (non-player) actors.
+    pub mod spawn_fake;
 }
 
 // Re-export reducers so callers (and generated bindings) can refer to them at the crate root.
-use crate::{reducers::aoi_tick, reducers::movement_tick, schema::*, types::*};
+use crate::{
+    reducers::{aoi_tick, movement_tick, spawn_fake},
+    schema::*,
+    types::*,
+};
 use spacetimedb::*;
 
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {
-    // Configure the scheduled tick with a fixed interval.
+    // Configure scheduled ticks.
     movement_tick::init(ctx);
     aoi_tick::init(ctx);
+
+    // Start the scheduled fake wandering driver (no-op if no fakes exist).
+    spawn_fake::init(ctx);
 
     // Seed default KCC settings (single-row table).
     // This allows both server and clients to use the exact same tuning parameters.

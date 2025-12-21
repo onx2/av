@@ -1,6 +1,10 @@
 use crate::types::*;
 use spacetimedb::*;
 
+/// Temporary dev-only state for spawned fake (non-player) actors.
+/// These tables let a scheduled reducer periodically assign random movement targets.
+/// When you remove the fake system, you can delete these tables + reducers.
+
 /// Player account data persisted across sessions.
 ///
 /// This table persists the last known actor state so players can rejoin
@@ -133,6 +137,24 @@ pub struct MovementData {
     pub grounded_grace_steps: u8,
 }
 
+/// Per-fake-actor wandering configuration/state.
+#[table(name = fake_wander_state)]
+pub struct FakeWanderState {
+    /// Primary key: the actor this state belongs to.
+    #[primary_key]
+    pub actor_id: u64,
+
+    /// The "home" position the fake will wander around (XZ radius).
+    pub home_translation: DbVec3,
+
+    /// Maximum planar distance from home (meters).
+    pub wander_radius_m: f32,
+
+    /// Next time this actor should pick a new random target (server timestamp).
+    #[index(btree)]
+    pub next_wander_at: Timestamp,
+}
+
 #[table(name = primary_stats)]
 pub struct PrimaryStats {
     #[primary_key]
@@ -182,6 +204,14 @@ pub struct VitalStats {
     pub mana: u16,
     pub stamina: u16,
 }
+
+/// NOTE: `FakeWanderTickTimer` was moved out of `schema.rs` into the reducer module
+/// (`server/src/reducers/spawn_fake.rs`) so the scheduled reducer symbol is in scope.
+///
+/// If you remove the fake-wander system later, delete:
+/// - the timer table in `spawn_fake.rs`
+/// - `FakeWanderState` (above)
+/// - the reducers in `spawn_fake.rs`
 
 /// Kinematic Character Controller (KCC) settings shared by server and clients.
 ///
