@@ -38,8 +38,6 @@ pub(super) fn plugin(app: &mut App) {
             // Register all tables
             // --------------------------------
             .add_table(RemoteTables::player)
-            // .add_table(RemoteTables::actor)
-            // .add_table(RemoteTables::transform_data)
             .add_view_with_pk(RemoteTables::aoi_actor, |a| a.id)
             .add_view_with_pk(RemoteTables::aoi_transform_data, |t| t.id)
             .add_table(RemoteTables::world_static)
@@ -54,9 +52,9 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
 
         stdb.subscription_builder().subscribe(vec![
             "SELECT * FROM player",
+            "SELECT * FROM world_static",
             "SELECT * FROM aoi_actor",
             "SELECT * FROM aoi_transform_data",
-            "SELECT * FROM world_static",
         ]);
     }
 }

@@ -258,10 +258,6 @@ impl SimpleRng {
         (v as f32) / (1u32 << 24) as f32
     }
 
-    fn gen_range_f32(&mut self, min: f32, max: f32) -> f32 {
-        min + (max - min) * self.next_f32_01()
-    }
-
     fn gen_range_i64_inclusive(&mut self, min: i64, max: i64) -> i64 {
         if min >= max {
             return min;
