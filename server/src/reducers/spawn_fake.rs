@@ -1,8 +1,7 @@
 use crate::{
     schema::{
-        actor, fake_wander_state, movement_data, primary_stats, secondary_stats, transform_data,
-        vital_stats, Actor, FakeWanderState, MovementData, PrimaryStats, SecondaryStats,
-        TransformData, VitalStats,
+        actor, movement_data, primary_stats, secondary_stats, transform_data, vital_stats, Actor,
+        MovementData, PrimaryStats, SecondaryStats, TransformData, VitalStats,
     },
     types::{DbVec3, MoveIntent},
 };
@@ -28,6 +27,24 @@ const DEFAULT_FAKE_SPEED_MPS: f32 = 3.5;
 /// Default capsule dimensions (meters).
 const DEFAULT_CAPSULE_RADIUS_M: f32 = 0.35;
 const DEFAULT_CAPSULE_HALF_HEIGHT_M: f32 = 0.90;
+
+/// Per-fake-actor wandering configuration/state.
+#[table(name = fake_wander_state)]
+pub struct FakeWanderState {
+    /// Primary key: the actor this state belongs to.
+    #[primary_key]
+    pub actor_id: u64,
+
+    /// The "home" position the fake will wander around (XZ radius).
+    pub home_translation: DbVec3,
+
+    /// Maximum planar distance from home (meters).
+    pub wander_radius_m: f32,
+
+    /// Next time this actor should pick a new random target (server timestamp).
+    #[index(btree)]
+    pub next_wander_at: Timestamp,
+}
 
 /// Scheduled driver for fake wandering.
 pub fn init(ctx: &ReducerContext) {

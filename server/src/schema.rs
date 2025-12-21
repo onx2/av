@@ -1,10 +1,6 @@
 use crate::types::*;
 use spacetimedb::*;
 
-/// Temporary dev-only state for spawned fake (non-player) actors.
-/// These tables let a scheduled reducer periodically assign random movement targets.
-/// When you remove the fake system, you can delete these tables + reducers.
-
 /// Player account data persisted across sessions.
 ///
 /// This table persists the last known actor state so players can rejoin
@@ -81,19 +77,6 @@ pub struct Actor {
     #[index(btree)]
     pub is_player: bool,
 
-    // #[index(btree)]
-    // pub should_move: bool,
-
-    // pub translation: DbVec3,
-    // pub yaw: f32,
-    // /// Current movement intent.
-    // pub move_intent: MoveIntent,
-
-    // /// Whether the Actor was grounded last X grounded_grace_steps ago
-    // pub grounded: bool,
-
-    // /// The number of steps to wait before flipping grounded state
-    // pub grounded_grace_steps: u8,
     #[index(btree)]
     pub cell_id: u32,
 
@@ -107,7 +90,6 @@ const TRANSFORM_DATA_FILTER: Filter = Filter::Sql(
     "SELECT transform_data.* FROM transform_data
      JOIN actor_in_aoi ON transform_data.id = actor_in_aoi.transform_data_id
      WHERE actor_in_aoi.identity = :sender",
-    // JOIN actor ON actor.transform_data_id = transform_data.id",
 );
 #[table(name = transform_data, public)]
 pub struct TransformData {
@@ -116,6 +98,7 @@ pub struct TransformData {
     pub id: u32,
 
     pub translation: DbVec3,
+
     pub yaw: f32,
 }
 #[table(name = movement_data)]
@@ -135,24 +118,6 @@ pub struct MovementData {
 
     /// The number of steps to wait before flipping grounded state
     pub grounded_grace_steps: u8,
-}
-
-/// Per-fake-actor wandering configuration/state.
-#[table(name = fake_wander_state)]
-pub struct FakeWanderState {
-    /// Primary key: the actor this state belongs to.
-    #[primary_key]
-    pub actor_id: u64,
-
-    /// The "home" position the fake will wander around (XZ radius).
-    pub home_translation: DbVec3,
-
-    /// Maximum planar distance from home (meters).
-    pub wander_radius_m: f32,
-
-    /// Next time this actor should pick a new random target (server timestamp).
-    #[index(btree)]
-    pub next_wander_at: Timestamp,
 }
 
 #[table(name = primary_stats)]

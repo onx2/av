@@ -27,11 +27,11 @@ pub fn has_support_within(
     min_ground_normal_y: f32,
 ) -> bool {
     // Probe from the capsule "feet" (slightly above to avoid starting inside geometry).
-    let feet_y = translation.y - (capsule_half_height + capsule_radius);
+    let feet_y: f32 = translation.y as f32 - (capsule_half_height + capsule_radius);
     let origin_y = feet_y + 0.02;
 
     let ray = Ray::new(
-        point![translation.x, origin_y, translation.z],
+        point![translation.x.into(), origin_y, translation.z.into()],
         vector![0.0, -1.0, 0.0],
     );
 

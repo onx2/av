@@ -29,10 +29,6 @@ pub fn aoi_tick_reducer(ctx: &ReducerContext, _aoi_tick_timer: AoiTickTimer) -> 
     }
 
     for actor in ctx.db.actor().is_player().filter(true) {
-        // Guaranteed to be true, but we need to btree index a boolean to get performance improvements.
-        // let ActorKind::Player(identity) = actor.kind else {
-        //     continue;
-        // };
         let Some(identity) = actor.identity else {
             log::error!("Actor {} is a player but has no identity", actor.id);
             continue;
