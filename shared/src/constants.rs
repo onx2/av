@@ -1,5 +1,14 @@
 use std::time::Duration;
 
+/// Air-control multiplier for planar (XZ) movement while airborne.
+///
+/// Convention:
+/// - 1.0 = full ground control in air (arcade / very floaty)
+/// - 0.0 = no air control (current "abrupt stop" behavior)
+///
+/// Typical values: 0.1 .. 0.4
+pub const AIR_CONTROL_MULTIPLIER: f32 = 0.4;
+
 /// Quantization step for the Y axis in meters.
 ///
 /// Used anywhere we store vertical position in a quantized integer form.

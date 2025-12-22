@@ -28,7 +28,7 @@ use crate::{
 use rapier3d::control::KinematicCharacterController;
 use rapier3d::prelude::*;
 use shared::{
-    constants::Y_QUANTIZE_STEP_M,
+    constants::{AIR_CONTROL_MULTIPLIER, Y_QUANTIZE_STEP_M},
     utils::{encode_cell_id, yaw_from_xz, yaw_to_u8, UtilMath},
 };
 use spacetimedb::ReducerContext;
@@ -78,9 +78,12 @@ pub fn movement_step_actor(
         .find(actor.secondary_stats_id)
         .unwrap_or_default();
 
-    // Planar step length.
     let max_step = if has_point_intent {
-        secondary.movement_speed * dt
+        if movement.grounded {
+            secondary.movement_speed * dt
+        } else {
+            secondary.movement_speed * dt * AIR_CONTROL_MULTIPLIER
+        }
     } else {
         0.0
     };
