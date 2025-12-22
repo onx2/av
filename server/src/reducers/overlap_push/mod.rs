@@ -1,35 +1,32 @@
-//! Idle-player overlap push tick.
+//! Soft-collision + idle stacking ("tuck") + mutual drift.
 //!
 //! Goal:
-//! - Periodically nudge *idle* players (Actor.should_move == false) out of planar (XZ) overlaps.
-//! - Avoid O(N^2) by only considering nearby actors in the *same* cell (`cell_id`).
-//! - Keep the tick low-frequency (10Hz) and bounded (limits per-actor neighbors + max push step).
+//! - Ensure a walking/moving player can never "push" a standing/idle player around the map.
 //!
-//! Notes:
-//! - This does NOT attempt full movement simulation. It only computes a planar separation vector
-//!   and applies it through Rapier's KCC `move_shape` to respect world collisions.
-//! - This is intentionally "players only" for now. If desired later, you can extend to push players
-//!   away from non-players too (still only moving the idle player).
-//! - IMPORTANT: When two idle players overlap, we only move the *most recently idle* actor.
-//!   This prevents a newly-stopped/moving player from displacing an actor that has been standing still.
+//! Rules (Static Anchoring):
+//! - Immovable IDLE: If an actor is IDLE, they are a static obstacle (infinite mass). Their position
+//!   must never be modified by a MOVING actor.
+//! - Steering vs. resolution:
+//!   - While MOVING, an actor uses separation steering to avoid IDLE actors (ONLY the mover is displaced).
+//!   - IDLE actors remain at V = 0 (no reaction) during this interaction.
+//! - The tuck-in event (MOVING -> IDLE):
+//!   - The only time an IDLE actor may be moved due to another actor is at the moment it transitions
+//!     to IDLE while overlapping hard radii. Then it nudges itself to the nearest clear spot.
+//! - Mutual drift (IDLE-IDLE hard overlap):
+//!   - If two IDLE actors are overlapping hard radii (spawn/teleport), apply a very slow mutual
+//!     repulsion so they eventually settle side-by-side.
 //!
-//! Implementation strategy:
-//! 1) Iterate idle players using the composite index `Actor(should_move, is_player)`.
-//! 2) For each idle player, gather neighbor actors from the same `cell_id`.
-//! 3) If overlapping an idle neighbor that has been idle longer, skip pushing this actor.
-//! 4) Otherwise compute the accumulated separation push in XZ for any overlapping capsules.
-//! 5) Clamp push magnitude and apply via KCC with Y motion = 0.
-//! 6) Persist updated TransformData and Actor.cell_id if it changes.
+//! Execution:
+//! - Kinematic position updates only (KCC move_shape), no physics rigid bodies.
+//! - Runs at a low fixed rate (scheduled tick), with strict caps for performance.
 //!
-//! Performance controls:
-//! - Only idle players are processed.
-//! - Neighbor set is limited by AOI cells and `OVERLAP_PUSH_MAX_NEIGHBORS_PER_ACTOR`.
-//! - Per-actor push is clamped by `OVERLAP_PUSH_MAX_STEP_M`.
+//! Cell scoping:
+//! - For performance, we only consider actors in the same `cell_id`.
+//!   This can miss rare cross-cell interactions near boundaries, acceptable by design.
 
 use crate::{
-    // Generated schema modules so `ctx.db.*()` accessors exist.
-    schema::{actor, kcc_settings, transform_data},
-    utils::{get_fixed_delta_time, get_variable_delta_time},
+    schema::{actor, transform_data},
+    utils::get_fixed_delta_time,
     world::{get_kcc, get_rapier_world},
 };
 
@@ -38,37 +35,28 @@ use spacetimedb::{ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
 
 use shared::{
     constants::{
-        IDLE_OVERLAP_PUSH_TICK_HZ, OVERLAP_PUSH_MAX_NEIGHBORS_PER_ACTOR, OVERLAP_PUSH_MAX_STEP_M,
-        OVERLAP_PUSH_SKIN_M, Y_QUANTIZE_STEP_M,
+        IDLE_OVERLAP_PUSH_TICK_HZ, OVERLAP_PUSH_MAX_STEP_M, OVERLAP_PUSH_SKIN_M, Y_QUANTIZE_STEP_M,
     },
     utils::{encode_cell_id, UtilMath},
 };
 
 use crate::types::MoveIntent;
 
-/// Scheduled timer for the overlap push tick.
-///
-/// IMPORTANT:
-/// Scheduled tables must include a `scheduled_id: u64` primary key with `#[auto_inc]`.
-#[spacetimedb::table(name = idle_overlap_push_tick_timer, scheduled(idle_overlap_push_tick_reducer))]
+#[spacetimedb::table(
+    name = idle_overlap_push_tick_timer,
+    scheduled(idle_overlap_push_tick_reducer)
+)]
 pub struct IdleOverlapPushTickTimer {
-    /// Primary key for the scheduled job (single row used).
     #[primary_key]
     #[auto_inc]
     pub scheduled_id: u64,
-
-    /// When/how often to invoke the scheduled reducer.
     pub scheduled_at: ScheduleAt,
-
-    /// Timestamp of the previous invocation (authoritative delta time source).
     pub last_tick: Timestamp,
 }
 
-/// Schedule the idle overlap push tick (10Hz by default).
 pub fn init(ctx: &ReducerContext) {
     let interval = TimeDuration::from_micros(1_000_000i64 / IDLE_OVERLAP_PUSH_TICK_HZ);
 
-    // Single-row scheduled job.
     ctx.db
         .idle_overlap_push_tick_timer()
         .scheduled_id()
@@ -82,238 +70,576 @@ pub fn init(ctx: &ReducerContext) {
         });
 }
 
-/// Returns a planar (XZ) separation push vector (meters) to resolve overlaps.
+// ------------------------------------------------------------
+// Tuning constants
+// ------------------------------------------------------------
+
+/// Additional personal-space radius beyond the capsule radius (meters).
+const SOFT_BUFFER_M: f32 = 0.35;
+
+/// Mutual-drift repulsion step factor (0..1) per tick (smaller = gentler).
 ///
-/// - `self_pos` and `other_pos` are world meters.
-/// - push is accumulated across all neighbors and clamped by caller.
-/// - only XZ is affected; Y is ignored.
-fn accumulate_planar_separation(
-    self_x: f32,
-    self_z: f32,
-    self_radius: f32,
-    other_x: f32,
-    other_z: f32,
-    other_radius: f32,
-) -> (f32, f32) {
-    let dx = self_x - other_x;
-    let dz = self_z - other_z;
+/// This is intentionally *very* small so stacked idle actors separate slowly without looking like
+/// they're being "pushed" by gameplay movement.
+const MUTUAL_IDLE_REPULSION_RELAX: f32 = 0.05;
 
-    let dist_sq = dx.sq() + dz.sq();
-    // Combined radii with small skin.
-    let min_dist = self_radius + other_radius + OVERLAP_PUSH_SKIN_M;
-    let min_dist_sq = min_dist.sq();
+/// Steering strength inside the soft buffer (0..1). Higher = stronger avoidance.
+const SOFT_STEER_STRENGTH: f32 = 0.65;
 
-    if dist_sq >= min_dist_sq {
-        return (0.0, 0.0);
-    }
+/// Max number of actors processed per cell in this tick (safety/perf cap).
+const MAX_ACTORS_PER_CELL: usize = 32;
 
-    // If positions are extremely close, choose a stable arbitrary direction to avoid NaNs.
-    if dist_sq <= 1.0e-12 {
-        // Push along +X by the full penetration.
-        return (min_dist, 0.0);
-    }
+/// Max number of neighbor checks per actor (safety/perf cap).
+const MAX_NEIGHBORS_PER_ACTOR: usize = 64;
 
-    let dist = dist_sq.sqrt();
-    let inv_dist = 1.0 / dist;
+/// Number of samples around the actor for tuck search.
+const TUCK_DIR_SAMPLES: usize = 24;
 
-    // Penetration depth in meters (how far we need to separate centers).
-    let penetration = min_dist - dist;
+/// Number of radial rings tested for tuck search.
+const TUCK_RINGS: usize = 6;
 
-    // Move the idle actor fully (not half) since we're only correcting idle actors.
-    let push_x = dx * inv_dist * penetration;
-    let push_z = dz * inv_dist * penetration;
+/// Step size (meters) between rings for tuck search.
+const TUCK_RING_STEP_M: f32 = 0.25;
 
-    (push_x, push_z)
-}
+// ------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------
 
-/// Clamp a planar vector to a maximum magnitude, returning the clamped vector.
-fn clamp_planar(x: f32, z: f32, max_len: f32) -> (f32, f32) {
-    let len_sq = x.sq() + z.sq();
+#[inline]
+fn clamp_planar(dx: f32, dz: f32, max_len: f32) -> (f32, f32) {
+    let len_sq = dx.sq() + dz.sq();
     if len_sq <= max_len.sq() || len_sq <= 1.0e-12 {
-        return (x, z);
+        return (dx, dz);
     }
     let len = len_sq.sqrt();
     let s = max_len / len;
-    (x * s, z * s)
+    (dx * s, dz * s)
 }
+
+#[inline]
+fn dist_sq_xz(ax: f32, az: f32, bx: f32, bz: f32) -> f32 {
+    (ax - bx).sq() + (az - bz).sq()
+}
+
+/// Returns Some((penetration, nx, nz)) for hard overlap (min_dist = rA + rB + skin).
+#[inline]
+fn hard_overlap_penetration_normal(
+    ax: f32,
+    az: f32,
+    ar: f32,
+    bx: f32,
+    bz: f32,
+    br: f32,
+) -> Option<(f32, f32, f32)> {
+    let dx = ax - bx;
+    let dz = az - bz;
+    let dist_sq = dx.sq() + dz.sq();
+    let min_dist = ar + br + OVERLAP_PUSH_SKIN_M;
+    let min_dist_sq = min_dist.sq();
+
+    if dist_sq >= min_dist_sq {
+        return None;
+    }
+    if dist_sq <= 1.0e-12 {
+        return Some((min_dist, 1.0, 0.0));
+    }
+
+    let dist = dist_sq.sqrt();
+    let inv = 1.0 / dist;
+    let pen = min_dist - dist;
+    Some((pen, dx * inv, dz * inv))
+}
+
+/// Returns signed "soft intrusion" amount (meters) into the soft buffer.
+/// >0 means inside soft zone, <=0 means outside.
+#[inline]
+fn soft_intrusion(
+    moving_x: f32,
+    moving_z: f32,
+    moving_soft_r: f32,
+    stationary_x: f32,
+    stationary_z: f32,
+    stationary_soft_r: f32,
+) -> f32 {
+    let dx = moving_x - stationary_x;
+    let dz = moving_z - stationary_z;
+    let dist_sq = dx.sq() + dz.sq();
+    let min_dist = moving_soft_r + stationary_soft_r;
+    if dist_sq <= 1.0e-12 {
+        return min_dist;
+    }
+    let dist = dist_sq.sqrt();
+    min_dist - dist
+}
+
+/// Checks if position (x,z) is hard-clear of all neighbors' hard radii.
+fn is_hard_clear(
+    x: f32,
+    z: f32,
+    self_radius: f32,
+    neighbors: &[(f32, f32, f32)], // (ox, oz, orad)
+) -> bool {
+    for (ox, oz, orad) in neighbors.iter().copied() {
+        let min_dist = self_radius + orad + OVERLAP_PUSH_SKIN_M;
+        if dist_sq_xz(x, z, ox, oz) < min_dist.sq() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Finds a nearby "tuck" position that is hard-clear, preferring minimal displacement.
+fn find_tuck_position(
+    x0: f32,
+    z0: f32,
+    self_radius: f32,
+    neighbors: &[(f32, f32, f32)],
+) -> Option<(f32, f32)> {
+    if is_hard_clear(x0, z0, self_radius, neighbors) {
+        return Some((x0, z0));
+    }
+
+    // Precomputed directions around circle (cos/sin samples).
+    // We compute on the fly using f32 trig; TUCK_RINGS and samples are small, tick is low-rate.
+    let mut best: Option<(f32, f32, f32)> = None; // (x, z, dist_sq)
+
+    for ring in 1..=TUCK_RINGS {
+        let r = ring as f32 * TUCK_RING_STEP_M;
+        for k in 0..TUCK_DIR_SAMPLES {
+            let a = (k as f32) * (std::f32::consts::TAU / TUCK_DIR_SAMPLES as f32);
+            let cx = x0 + a.cos() * r;
+            let cz = z0 + a.sin() * r;
+
+            if is_hard_clear(cx, cz, self_radius, neighbors) {
+                let d2 = dist_sq_xz(cx, cz, x0, z0);
+                match best {
+                    None => best = Some((cx, cz, d2)),
+                    Some((_, _, best_d2)) if d2 < best_d2 => best = Some((cx, cz, d2)),
+                    _ => {}
+                }
+            }
+        }
+
+        // Early exit: if we found something on this ring, it should be near-minimal.
+        if best.is_some() {
+            break;
+        }
+    }
+
+    best.map(|(x, z, _)| (x, z))
+}
+
+#[inline]
+fn is_idle(actor: &crate::schema::Actor) -> Option<u64> {
+    match actor.move_intent {
+        MoveIntent::Idle(since_us) => Some(since_us),
+        _ => None,
+    }
+}
+
+// ------------------------------------------------------------
+// Main scheduled reducer
+// ------------------------------------------------------------
 
 #[spacetimedb::reducer]
 pub fn idle_overlap_push_tick_reducer(
     ctx: &ReducerContext,
     mut timer: IdleOverlapPushTickTimer,
 ) -> Result<(), String> {
-    // Only the server (module identity) may invoke scheduled reducers.
     if ctx.sender != ctx.identity() {
         return Err("`idle_overlap_push_tick_reducer` may not be invoked by clients.".into());
     }
 
-    // Compute elapsed time since last tick (we don't heavily use dt here, but it's useful for future
-    // scaling and for consistency with other scheduled ticks).
     let fixed_dt: f32 = get_fixed_delta_time(timer.scheduled_at);
-    let real_dt: f32 = get_variable_delta_time(ctx.timestamp, timer.last_tick).unwrap_or(fixed_dt);
-    let _dt: f32 = real_dt.max(0.0);
 
-    let Some(_kcc) = ctx.db.kcc_settings().id().find(1) else {
-        return Err("`idle_overlap_push_tick_reducer` couldn't find kcc settings.".into());
-    };
-
-    // Setup Rapier query pipeline and controller.
     let world = get_rapier_world(ctx);
     let controller = get_kcc(ctx);
     let query_pipeline = world.query_pipeline(QueryFilter::default());
 
-    // Iterate idle players only (should_move=false, is_player=true).
-    for actor in ctx
+    // We'll process each cell once per tick, seeded by the idle-player iterator.
+    let mut processed_cells: Vec<u32> = Vec::new();
+
+    // Seed cells from idle players.
+    for seed in ctx
         .db
         .actor()
         .should_move_and_is_player()
         .filter((false, true))
     {
-        let Some(mut transform) = ctx.db.transform_data().id().find(actor.transform_data_id) else {
+        // Only actors that are explicitly Idle participate in this system.
+        let Some(_idle_since) = is_idle(&seed) else {
             continue;
         };
 
-        // Only apply overlap pushing to actors that are explicitly Idle (movement state machine).
-        let self_idle_since_us = match actor.move_intent {
-            MoveIntent::Idle(since_us) => since_us,
-            _ => continue,
-        };
+        let cell_id = seed.cell_id;
+        if processed_cells.iter().any(|c| *c == cell_id) {
+            continue;
+        }
+        processed_cells.push(cell_id);
 
-        // Decode mixed-precision translation (x/z are meters, y is quantized).
-        let tx = transform.translation.x;
-        let ty = transform.translation.y as f32 * Y_QUANTIZE_STEP_M;
-        let tz = transform.translation.z;
+        // Gather actors in this cell (players only) up to cap.
+        // NOTE: IDLE actors are treated as immovable. MOVING actors are only steered; they never push IDLE actors.
+        let mut actors: Vec<crate::schema::Actor> = Vec::new();
+        actors.reserve(MAX_ACTORS_PER_CELL);
 
-        // Gather candidate neighbors from the actor's current cell only.
-        // This is a deliberate perf tradeoff: we may miss rare cross-cell overlaps near boundaries.
-        let cell_id = actor.cell_id;
-
-        let mut neighbors_checked: usize = 0;
-        let mut push_x_acc: f32 = 0.0;
-        let mut push_z_acc: f32 = 0.0;
-
-        // If we overlap an idle neighbor that has been idle longer than us, we should NOT move.
-        // This prevents a newly-idled player from displacing an older idle player.
-        let mut is_anchored_by_older_idle: bool = false;
-
-        // We only push the idle actor. Neighbors can be any actor, but we will only consider
-        // actors that have a valid transform.
-        //
-        // This assumes `cell_id` is indexed and provides a filter iterator.
-        for other in ctx.db.actor().cell_id().filter(cell_id) {
-            if neighbors_checked >= OVERLAP_PUSH_MAX_NEIGHBORS_PER_ACTOR {
+        for a in ctx.db.actor().cell_id().filter(cell_id) {
+            if actors.len() >= MAX_ACTORS_PER_CELL {
                 break;
             }
-
-            // Skip self.
-            if other.id == actor.id {
+            if !a.is_player {
                 continue;
             }
+            actors.push(a);
+        }
 
-            // Optional: ignore non-players entirely for now (per your preference).
-            if !other.is_player {
-                continue;
-            }
+        if actors.len() < 2 {
+            continue;
+        }
 
-            // Optional: ignore actors that are moving; we only correct idle stacking.
-            if other.should_move {
-                continue;
-            }
+        // Cache transform positions for all gathered actors (avoid re-reading many times).
+        // Store: (actor_id, transform_id, x, y_m, z, hard_r, soft_r, half_h, idle_since_opt, should_move)
+        let mut cache: Vec<(u64, u32, f32, f32, f32, f32, f32, f32, Option<u64>, bool)> =
+            Vec::new();
+        cache.reserve(actors.len());
 
-            // Only compare against other idle actors that have an idle timestamp.
-            let other_idle_since_us = match other.move_intent {
-                MoveIntent::Idle(since_us) => since_us,
-                _ => continue,
-            };
-
-            let Some(other_t) = ctx.db.transform_data().id().find(other.transform_data_id) else {
+        for a in actors.iter() {
+            let Some(t) = ctx.db.transform_data().id().find(a.transform_data_id) else {
                 continue;
             };
+            let x = t.translation.x;
+            let y_m = t.translation.y as f32 * Y_QUANTIZE_STEP_M;
+            let z = t.translation.z;
 
-            let ox = other_t.translation.x;
-            let oz = other_t.translation.z;
+            let hard_r = a.capsule_radius;
+            let soft_r = hard_r + SOFT_BUFFER_M;
 
-            let (px, pz) = accumulate_planar_separation(
-                tx,
-                tz,
-                actor.capsule_radius,
-                ox,
-                oz,
-                other.capsule_radius,
+            let idle_since = is_idle(a);
+            cache.push((
+                a.id,
+                a.transform_data_id,
+                x,
+                y_m,
+                z,
+                hard_r,
+                soft_r,
+                a.capsule_half_height,
+                idle_since,
+                a.should_move,
+            ));
+        }
+
+        if cache.len() < 2 {
+            continue;
+        }
+
+        // ------------------------------------------------------------
+        // Phase A: Separation Steering (MOVING -> IDLE)
+        //
+        // NOTE:
+        // This reducer MUST NOT move IDLE actors due to MOVING actors.
+        //
+        // Therefore, steering is applied ONLY to MOVING actors to avoid IDLE obstacles.
+        // IDLE actors remain static (infinite mass).
+        // ------------------------------------------------------------
+        for i in 0..cache.len() {
+            let (aid, tid, x, y_m, z, hard_r, soft_r, half_h, _idle_since, should_move) = cache[i];
+
+            // Only apply steering to moving actors.
+            if !should_move {
+                continue;
+            }
+
+            let mut steer_x = 0.0f32;
+            let mut steer_z = 0.0f32;
+
+            for j in 0..cache.len() {
+                if i == j {
+                    continue;
+                }
+
+                let (_bid, _btid, bx, _by, bz, _br, bsoft_r, _bhh, bidle_since, bshould_move) =
+                    cache[j];
+
+                // Only avoid stationary IDLE obstacles (infinite mass).
+                if bshould_move {
+                    continue;
+                }
+                if bidle_since.is_none() {
+                    continue;
+                }
+
+                let intr = soft_intrusion(x, z, soft_r, bx, bz, bsoft_r);
+                if intr <= 0.0 {
+                    continue;
+                }
+
+                let dx = x - bx;
+                let dz = z - bz;
+                let dist_sq = dx.sq() + dz.sq();
+                let (nx, nz) = if dist_sq <= 1.0e-12 {
+                    (1.0, 0.0)
+                } else {
+                    let inv = 1.0 / dist_sq.sqrt();
+                    (dx * inv, dz * inv)
+                };
+
+                let amount = intr * SOFT_STEER_STRENGTH;
+                steer_x += nx * amount;
+                steer_z += nz * amount;
+            }
+
+            let (steer_x, steer_z) = clamp_planar(steer_x, steer_z, OVERLAP_PUSH_MAX_STEP_M);
+            if steer_x.sq() + steer_z.sq() <= 1.0e-12 {
+                continue;
+            }
+
+            let corrected = controller.move_shape(
+                fixed_dt.max(1.0e-6),
+                &query_pipeline,
+                &rapier3d::prelude::Capsule::new_y(half_h, hard_r),
+                &Isometry::translation(x, y_m, z),
+                rapier3d::prelude::vector![steer_x, 0.0, steer_z],
+                |_| {},
             );
 
-            // If there's no overlap, skip.
-            if px == 0.0 && pz == 0.0 {
-                neighbors_checked += 1;
+            let new_x = x + corrected.translation.x;
+            let new_y = y_m + corrected.translation.y;
+            let new_z = z + corrected.translation.z;
+
+            let Some(mut t) = ctx.db.transform_data().id().find(tid) else {
+                continue;
+            };
+            t.translation.x = new_x;
+            t.translation.z = new_z;
+            t.translation.y = (new_y / Y_QUANTIZE_STEP_M)
+                .round()
+                .clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+            ctx.db.transform_data().id().update(t);
+
+            let new_cell = encode_cell_id(new_x, new_z);
+            if let Some(mut a) = ctx.db.actor().id().find(aid) {
+                if new_cell != a.cell_id {
+                    a.cell_id = new_cell;
+                    ctx.db.actor().id().update(a);
+                }
+            }
+
+            cache[i].2 = new_x;
+            cache[i].3 = new_y;
+            cache[i].4 = new_z;
+        }
+
+        // ------------------------------------------------------------
+        // Phase B: Tuck logic (Idle Resolution)
+        //
+        // IMPORTANT:
+        // - Tuck should ONLY apply to the actor that just became idle (i.e. just stopped moving),
+        //   so that long-idle/stationary players are not moved "out of their spot" by arriving movers.
+        //
+        // Policy:
+        // - Only consider actors that are idle+stationary AND have idled very recently.
+        // - Use a small "just idled" window (e.g. 500ms) based on `MoveIntent::Idle(idle_since_us)`.
+        // - If they hard-overlap anyone, search nearby for the nearest hard-clear position and move ONLY them.
+        // ------------------------------------------------------------
+        let now_us: u64 = ctx.timestamp.to_micros_since_unix_epoch().max(0) as u64;
+        const JUST_IDLED_WINDOW_US: u64 = 500_000;
+
+        for i in 0..cache.len() {
+            let (aid, tid, x, y_m, z, hard_r, _soft_r, half_h, idle_since, should_move) = cache[i];
+
+            // Only consider idle + stationary.
+            if should_move {
                 continue;
             }
 
-            // Anchoring rule:
-            // - Smaller `since_us` means "idle for longer" (older idle) => that actor should stay anchored.
-            // - Therefore, if *we* are older-idle than the neighbor, we should NOT move.
-            //
-            // This ensures a newly-spawned/newly-idled actor yields to an actor that has been idle longer.
-            if self_idle_since_us < other_idle_since_us {
-                is_anchored_by_older_idle = true;
-                break;
+            // Only consider actors that just became idle very recently.
+            let Some(idle_since_us) = idle_since else {
+                continue;
+            };
+            if now_us.saturating_sub(idle_since_us) > JUST_IDLED_WINDOW_US {
+                continue;
             }
 
-            // Otherwise, we are at least as old-idle as the neighbor; allow pushing ourselves.
-            push_x_acc += px;
-            push_z_acc += pz;
+            // Build neighbor list (hard radii) from other players in the cell.
+            // Include both idle and moving actors as hard obstacles so we don't tuck into someone else.
+            let mut neighbors: Vec<(f32, f32, f32)> = Vec::new();
+            neighbors.reserve(MAX_NEIGHBORS_PER_ACTOR.min(cache.len().saturating_sub(1)));
 
-            neighbors_checked += 1;
+            for j in 0..cache.len() {
+                if i == j {
+                    continue;
+                }
+                let (_bid, _btid, bx, _by, bz, br, _bsr, _bhh, _bidle, _bsm) = cache[j];
+                neighbors.push((bx, bz, br));
+                if neighbors.len() >= MAX_NEIGHBORS_PER_ACTOR {
+                    break;
+                }
+            }
+
+            // If overlapping hard radii, try to tuck.
+            if !is_hard_clear(x, z, hard_r, &neighbors) {
+                if let Some((tx2, tz2)) = find_tuck_position(x, z, hard_r, &neighbors) {
+                    let dx = tx2 - x;
+                    let dz = tz2 - z;
+
+                    // Apply tuck via KCC.
+                    let (dx, dz) = clamp_planar(dx, dz, OVERLAP_PUSH_MAX_STEP_M);
+                    if dx.sq() + dz.sq() > 1.0e-12 {
+                        let corrected = controller.move_shape(
+                            fixed_dt.max(1.0e-6),
+                            &query_pipeline,
+                            &rapier3d::prelude::Capsule::new_y(half_h, hard_r),
+                            &Isometry::translation(x, y_m, z),
+                            rapier3d::prelude::vector![dx, 0.0, dz],
+                            |_| {},
+                        );
+
+                        let new_x = x + corrected.translation.x;
+                        let new_y = y_m + corrected.translation.y;
+                        let new_z = z + corrected.translation.z;
+
+                        let Some(mut t) = ctx.db.transform_data().id().find(tid) else {
+                            continue;
+                        };
+                        t.translation.x = new_x;
+                        t.translation.z = new_z;
+                        t.translation.y = (new_y / Y_QUANTIZE_STEP_M)
+                            .round()
+                            .clamp(i16::MIN as f32, i16::MAX as f32)
+                            as i16;
+                        ctx.db.transform_data().id().update(t);
+
+                        let new_cell = encode_cell_id(new_x, new_z);
+                        if let Some(mut a) = ctx.db.actor().id().find(aid) {
+                            if new_cell != a.cell_id {
+                                a.cell_id = new_cell;
+                                ctx.db.actor().id().update(a);
+                            }
+                        }
+
+                        cache[i].2 = new_x;
+                        cache[i].3 = new_y;
+                        cache[i].4 = new_z;
+                    }
+                }
+            }
         }
 
-        // If we're anchored by an older idle neighbor, do not move this actor.
-        if is_anchored_by_older_idle {
-            continue;
-        }
+        // ------------------------------------------------------------
+        // Phase C: Mutual drift (IDLE-IDLE hard overlap)
+        //
+        // If two IDLE stationary actors overlap hard radii (spawn/teleport), apply a *very slow*
+        // symmetric repulsion so they eventually settle side-by-side.
+        //
+        // IMPORTANT:
+        // - This must never be triggered by a MOVING actor.
+        // - It only applies when BOTH actors are IDLE and stationary.
+        // ------------------------------------------------------------
+        for i in 0..cache.len() {
+            for j in (i + 1)..cache.len() {
+                let (aid, atid, ax, ay, az, ar, _asr, ahh, aidle, amove) = cache[i];
+                let (bid, btid, bx, by, bz, br, _bsr, bhh, bidle, bmove) = cache[j];
 
-        // Nothing to do.
-        if push_x_acc.sq() + push_z_acc.sq() <= 1.0e-12 {
-            continue;
-        }
+                // Only IDLE + stationary on both sides.
+                if amove || bmove {
+                    continue;
+                }
+                if aidle.is_none() || bidle.is_none() {
+                    continue;
+                }
 
-        // Clamp push so we don't teleport in pathological overlaps.
-        let (push_x, push_z) = clamp_planar(push_x_acc, push_z_acc, OVERLAP_PUSH_MAX_STEP_M);
+                let Some((pen, nx, nz)) = hard_overlap_penetration_normal(ax, az, ar, bx, bz, br)
+                else {
+                    continue;
+                };
 
-        // Apply through KCC so we don't push into walls. No vertical movement applied here.
-        let corrected = controller.move_shape(
-            // This is a purely corrective pass; we can treat dt as 0 for kinematic resolution,
-            // but Rapier's API takes `dt`. Use a small positive value to avoid surprising behavior.
-            // (We use `fixed_dt`, which corresponds to the schedule interval.)
-            fixed_dt.max(1.0e-6),
-            &query_pipeline,
-            &rapier3d::prelude::Capsule::new_y(actor.capsule_half_height, actor.capsule_radius),
-            &Isometry::translation(tx, ty, tz),
-            rapier3d::prelude::vector![push_x, 0.0, push_z],
-            |_| {},
-        );
+                if pen <= 1.0e-5 {
+                    continue;
+                }
 
-        // Persist corrected translation.
-        let new_x = tx + corrected.translation.x;
-        let new_y = ty + corrected.translation.y; // should be ~0, but keep generic
-        let new_z = tz + corrected.translation.z;
+                // Very slow symmetric separation (mutual drift).
+                let step = (pen * MUTUAL_IDLE_REPULSION_RELAX).min(OVERLAP_PUSH_MAX_STEP_M);
+                let push_ax = nx * step * 0.5;
+                let push_az = nz * step * 0.5;
+                let push_bx = -nx * step * 0.5;
+                let push_bz = -nz * step * 0.5;
 
-        transform.translation.x = new_x;
-        transform.translation.z = new_z;
-        transform.translation.y = (new_y / Y_QUANTIZE_STEP_M)
-            .round()
-            .clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+                // Apply both via KCC (XZ only).
+                // A
+                {
+                    let corrected = controller.move_shape(
+                        fixed_dt.max(1.0e-6),
+                        &query_pipeline,
+                        &rapier3d::prelude::Capsule::new_y(ahh, ar),
+                        &Isometry::translation(ax, ay, az),
+                        rapier3d::prelude::vector![push_ax, 0.0, push_az],
+                        |_| {},
+                    );
+                    let new_x = ax + corrected.translation.x;
+                    let new_y = ay + corrected.translation.y;
+                    let new_z = az + corrected.translation.z;
 
-        ctx.db.transform_data().id().update(transform);
+                    if let Some(mut t) = ctx.db.transform_data().id().find(atid) {
+                        t.translation.x = new_x;
+                        t.translation.z = new_z;
+                        t.translation.y = (new_y / Y_QUANTIZE_STEP_M)
+                            .round()
+                            .clamp(i16::MIN as f32, i16::MAX as f32)
+                            as i16;
+                        ctx.db.transform_data().id().update(t);
+                    }
+                    if let Some(mut a) = ctx.db.actor().id().find(aid) {
+                        let new_cell = encode_cell_id(new_x, new_z);
+                        if new_cell != a.cell_id {
+                            a.cell_id = new_cell;
+                            ctx.db.actor().id().update(a);
+                        }
+                    }
 
-        // Update actor cell_id if it changed.
-        let new_cell_id = encode_cell_id(new_x, new_z);
-        if new_cell_id != actor.cell_id {
-            let mut actor_updated = actor;
-            actor_updated.cell_id = new_cell_id;
-            ctx.db.actor().id().update(actor_updated);
+                    cache[i].2 = new_x;
+                    cache[i].3 = new_y;
+                    cache[i].4 = new_z;
+                }
+
+                // B
+                {
+                    let corrected = controller.move_shape(
+                        fixed_dt.max(1.0e-6),
+                        &query_pipeline,
+                        &rapier3d::prelude::Capsule::new_y(bhh, br),
+                        &Isometry::translation(bx, by, bz),
+                        rapier3d::prelude::vector![push_bx, 0.0, push_bz],
+                        |_| {},
+                    );
+                    let new_x = bx + corrected.translation.x;
+                    let new_y = by + corrected.translation.y;
+                    let new_z = bz + corrected.translation.z;
+
+                    if let Some(mut t) = ctx.db.transform_data().id().find(btid) {
+                        t.translation.x = new_x;
+                        t.translation.z = new_z;
+                        t.translation.y = (new_y / Y_QUANTIZE_STEP_M)
+                            .round()
+                            .clamp(i16::MIN as f32, i16::MAX as f32)
+                            as i16;
+                        ctx.db.transform_data().id().update(t);
+                    }
+                    if let Some(mut a) = ctx.db.actor().id().find(bid) {
+                        let new_cell = encode_cell_id(new_x, new_z);
+                        if new_cell != a.cell_id {
+                            a.cell_id = new_cell;
+                            ctx.db.actor().id().update(a);
+                        }
+                    }
+
+                    cache[j].2 = new_x;
+                    cache[j].3 = new_y;
+                    cache[j].4 = new_z;
+                }
+            }
         }
     }
 
-    // Persist timer state.
     timer.last_tick = ctx.timestamp;
     ctx.db
         .idle_overlap_push_tick_timer()
