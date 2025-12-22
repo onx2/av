@@ -10,6 +10,11 @@
 //! - Timesteps are passed in from the caller (player vs non-player ticks may clamp differently).
 //! - We keep `Actor.should_move` duplicated and consistent with `MovementData.should_move` because
 //!   movement ticks use `Actor(should_move, is_player)` indexing for fast iteration.
+//!
+//! Important:
+//! - `TransformData.translation` is mixed precision (`DbVec3i16`): `x/z` are meters (`f32`), `y` is quantized (`i16`, `Y_QUANTIZE_STEP_M`).
+//! - Physics/steering operates in meters (`f32`). Only `y` needs decode/encode.
+//! - Ground probing must use meters when calling `has_support_within(...)`.
 
 use crate::{
     // Import the generated schema modules so `ctx.db.*()` accessors exist in this module.
@@ -22,7 +27,10 @@ use crate::{
 };
 use rapier3d::control::KinematicCharacterController;
 use rapier3d::prelude::*;
-use shared::utils::{encode_cell_id, yaw_from_xz, yaw_to_u8, UtilMath};
+use shared::{
+    constants::Y_QUANTIZE_STEP_M,
+    utils::{encode_cell_id, yaw_from_xz, yaw_to_u8, UtilMath},
+};
 use spacetimedb::ReducerContext;
 
 /// Performs a single movement step for one actor.
@@ -46,14 +54,22 @@ pub fn movement_step_actor(
     let capsule_radius = actor.capsule_radius;
 
     // Determine desired planar movement for this step.
+    //
+    // `TransformData.translation` is mixed precision:
+    // - x/z are already meters (f32)
+    // - y is quantized i16 (`Y_QUANTIZE_STEP_M`) and must be decoded for physics
+    let tx = transform.translation.x;
+    let ty = transform.translation.y as f32 * Y_QUANTIZE_STEP_M;
+    let tz = transform.translation.z;
+
     let (target_x, target_z, has_point_intent) = match &movement.move_intent {
         MoveIntent::Point(p) => (p.x, p.z, true),
-        _ => (transform.translation.x, transform.translation.z, false),
+        _ => (tx, tz, false),
     };
 
-    // Compute intended planar direction toward the target.
-    let dx = target_x - transform.translation.x;
-    let dz = target_z - transform.translation.z;
+    // Compute intended planar direction toward the target (meters).
+    let dx = target_x - tx;
+    let dz = target_z - tz;
 
     let secondary = ctx
         .db
@@ -95,22 +111,27 @@ pub fn movement_step_actor(
         dt,
         query_pipeline,
         &Capsule::new_y(actor.capsule_half_height, actor.capsule_radius),
-        &Isometry::translation(
-            transform.translation.x,
-            transform.translation.y,
-            transform.translation.z,
-        ),
+        &Isometry::translation(tx, ty, tz),
         vector![planar.x, down_bias + gravity, planar.z],
         |_| {},
     );
 
-    // Apply corrected movement.
-    transform.translation.x += corrected.translation.x;
-    transform.translation.y += corrected.translation.y;
-    transform.translation.z += corrected.translation.z;
+    // Apply corrected movement (meters).
+    let new_x = tx + corrected.translation.x;
+    let new_y = ty + corrected.translation.y;
+    let new_z = tz + corrected.translation.z;
 
-    // Update cell id on actor when crossing cells.
-    let new_cell_id = encode_cell_id(transform.translation.x, transform.translation.z);
+    // Persist back into the mixed-precision row type:
+    // - x/z stay as f32 meters
+    // - y is quantized to i16 in 0.1m units
+    transform.translation.x = new_x;
+    transform.translation.z = new_z;
+    transform.translation.y = (new_y / Y_QUANTIZE_STEP_M)
+        .round()
+        .clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+
+    // Update cell id on actor when crossing cells (cell encoding expects meters).
+    let new_cell_id = encode_cell_id(new_x, new_z);
     if new_cell_id != actor.cell_id {
         actor.cell_id = new_cell_id;
         actor_dirty = true;
@@ -121,9 +142,12 @@ pub fn movement_step_actor(
         movement.grounded = true;
         movement.grounded_grace_steps = 8;
     } else if movement.grounded_grace_steps > 0 {
+        // `TransformData.translation` is mixed precision; probe in meters.
         let supported = has_support_within(
             query_pipeline,
-            &transform.translation,
+            transform.translation.x,
+            transform.translation.y as f32 * Y_QUANTIZE_STEP_M,
+            transform.translation.z,
             capsule_half_height,
             capsule_radius,
             kcc.hard_airborne_probe_distance,

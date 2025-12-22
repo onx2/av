@@ -39,11 +39,70 @@ impl From<DbVec3> for na::Translation3<f32> {
     }
 }
 
+/// Mixed-precision position optimized for replication/storage.
+///
+/// Layout:
+/// - `x` and `z` are full precision meters (`f32`) to avoid noticeable planar jitter.
+/// - `y` is quantized meters stored as `i16` in steps of `Y_QUANTIZE_STEP_M` to save space
+///   (typically verticality is small).
+///
+/// Quantization convention for `y`:
+/// - 1 quantized unit = `Y_QUANTIZE_STEP_M` meters
+/// - encode: `y_q = round(y_meters / Y_QUANTIZE_STEP_M)`
+/// - decode: `y_meters = (y_q as f32) * Y_QUANTIZE_STEP_M`
+///
+/// Range for `y` with `i16` depends on `Y_QUANTIZE_STEP_M`:
+/// - approx min: `i16::MIN as f32 * Y_QUANTIZE_STEP_M` meters
+/// - approx max: `i16::MAX as f32 * Y_QUANTIZE_STEP_M` meters
+/// S0 at 1cm (0.01) precision, we get about ±327.7m in verticality.
+#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+pub struct DbVec3i16 {
+    /// X axis (east-west) in meters
+    pub x: f32,
+    /// Y axis (up-down) quantized (`Y_QUANTIZE_STEP_M` meters per unit)
+    pub y: i16,
+    /// Z axis (north-south) in meters
+    pub z: f32,
+}
+
+impl Default for DbVec3i16 {
+    fn default() -> Self {
+        Self::new(0.0, 0, 0.0)
+    }
+}
+
+impl DbVec3i16 {
+    pub const fn new(x: f32, y: i16, z: f32) -> Self {
+        Self { x, y, z }
+    }
+}
+
+impl From<DbVec3i16> for na::Translation3<f32> {
+    fn from(value: DbVec3i16) -> Self {
+        na::Translation3::new(
+            value.x,
+            value.y as f32 * shared::constants::Y_QUANTIZE_STEP_M,
+            value.z,
+        )
+    }
+}
+
+impl From<DbVec3i16> for na::Vector3<f32> {
+    fn from(value: DbVec3i16) -> Self {
+        na::Vector3::new(
+            value.x,
+            value.y as f32 * shared::constants::Y_QUANTIZE_STEP_M,
+            value.z,
+        )
+    }
+}
+
 impl From<DbVec3> for na::Point3<f32> {
     fn from(v: DbVec3) -> Self {
         Self::new(v.x, v.y, v.z)
     }
 }
+
 impl From<&DbVec3> for na::Point3<f32> {
     fn from(v: &DbVec3) -> Self {
         Self::new(v.x, v.y, v.z)
@@ -55,9 +114,16 @@ impl From<DbVec3> for na::Vector3<f32> {
         Self::new(v.x, v.y, v.z)
     }
 }
+
 impl From<&DbVec3> for na::Vector3<f32> {
     fn from(v: &DbVec3) -> Self {
         Self::new(v.x, v.y, v.z)
+    }
+}
+
+impl From<DbVec3> for na::Isometry3<f32> {
+    fn from(v: DbVec3) -> Self {
+        na::Isometry3::translation(v.x, v.y, v.z)
     }
 }
 
@@ -69,10 +135,14 @@ impl From<na::Vector3<f32>> for DbVec3 {
 
 impl From<na::Point3<f32>> for DbVec3 {
     fn from(p: na::Point3<f32>) -> Self {
-        DbVec3::new(p.x, p.y, p.z)
+        Self::new(p.x, p.y, p.z)
     }
 }
 
+pub fn ts_us(ts: spacetimedb::Timestamp) -> u64 {
+    // Spacetime returns micros since epoch as i64; clamp to 0 for pre-epoch just in case.
+    ts.to_micros_since_unix_epoch().max(0) as u64
+}
 /// A unit quaternion (w + xi + yj + zk), stored as four `f32` scalars.
 ///
 /// Semantics:

@@ -1,7 +1,7 @@
 use crate::{schema::*, types::MoveIntent};
 use nalgebra as na;
 use shared::{
-    constants::MAX_INTENT_PATH_LEN,
+    constants::{MAX_INTENT_PATH_LEN, Y_QUANTIZE_STEP_M},
     utils::{is_move_too_close, is_move_too_far},
 };
 use spacetimedb::ReducerContext;
@@ -34,7 +34,16 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
         return Err("Transform data not found".into());
     };
 
-    let current: na::Vector3<f32> = transform_data.translation.into();
+    // `TransformData.translation` is mixed precision (`DbVec3i16`):
+    // - x/z are already meters (f32)
+    // - y is quantized (i16, `Y_QUANTIZE_STEP_M` units)
+    //
+    // Decode to meters for intent validation math.
+    let current: na::Vector3<f32> = na::Vector3::new(
+        transform_data.translation.x,
+        transform_data.translation.y as f32 * Y_QUANTIZE_STEP_M,
+        transform_data.translation.z,
+    );
     match (&movement_data.move_intent, &intent) {
         // 1. Idling Check
         (MoveIntent::None, MoveIntent::None) => {

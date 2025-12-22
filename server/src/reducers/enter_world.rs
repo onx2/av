@@ -49,6 +49,9 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         capsule_half_height: player.capsule_half_height,
         // Keep the duplicated flag consistent with the persisted MovementData row.
         should_move: movement_data.should_move,
+        // `TransformData.translation` is mixed precision (`DbVec3i16`):
+        // - x/z are already meters (f32)
+        // - y is quantized (i16, 0.1m) but is not needed for cell id
         cell_id: encode_cell_id(transform_data.translation.x, transform_data.translation.z),
     });
 

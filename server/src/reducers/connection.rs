@@ -1,4 +1,5 @@
 use crate::{schema::*, types::*};
+use shared::constants::Y_QUANTIZE_STEP_M;
 use spacetimedb::{ReducerContext, Table};
 
 /// Fired when a client connects to the module.
@@ -20,8 +21,18 @@ pub fn identity_connected(ctx: &ReducerContext) {
     } else {
         let transform_data = ctx.db.transform_data().insert(TransformData {
             id: 0,
-            translation: DbVec3::new(0.0, 3.85, 0.0),
-            yaw: 0,
+            // Mixed-precision translation:
+            // - x/z are meters (f32)
+            // - y is quantized i16 in 0.1m units
+            translation: DbVec3i16::new(
+                0.0,
+                (3.85f32 / Y_QUANTIZE_STEP_M)
+                    .round()
+                    .clamp(i16::MIN as f32, i16::MAX as f32) as i16,
+                0.0,
+            ),
+            // Yaw is quantized into a single byte.
+            yaw: 0u8,
         });
         let movement_data = ctx.db.movement_data().insert(MovementData {
             id: 0,

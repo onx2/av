@@ -3,10 +3,10 @@ use crate::{
         actor, movement_data, primary_stats, secondary_stats, transform_data, vital_stats, Actor,
         MovementData, PrimaryStats, SecondaryStats, TransformData, VitalStats,
     },
-    types::{DbVec3, MoveIntent},
+    types::{DbVec3, DbVec3i16, MoveIntent},
     utils::LogStopwatch,
 };
-use shared::utils::encode_cell_id;
+use shared::{constants::Y_QUANTIZE_STEP_M, utils::encode_cell_id};
 use spacetimedb::Table;
 use spacetimedb::*;
 
@@ -118,7 +118,10 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
     for _ in 0..count {
         // Random initial location around origin, planar (XZ). Keep y=0 and let KCC settle.
         let (sx, sz) = rng.random_point_in_disc(SPAWN_RADIUS_M);
-        let spawn_translation = DbVec3::new(sx, 0.0, sz);
+        // Mixed-precision translation:
+        // - x/z are meters (f32)
+        // - y is quantized i16 in 0.1m units
+        let spawn_translation = DbVec3i16::new(sx, 0, sz);
 
         // Create baseline stat rows.
         let primary = ctx.db.primary_stats().insert(PrimaryStats {
@@ -148,7 +151,7 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
         let transform = ctx.db.transform_data().insert(TransformData {
             id: 0,
             translation: spawn_translation,
-            yaw: 0,
+            yaw: 0u8,
         });
 
         let movement = ctx.db.movement_data().insert(MovementData {
@@ -170,6 +173,7 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
             is_player: false,
             // Keep the duplicated flag consistent with the newly created MovementData row.
             should_move: movement.should_move,
+            // `spawn_translation` is mixed precision (`DbVec3i16`): x/z are already meters (f32).
             cell_id: encode_cell_id(spawn_translation.x, spawn_translation.z),
             capsule_radius: DEFAULT_CAPSULE_RADIUS_M,
             capsule_half_height: DEFAULT_CAPSULE_HALF_HEIGHT_M,
@@ -184,7 +188,12 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
 
         ctx.db.fake_wander_state().insert(FakeWanderState {
             actor_id: actor.id,
-            home_translation: spawn_translation,
+            // Store home in full-precision meters (DbVec3) for path/intent generation.
+            home_translation: DbVec3::new(
+                spawn_translation.x,
+                spawn_translation.y as f32 * Y_QUANTIZE_STEP_M,
+                spawn_translation.z,
+            ),
             wander_radius_m: DEFAULT_WANDER_RADIUS_M,
             next_wander_at: next_at,
             next_wander_at_us: ts_us(next_at),
@@ -247,9 +256,11 @@ pub fn fake_wander_tick_reducer(
         let (dx, dz) = rng.random_point_in_disc(state.wander_radius_m);
 
         // Keep y from current transform (KCC will adjust as it moves).
+        //
+        // `TransformData.translation` is mixed precision (`DbVec3i16`), so decode y to meters.
         let target = DbVec3::new(
             state.home_translation.x + dx,
-            t.translation.y,
+            t.translation.y as f32 * Y_QUANTIZE_STEP_M,
             state.home_translation.z + dz,
         );
 

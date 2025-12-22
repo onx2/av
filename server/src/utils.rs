@@ -1,4 +1,3 @@
-use crate::types::DbVec3;
 use log::info;
 use nalgebra::point;
 use rapier3d::prelude::*;
@@ -21,20 +20,26 @@ pub fn get_fixed_delta_time(scheduled_at: ScheduleAt) -> f32 {
     }
 }
 
+/// Returns whether there is ground support within `max_dist` under the capsule.
+///
+/// `translation_*` must be in world meters (decoded). This keeps the function usable regardless of
+/// whether the caller stores positions as floats or quantized integers.
 pub fn has_support_within(
     query_pipeline: &QueryPipeline<'_>,
-    translation: &DbVec3,
+    translation_x_m: f32,
+    translation_y_m: f32,
+    translation_z_m: f32,
     capsule_half_height: f32,
     capsule_radius: f32,
     max_dist: f32,
     min_ground_normal_y: f32,
 ) -> bool {
     // Probe from the capsule "feet" (slightly above to avoid starting inside geometry).
-    let feet_y: f32 = translation.y as f32 - (capsule_half_height + capsule_radius);
+    let feet_y: f32 = translation_y_m - (capsule_half_height + capsule_radius);
     let origin_y = feet_y + 0.02;
 
     let ray = Ray::new(
-        point![translation.x.into(), origin_y, translation.z.into()],
+        point![translation_x_m, origin_y, translation_z_m],
         vector![0.0, -1.0, 0.0],
     );
 

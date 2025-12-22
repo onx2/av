@@ -118,11 +118,13 @@ pub struct TransformData {
     #[auto_inc]
     pub id: u32,
 
-    pub translation: DbVec3,
+    /// Mixed-precision translation optimized for replication/storage:
+    /// - `x`/`z` are stored as `f32` meters (full precision)
+    /// - `y` is stored as quantized `i16` (0.1m per unit)
+    pub translation: DbVec3i16,
 
     /// Quantized yaw (radians) stored as a single byte.
-    ///
-    /// Convention: `0..=255` maps uniformly onto `[0, 2π)`.
+    /// Convention: `0..=u8::MAX` maps uniformly onto `[0, 2π)`.
     pub yaw: u8,
 }
 
