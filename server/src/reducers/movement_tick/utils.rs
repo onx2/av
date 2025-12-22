@@ -8,8 +8,8 @@
 //! Notes:
 //! - This is intended for "reasonable collision detection" rather than deterministic physics.
 //! - Timesteps are passed in from the caller (player vs non-player ticks may clamp differently).
-//! - We keep `Actor.should_move` duplicated and consistent with `MovementData.should_move` because
-//!   movement ticks use `Actor(should_move, is_player)` indexing for fast iteration.
+//! - Movement state is stored directly on `Actor` (the `MovementData` table has been removed).
+//! - Movement ticks use the composite btree index on `Actor(should_move, is_player)` for fast iteration.
 //!
 //! Important:
 //! - `TransformData.translation` is mixed precision (`DbVec3i16`): `x/z` are meters (`f32`), `y` is quantized (`i16`, `Y_QUANTIZE_STEP_M`).
@@ -18,11 +18,8 @@
 
 use crate::{
     // Import the generated schema modules so `ctx.db.*()` accessors exist in this module.
-    schema::{
-        actor, movement_data, secondary_stats, transform_data, Actor, KccSettings, MovementData,
-        TransformData,
-    },
-    types::MoveIntent,
+    schema::{actor, secondary_stats, transform_data, Actor, KccSettings, TransformData},
+    types::{ts_us, MoveIntent},
     utils::has_support_within,
 };
 use rapier3d::control::KinematicCharacterController;
@@ -35,9 +32,8 @@ use spacetimedb::ReducerContext;
 
 /// Performs a single movement step for one actor.
 ///
-/// Returns `(actor, movement, transform, actor_dirty)` where:
-/// - `actor_dirty` indicates whether the Actor row should be updated (because `cell_id` and/or
-///   `should_move` changed).
+/// Returns `(actor, transform, actor_dirty)` where:
+/// - `actor_dirty` is true if the actor row needs updating (cell_id / should_move / movement state changes).
 pub fn movement_step_actor(
     ctx: &ReducerContext,
     query_pipeline: &QueryPipeline<'_>,
@@ -45,9 +41,8 @@ pub fn movement_step_actor(
     kcc: &KccSettings,
     dt: f32,
     mut actor: Actor,
-    mut movement: MovementData,
     mut transform: TransformData,
-) -> (Actor, MovementData, TransformData, bool) {
+) -> (Actor, TransformData, bool) {
     let mut actor_dirty = false;
 
     let capsule_half_height = actor.capsule_half_height;
@@ -62,7 +57,7 @@ pub fn movement_step_actor(
     let ty = transform.translation.y as f32 * Y_QUANTIZE_STEP_M;
     let tz = transform.translation.z;
 
-    let (target_x, target_z, has_point_intent) = match &movement.move_intent {
+    let (target_x, target_z, has_point_intent) = match &actor.move_intent {
         MoveIntent::Point(p) => (p.x, p.z, true),
         _ => (tx, tz, false),
     };
@@ -79,7 +74,7 @@ pub fn movement_step_actor(
         .unwrap_or_default();
 
     let max_step = if has_point_intent {
-        if movement.grounded {
+        if actor.grounded {
             secondary.movement_speed * dt
         } else {
             secondary.movement_speed * dt * AIR_CONTROL_MULTIPLIER
@@ -107,7 +102,7 @@ pub fn movement_step_actor(
     // Vertical motion.
     // Apply down-bias always; apply fall speed only if we were airborne last step.
     let down_bias = -kcc.grounded_down_bias_mps * dt;
-    let gravity = f32::from(!movement.grounded) * (-kcc.fall_speed_mps * dt);
+    let gravity = f32::from(!actor.grounded) * (-kcc.fall_speed_mps * dt);
 
     // KCC move against the static collision world.
     let corrected = controller.move_shape(
@@ -140,11 +135,11 @@ pub fn movement_step_actor(
         actor_dirty = true;
     }
 
-    // Persist grounded for the next step.
+    // Persist grounded for the next step (movement state lives on Actor).
     if corrected.grounded {
-        movement.grounded = true;
-        movement.grounded_grace_steps = 8;
-    } else if movement.grounded_grace_steps > 0 {
+        actor.grounded = true;
+        actor.grounded_grace_steps = 8;
+    } else if actor.grounded_grace_steps > 0 {
         // `TransformData.translation` is mixed precision; probe in meters.
         let supported = has_support_within(
             query_pipeline,
@@ -158,36 +153,37 @@ pub fn movement_step_actor(
         );
 
         if supported {
-            movement.grounded_grace_steps -= 1;
+            actor.grounded_grace_steps -= 1;
         } else {
-            movement.grounded_grace_steps = 0;
-            movement.grounded = false;
+            actor.grounded_grace_steps = 0;
+            actor.grounded = false;
         }
     } else {
-        movement.grounded = false;
+        actor.grounded = false;
     }
 
-    // Clear MoveIntent::Point when within acceptance radius (planar).
+    // Clear MoveIntent::Point when within acceptance radius (planar) by transitioning to Idle(now).
     if has_point_intent && dist_sq <= kcc.point_acceptance_radius_sq {
-        movement.move_intent = MoveIntent::None;
+        actor.move_intent = MoveIntent::Idle(ts_us(ctx.timestamp));
     }
 
-    // Keep `should_move` consistent on both MovementData and Actor (used by movement tick indexes).
-    let new_should_move = movement.move_intent != MoveIntent::None || !movement.grounded;
-    movement.should_move = new_should_move;
+    // Keep `should_move` consistent on Actor (movement ticks iterate `Actor(should_move, is_player)`):
+    // - should_move if we have a non-idle intent, OR if we're airborne (gravity needs processing).
+    let is_idle = matches!(actor.move_intent, MoveIntent::Idle(_));
+    let new_should_move = !is_idle || !actor.grounded;
     if actor.should_move != new_should_move {
         actor.should_move = new_should_move;
         actor_dirty = true;
     }
 
-    (actor, movement, transform, actor_dirty)
+    (actor, transform, actor_dirty)
 }
 
 /// Shared iteration + update loop for one movement tick "kind" (player vs non-player).
 ///
 /// Iterates only actors that are currently marked `should_move=true` and match `is_player` using the
 /// composite btree index on `Actor(should_move, is_player)`, then:
-/// - loads `MovementData` + `TransformData` rows
+/// - loads `TransformData` row
 /// - runs `movement_step_actor`
 /// - persists updates
 pub fn movement_tick_for_kind(
@@ -204,27 +200,14 @@ pub fn movement_tick_for_kind(
         .should_move_and_is_player()
         .filter((true, is_player))
     {
-        let Some(movement) = ctx.db.movement_data().id().find(actor.movement_data_id) else {
-            continue;
-        };
-
         let Some(transform) = ctx.db.transform_data().id().find(actor.transform_data_id) else {
             continue;
         };
 
-        let (actor, movement, transform, actor_dirty) = movement_step_actor(
-            ctx,
-            query_pipeline,
-            controller,
-            kcc,
-            dt,
-            actor,
-            movement,
-            transform,
-        );
+        let (actor, transform, actor_dirty) =
+            movement_step_actor(ctx, query_pipeline, controller, kcc, dt, actor, transform);
 
         ctx.db.transform_data().id().update(transform);
-        ctx.db.movement_data().id().update(movement);
         if actor_dirty {
             ctx.db.actor().id().update(actor);
         }

@@ -23,7 +23,7 @@ pub fn identity_connected(ctx: &ReducerContext) {
             id: 0,
             // Mixed-precision translation:
             // - x/z are meters (f32)
-            // - y is quantized i16 in 0.1m units
+            // - y is quantized i16 in `Y_QUANTIZE_STEP_M` units
             translation: DbVec3i16::new(
                 0.0,
                 (3.85f32 / Y_QUANTIZE_STEP_M)
@@ -34,13 +34,7 @@ pub fn identity_connected(ctx: &ReducerContext) {
             // Yaw is quantized into a single byte.
             yaw: 0u8,
         });
-        let movement_data = ctx.db.movement_data().insert(MovementData {
-            id: 0,
-            move_intent: MoveIntent::None,
-            grounded: false,
-            should_move: true,
-            grounded_grace_steps: 0,
-        });
+
         let primary_stats = ctx.db.primary_stats().insert(PrimaryStats {
             id: 0,
             strength: 10,
@@ -53,21 +47,22 @@ pub fn identity_connected(ctx: &ReducerContext) {
             id: 0,
             movement_speed: 5.0,
             max_health: 100,
-            max_mana: 100,
+            max_mana: 50,
             max_stamina: 100,
         });
         let vital_stats = ctx.db.vital_stats().insert(VitalStats {
             id: 0,
             health: 100,
-            mana: 100,
+            mana: 50,
             stamina: 100,
         });
-        // Seed a new player with sensible defaults so we can rebuild an actor later.
+
+        // Movement state is no longer stored in `MovementData`; it lives on the live `Actor`.
+        // Players persist only identity + stats + transform + capsule parameters.
         ctx.db.player().insert(Player {
             identity: ctx.sender,
             actor_id: None,
             transform_data_id: transform_data.id,
-            movement_data_id: movement_data.id,
             capsule_radius: 0.35,
             capsule_half_height: 0.75,
             primary_stats_id: primary_stats.id,

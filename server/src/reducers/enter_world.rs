@@ -1,4 +1,4 @@
-use crate::schema::*;
+use crate::{schema::*, types::MoveIntent};
 use shared::utils::encode_cell_id;
 use spacetimedb::{ReducerContext, Table};
 
@@ -9,6 +9,7 @@ use spacetimedb::{ReducerContext, Table};
 /// - Rejects if the caller already has a live actor.
 /// - Spawns a new Actor row seeded from the Player's persisted fields
 ///   (transform, capsule dimensions, movement speed, grounded).
+/// - Initializes movement state directly on the Actor (MovementData has been removed).
 /// - Sets `player.actor_id = Some(actor.id)`.
 ///
 /// Determinism:
@@ -28,30 +29,32 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         return Err("No transform found!".into());
     };
 
-    let Some(movement_data) = ctx.db.movement_data().id().find(player.movement_data_id) else {
-        return Err("No movement data found!".into());
-    };
+    // Movement state is stored directly on the live Actor (MovementData table removed).
 
     // Rebuild actor from persisted Player state.
+    //
+    // Movement state is initialized directly on the Actor:
+    // - intent starts as Idle(now)
+    // - grounded starts false (KCC will set it on first tick)
+    // - should_move starts true so the actor gets processed at least once (gravity/grounding)
     let actor = ctx.db.actor().insert(Actor {
         id: 0,
         primary_stats_id: player.primary_stats_id,
         secondary_stats_id: player.secondary_stats_id,
         vital_stats_id: player.vital_stats_id,
         transform_data_id: player.transform_data_id,
-        movement_data_id: movement_data.id,
         // kind: ActorKind::Player(player.identity),
         is_player: true,
         identity: Some(player.identity),
-        // translation: player.translation,
-        // yaw: player.yaw,
         capsule_radius: player.capsule_radius,
         capsule_half_height: player.capsule_half_height,
-        // Keep the duplicated flag consistent with the persisted MovementData row.
-        should_move: movement_data.should_move,
+        move_intent: MoveIntent::Idle(ctx.timestamp.to_micros_since_unix_epoch().max(0) as u64),
+        grounded: false,
+        grounded_grace_steps: 0,
+        should_move: true,
         // `TransformData.translation` is mixed precision (`DbVec3i16`):
         // - x/z are already meters (f32)
-        // - y is quantized (i16, 0.1m) but is not needed for cell id
+        // - y is quantized (i16, `Y_QUANTIZE_STEP_M`) but is not needed for cell id
         cell_id: encode_cell_id(transform_data.translation.x, transform_data.translation.z),
     });
 

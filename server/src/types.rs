@@ -310,7 +310,10 @@ pub enum MoveIntent {
     Point(DbVec3),
 
     /// No movement intent (idling).
-    None,
+    ///
+    /// Stores the timestamp (micros since Unix epoch) of when the actor entered idle.
+    /// This is useful for tie-breaking overlap resolution (e.g. push the most recently idle actor).
+    Idle(u64),
 }
 
 /// Logical kind/ownership for an actor.

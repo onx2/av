@@ -14,7 +14,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
     let Some(source_actor_id) = player.actor_id else {
         return Err("Actor not found".into());
     };
-    let Some(source_actor) = ctx.db.actor().id().find(source_actor_id) else {
+    let Some(mut source_actor) = ctx.db.actor().id().find(source_actor_id) else {
         return Err("Actor not found".into());
     };
     let Some(transform_data) = ctx
@@ -22,14 +22,6 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
         .transform_data()
         .id()
         .find(source_actor.transform_data_id)
-    else {
-        return Err("Transform data not found".into());
-    };
-    let Some(mut movement_data) = ctx
-        .db
-        .movement_data()
-        .id()
-        .find(source_actor.movement_data_id)
     else {
         return Err("Transform data not found".into());
     };
@@ -44,9 +36,10 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
         transform_data.translation.y as f32 * Y_QUANTIZE_STEP_M,
         transform_data.translation.z,
     );
-    match (&movement_data.move_intent, &intent) {
+
+    match (&source_actor.move_intent, &intent) {
         // 1. Idling Check
-        (MoveIntent::None, MoveIntent::None) => {
+        (MoveIntent::Idle(_), MoveIntent::Idle(_)) => {
             return Err("Already idling".into());
         }
 
@@ -72,24 +65,16 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
             return Err("Distance from current position too close".into());
         }
 
+        // 6. Otherwise, accept and write intent directly onto Actor.
         _ => {
-            // Compute before updating to avoid using `movement_data` after it's moved into `update(...)`.
-            let should_move = intent != MoveIntent::None || !movement_data.grounded;
+            source_actor.move_intent = intent;
 
-            movement_data.should_move = should_move;
-            movement_data.move_intent = intent;
-            ctx.db.movement_data().id().update(movement_data);
+            // Keep should_move consistent:
+            // - should_move if we have a non-idle intent, OR if we're airborne (gravity needs processing)
+            let is_idle = matches!(source_actor.move_intent, MoveIntent::Idle(_));
+            source_actor.should_move = !is_idle || !source_actor.grounded;
 
-            // Keep the duplicated flag on `Actor` consistent with `MovementData.should_move`.
-            // Movement ticks iterate `actor(should_move, is_player)`, so if this isn't set,
-            // the actor will never be processed.
-            if source_actor.should_move != should_move {
-                ctx.db.actor().id().update(Actor {
-                    should_move,
-                    ..source_actor
-                });
-            }
-
+            ctx.db.actor().id().update(source_actor);
             Ok(())
         }
     }

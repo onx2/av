@@ -1,9 +1,9 @@
 use crate::{
     schema::{
-        actor, movement_data, primary_stats, secondary_stats, transform_data, vital_stats, Actor,
-        MovementData, PrimaryStats, SecondaryStats, TransformData, VitalStats,
+        actor, primary_stats, secondary_stats, transform_data, vital_stats, Actor, PrimaryStats,
+        SecondaryStats, TransformData, VitalStats,
     },
-    types::{DbVec3, DbVec3i16, MoveIntent},
+    types::{ts_us, DbVec3, DbVec3i16, MoveIntent},
     utils::LogStopwatch,
 };
 use shared::{constants::Y_QUANTIZE_STEP_M, utils::encode_cell_id};
@@ -20,9 +20,7 @@ use spacetimedb::*;
 /// - `Timestamp` itself is not filterable for `RangedIndex::filter`, so we store a filterable
 ///   surrogate (`u64` microseconds since unix epoch).
 /// - This uses the stable numeric accessor `to_micros_since_unix_epoch()`.
-fn ts_us(ts: Timestamp) -> u64 {
-    ts.to_micros_since_unix_epoch() as u64
-}
+// NOTE: `ts_us(...)` is provided by `crate::types` and should be used instead of a local helper.
 
 /// How often the scheduled reducer wakes up to check which fakes need new targets.
 const FAKE_WANDER_TICK_HZ: i64 = 2; // 2 Hz = every 500ms
@@ -154,25 +152,23 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
             yaw: 0u8,
         });
 
-        let movement = ctx.db.movement_data().insert(MovementData {
-            id: 0,
-            should_move: false,
-            move_intent: MoveIntent::None,
-            grounded: false,
-            grounded_grace_steps: 0,
-        });
-
+        // Movement state is stored directly on the live Actor (MovementData table removed).
+        // Spawn fakes as idle; KCC will settle grounded state on the first movement tick.
         let actor = ctx.db.actor().insert(Actor {
             id: 0,
             primary_stats_id: primary.id,
             secondary_stats_id: secondary.id,
             vital_stats_id: vital.id,
             transform_data_id: transform.id,
-            movement_data_id: movement.id,
             identity: None,
             is_player: false,
-            // Keep the duplicated flag consistent with the newly created MovementData row.
-            should_move: movement.should_move,
+
+            move_intent: MoveIntent::Idle(ts_us(ctx.timestamp)),
+            grounded: false,
+            grounded_grace_steps: 0,
+            // Process at least once so gravity/grounding can settle.
+            should_move: true,
+
             // `spawn_translation` is mixed precision (`DbVec3i16`): x/z are already meters (f32).
             cell_id: encode_cell_id(spawn_translation.x, spawn_translation.z),
             capsule_radius: DEFAULT_CAPSULE_RADIUS_M,
@@ -249,9 +245,7 @@ pub fn fake_wander_tick_reducer(
             continue;
         };
 
-        let Some(mut m) = ctx.db.movement_data().id().find(a.movement_data_id) else {
-            continue;
-        };
+        // Movement state is stored directly on the Actor (MovementData table removed).
 
         let (dx, dz) = rng.random_point_in_disc(state.wander_radius_m);
 
@@ -267,16 +261,14 @@ pub fn fake_wander_tick_reducer(
         // Decide whether to idle or to pick a new movement target.
         // This reduces the fraction of non-players that are continuously moving.
         if rng.next_f32_01() < WANDER_IDLE_CHANCE {
-            // Enter idle: clear intent and ensure should_move is false (unless airborne).
-            m.move_intent = MoveIntent::None;
-            let should_move = !m.grounded;
-            m.should_move = should_move;
-            ctx.db.movement_data().id().update(m);
+            // Enter idle: set intent to Idle(now). Keep should_move true if airborne (gravity needs processing).
+            let mut a2 = a;
+            a2.move_intent = MoveIntent::Idle(ts_us(ctx.timestamp));
 
-            // Keep the duplicated flag on `Actor` consistent with `MovementData.should_move`.
-            if a.should_move != should_move {
-                ctx.db.actor().id().update(Actor { should_move, ..a });
-            }
+            let is_idle = matches!(a2.move_intent, MoveIntent::Idle(_));
+            a2.should_move = !is_idle || !a2.grounded;
+
+            ctx.db.actor().id().update(a2);
 
             // Schedule when we should decide again (idle duration).
             let delay_s = rng.gen_range_i64_inclusive(IDLE_DELAY_MIN_S, IDLE_DELAY_MAX_S);
@@ -291,19 +283,10 @@ pub fn fake_wander_tick_reducer(
         }
 
         // Otherwise: pick a new target and start moving.
-        m.move_intent = MoveIntent::Point(target);
-        m.should_move = true;
-        ctx.db.movement_data().id().update(m);
-
-        // Keep the duplicated flag on `Actor` consistent with `MovementData.should_move`.
-        // Movement ticks iterate `actor(should_move, is_player)`, so if this isn't set,
-        // the actor will never be processed.
-        if !a.should_move {
-            ctx.db.actor().id().update(Actor {
-                should_move: true,
-                ..a
-            });
-        }
+        let mut a2 = a;
+        a2.move_intent = MoveIntent::Point(target);
+        a2.should_move = true;
+        ctx.db.actor().id().update(a2);
 
         // Schedule the next change.
         let delay_s = rng.gen_range_i64_inclusive(WANDER_DELAY_MIN_S, WANDER_DELAY_MAX_S);

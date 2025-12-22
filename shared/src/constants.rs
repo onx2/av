@@ -1,5 +1,32 @@
 use std::time::Duration;
 
+/// How often (Hz) to run the server-side idle-player overlap separation tick.
+///
+/// This tick is intended to resolve minor capsule overlaps for players that are not moving
+/// (e.g. spawn stacking) without doing expensive full movement simulation.
+///
+/// Notes:
+/// - This should be low frequency (e.g. 10Hz) since it's a corrective/nudging pass.
+/// - The implementation should only process idle players and only consider neighbors in nearby cells.
+pub const IDLE_OVERLAP_PUSH_TICK_HZ: i64 = 10;
+
+/// Small extra separation distance (meters) added on top of the combined capsule radii.
+///
+/// This helps avoid persistent re-overlap due to float/quantization and ensures actors end up
+/// slightly separated after a push.
+pub const OVERLAP_PUSH_SKIN_M: f32 = 0.02;
+
+/// Maximum planar push distance (meters) applied to a single idle player per tick.
+///
+/// Prevents large teleports in pathological cases (e.g. many actors stacked).
+pub const OVERLAP_PUSH_MAX_STEP_M: f32 = 0.25;
+
+/// Hard limit on how many neighbor candidate actors we consider per idle player.
+///
+/// This is a safety valve for crowded cells. If exceeded, the push reducer can skip or
+/// only process a subset to avoid performance cliffs.
+pub const OVERLAP_PUSH_MAX_NEIGHBORS_PER_ACTOR: usize = 64;
+
 /// Air-control multiplier for planar (XZ) movement while airborne.
 ///
 /// Convention:
@@ -7,7 +34,7 @@ use std::time::Duration;
 /// - 0.0 = no air control (current "abrupt stop" behavior)
 ///
 /// Typical values: 0.1 .. 0.4
-pub const AIR_CONTROL_MULTIPLIER: f32 = 0.4;
+pub const AIR_CONTROL_MULTIPLIER: f32 = 0.3;
 
 /// Quantization step for the Y axis in meters.
 ///

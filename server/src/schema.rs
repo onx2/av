@@ -59,15 +59,11 @@ pub struct Player {
     pub secondary_stats_id: u32,
     pub vital_stats_id: u32,
     pub transform_data_id: u32,
-    pub movement_data_id: u32,
 
-    /// Optional live actor id. None if not currently in-world.
-    #[index(btree)]
     pub actor_id: Option<u64>,
 
-    /// Capsule radius used by the actor's kinematic collider (meters).
+    /// Capsule collider parameters (meters).
     pub capsule_radius: f32,
-    /// Capsule half-height used by the actor's kinematic collider (meters).
     pub capsule_half_height: f32,
 }
 
@@ -88,9 +84,6 @@ pub struct Actor {
     pub vital_stats_id: u32,
 
     #[unique]
-    pub movement_data_id: u32,
-
-    #[unique]
     pub transform_data_id: u32,
 
     // pub kind: ActorKind,
@@ -100,8 +93,29 @@ pub struct Actor {
     #[index(btree)]
     pub is_player: bool,
 
+    /// Whether this actor should be processed by movement ticks.
+    ///
+    /// This is indexed (along with `is_player`) so ticks can efficiently iterate only active actors.
+    ///
+    /// Convention:
+    /// - `true` if the actor has non-idle intent OR is airborne (needs gravity)
+    /// - `false` if the actor is idle and grounded
     #[index(btree)]
     pub should_move: bool,
+
+    /// Current movement intent.
+    ///
+    /// Note:
+    /// - `MoveIntent::Idle(since_us)` replaces the old `MoveIntent::None`.
+    /// - The `since_us` value (micros since Unix epoch) is used for tie-breaking overlap resolution
+    ///   (e.g. push the most recently idle actor).
+    pub move_intent: MoveIntent,
+
+    /// Whether the actor was grounded on the previous movement step.
+    pub grounded: bool,
+
+    /// Grace steps remaining for groundedness (helps avoid flicker on edges/stairs).
+    pub grounded_grace_steps: u8,
 
     #[index(btree)]
     pub cell_id: u32,
@@ -126,25 +140,6 @@ pub struct TransformData {
     /// Quantized yaw (radians) stored as a single byte.
     /// Convention: `0..=u8::MAX` maps uniformly onto `[0, 2π)`.
     pub yaw: u8,
-}
-
-#[table(name = movement_data)]
-pub struct MovementData {
-    #[primary_key]
-    #[auto_inc]
-    pub id: u32,
-
-    #[index(btree)]
-    pub should_move: bool,
-
-    /// Current movement intent.
-    pub move_intent: MoveIntent,
-
-    /// Whether the Actor was grounded last X grounded_grace_steps ago
-    pub grounded: bool,
-
-    /// The number of steps to wait before flipping grounded state
-    pub grounded_grace_steps: u8,
 }
 
 #[table(name = primary_stats)]
