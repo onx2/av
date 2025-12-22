@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 bevy = { version = "0.17.3" }
-bevy_spacetimedb = { git = "https://github.com/BigWoofStudios/bevy_spacetimedb", rev = "1de3cd0455e216eac572a40896fa6fd1ac75211d" }
+bevy_spacetimedb = { git = "https://github.com/BigWoofStudios/bevy_spacetimedb", rev = "2196c3136bb5a6045d1b4f2a8fae657243a2886e" }
 spacetimedb-sdk = "1.11.0"
 leafwing-input-manager = {version ="0.19.0", features = ["timing"]}
 
