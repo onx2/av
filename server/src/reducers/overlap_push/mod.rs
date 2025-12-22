@@ -286,9 +286,7 @@ pub fn idle_overlap_push_tick_reducer(
             if actors.len() >= MAX_ACTORS_PER_CELL {
                 break;
             }
-            if !a.is_player {
-                continue;
-            }
+            // Include NPCs as obstacles too (they will never be moved by this reducer).
             actors.push(a);
         }
 
@@ -360,11 +358,18 @@ pub fn idle_overlap_push_tick_reducer(
                 let (_bid, _btid, bx, _by, bz, _br, bsoft_r, _bhh, bidle_since, bshould_move) =
                     cache[j];
 
-                // Only avoid stationary IDLE obstacles (infinite mass).
+                // Stationary obstacles (infinite mass for steering purposes):
+                // - Players: only if IDLE (have an idle timestamp) and not moving.
+                // - NPCs: any non-moving NPC is treated as a stationary obstacle.
                 if bshould_move {
                     continue;
                 }
-                if bidle_since.is_none() {
+
+                // If `bidle_since` is None, this is not an idle-player entry. Treat it as:
+                // - NPC obstacle (allowed), or
+                // - non-idle player (ignored for steering).
+                let is_stationary_obstacle = bidle_since.is_some() || !actors[j].is_player;
+                if !is_stationary_obstacle {
                     continue;
                 }
 
@@ -526,14 +531,15 @@ pub fn idle_overlap_push_tick_reducer(
         }
 
         // ------------------------------------------------------------
-        // Phase C: Mutual drift (IDLE-IDLE hard overlap)
+        // Phase C: Mutual drift (IDLE-IDLE hard overlap) — STRICT ANCHORING
         //
         // If two IDLE stationary actors overlap hard radii (spawn/teleport), apply a *very slow*
-        // symmetric repulsion so they eventually settle side-by-side.
+        // repulsion, but ONLY move the more recently idle actor. The older-idle actor stays anchored.
         //
         // IMPORTANT:
         // - This must never be triggered by a MOVING actor.
         // - It only applies when BOTH actors are IDLE and stationary.
+        // - Smaller `idle_since_us` means "idle for longer" => that actor is anchored.
         // ------------------------------------------------------------
         for i in 0..cache.len() {
             for j in (i + 1)..cache.len() {
@@ -544,9 +550,9 @@ pub fn idle_overlap_push_tick_reducer(
                 if amove || bmove {
                     continue;
                 }
-                if aidle.is_none() || bidle.is_none() {
+                let (Some(a_idle_since_us), Some(b_idle_since_us)) = (aidle, bidle) else {
                     continue;
-                }
+                };
 
                 let Some((pen, nx, nz)) = hard_overlap_penetration_normal(ax, az, ar, bx, bz, br)
                 else {
@@ -557,16 +563,25 @@ pub fn idle_overlap_push_tick_reducer(
                     continue;
                 }
 
-                // Very slow symmetric separation (mutual drift).
+                // Very slow separation, but applied only to the MORE RECENTLY idle actor.
+                // (Higher since_us => more recent)
                 let step = (pen * MUTUAL_IDLE_REPULSION_RELAX).min(OVERLAP_PUSH_MAX_STEP_M);
-                let push_ax = nx * step * 0.5;
-                let push_az = nz * step * 0.5;
-                let push_bx = -nx * step * 0.5;
-                let push_bz = -nz * step * 0.5;
 
-                // Apply both via KCC (XZ only).
-                // A
-                {
+                let (move_a, move_b) = if a_idle_since_us > b_idle_since_us {
+                    (true, false)
+                } else if b_idle_since_us > a_idle_since_us {
+                    (false, true)
+                } else {
+                    // Tie-break: if timestamps are equal, push by stable id ordering (newer/spawned later tends to have higher id).
+                    (aid > bid, bid > aid)
+                };
+
+                // Apply via KCC (XZ only).
+                // A (only if selected to move)
+                if move_a {
+                    let push_ax = nx * step;
+                    let push_az = nz * step;
+
                     let corrected = controller.move_shape(
                         fixed_dt.max(1.0e-6),
                         &query_pipeline,
@@ -601,8 +616,11 @@ pub fn idle_overlap_push_tick_reducer(
                     cache[i].4 = new_z;
                 }
 
-                // B
-                {
+                // B (only if selected to move)
+                if move_b {
+                    let push_bx = -nx * step;
+                    let push_bz = -nz * step;
+
                     let corrected = controller.move_shape(
                         fixed_dt.max(1.0e-6),
                         &query_pipeline,

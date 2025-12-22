@@ -60,7 +60,7 @@ pub const YAW_EPS: f32 = 1.0e-6;
 
 /// Size of one grid cell in world units (meters).
 /// All cells are square.
-pub const CELL_SIZE: f32 = 5.0;
+pub const CELL_SIZE: f32 = 25.0;
 
 /// Offset applied when converting world positions to grid coordinates.
 ///

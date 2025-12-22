@@ -23,7 +23,7 @@ use spacetimedb::*;
 // NOTE: `ts_us(...)` is provided by `crate::types` and should be used instead of a local helper.
 
 /// How often the scheduled reducer wakes up to check which fakes need new targets.
-const FAKE_WANDER_TICK_HZ: i64 = 2; // 2 Hz = every 500ms
+const FAKE_WANDER_TICK_HZ: i64 = 1;
 
 /// Spawn radius around origin for initial placement (meters).
 const SPAWN_RADIUS_M: f32 = 100.0;
@@ -32,17 +32,17 @@ const SPAWN_RADIUS_M: f32 = 100.0;
 const DEFAULT_WANDER_RADIUS_M: f32 = 35.0;
 
 /// Random delay range between wander target picks (seconds).
-const WANDER_DELAY_MIN_S: i64 = 3;
-const WANDER_DELAY_MAX_S: i64 = 10;
+const WANDER_DELAY_MIN_S: i64 = 5;
+const WANDER_DELAY_MAX_S: i64 = 20;
 
 /// Chance that a fake will idle instead of picking a new movement target when its timer elapses.
 /// This is to simulate more realistic stop/start behavior and reduce the number of NPCs moving
 /// continuously in stress tests.
-const WANDER_IDLE_CHANCE: f32 = 0.35;
+const WANDER_IDLE_CHANCE: f32 = 0.4;
 
 /// Random idle duration range (seconds) when idling is chosen.
-const IDLE_DELAY_MIN_S: i64 = 2;
-const IDLE_DELAY_MAX_S: i64 = 6;
+const IDLE_DELAY_MIN_S: i64 = 5;
+const IDLE_DELAY_MAX_S: i64 = 10;
 
 /// Default movement speed for fakes (m/s).
 const DEFAULT_FAKE_SPEED_MPS: f32 = 3.5;
