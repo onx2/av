@@ -148,7 +148,7 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
         let transform = ctx.db.transform_data().insert(TransformData {
             id: 0,
             translation: spawn_translation,
-            yaw: 0.0,
+            yaw: 0,
         });
 
         let movement = ctx.db.movement_data().insert(MovementData {

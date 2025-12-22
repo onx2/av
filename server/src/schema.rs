@@ -120,7 +120,10 @@ pub struct TransformData {
 
     pub translation: DbVec3,
 
-    pub yaw: f32,
+    /// Quantized yaw (radians) stored as a single byte.
+    ///
+    /// Convention: `0..=255` maps uniformly onto `[0, 2π)`.
+    pub yaw: u8,
 }
 
 #[table(name = movement_data)]
@@ -276,7 +279,7 @@ pub struct WorldStatic {
 }
 
 #[view(name = aoi_actor, public)]
-fn aoi_actor_view(ctx: &ViewContext) -> Vec<Actor> {
+fn aoi_actor_view(ctx: &ViewContext) -> Vec<AoiActor> {
     let Some(player) = ctx.db.player().identity().find(ctx.sender) else {
         return Vec::new();
     };
@@ -292,6 +295,7 @@ fn aoi_actor_view(ctx: &ViewContext) -> Vec<Actor> {
     aoi_block
         .into_iter()
         .flat_map(|cell_id| ctx.db.actor().cell_id().filter(cell_id))
+        .map(|a| a.into())
         .collect()
 }
 

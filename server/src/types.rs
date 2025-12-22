@@ -1,6 +1,8 @@
 use nalgebra as na;
 use spacetimedb::{Identity, SpacetimeType};
 
+use crate::schema::Actor;
+
 /// A 3D vector in world space (meters).
 ///
 /// Semantics:
@@ -250,4 +252,26 @@ pub enum ActorKind {
     Player(Identity),
     /// A simple monster/NPC variant.
     Monster(u32),
+}
+
+#[derive(SpacetimeType)]
+pub struct AoiActor {
+    pub id: u64,
+    pub transform_data_id: u32,
+    pub identity: Option<Identity>,
+    pub is_player: bool,
+    pub capsule_radius: f32,
+    pub capsule_half_height: f32,
+}
+impl From<Actor> for AoiActor {
+    fn from(actor: Actor) -> Self {
+        Self {
+            id: actor.id,
+            transform_data_id: actor.transform_data_id,
+            identity: actor.identity,
+            is_player: actor.is_player,
+            capsule_radius: actor.capsule_radius,
+            capsule_half_height: actor.capsule_half_height,
+        }
+    }
 }

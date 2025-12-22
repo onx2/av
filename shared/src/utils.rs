@@ -9,6 +9,46 @@ pub fn yaw_from_xz(x: f32, z: f32) -> Option<f32> {
     None
 }
 
+/// Wrap an angle in radians into [0, 2π).
+fn wrap_0_tau(mut a: f32) -> f32 {
+    let tau = std::f32::consts::TAU;
+    a = a % tau;
+    if a < 0.0 {
+        a += tau;
+    }
+    a
+}
+
+/// Quantize yaw (radians) into a single byte.
+///
+/// Convention:
+/// - input: yaw in radians (any range; e.g. [-π, π] or [0, 2π))
+/// - output: `u8` in 0..=255 representing [0, 2π) in 256 uniform steps
+///
+/// Notes:
+/// - resolution: 2π / 256 ≈ 0.02454 rad ≈ 1.40625°
+/// - `floor` is deterministic and avoids rounding-overflow at the upper edge.
+pub fn yaw_to_u8(yaw_radians: f32) -> u8 {
+    let tau = std::f32::consts::TAU;
+    let yaw = wrap_0_tau(yaw_radians); // [0, 2π)
+    let scaled = yaw * (256.0 / tau); // [0, 256)
+    (scaled.floor() as u32 & 0xFF) as u8
+}
+
+/// Dequantize `u8` yaw back into radians in [0, 2π).
+pub fn yaw_from_u8(code: u8) -> f32 {
+    let tau = std::f32::consts::TAU;
+    (code as f32) * (tau / 256.0)
+}
+
+/// Dequantize `u8` yaw back into radians in [-π, π).
+pub fn yaw_from_u8_signed(code: u8) -> f32 {
+    let tau = std::f32::consts::TAU;
+    let pi = std::f32::consts::PI;
+    let a = yaw_from_u8(code); // [0, 2π)
+    if a >= pi { a - tau } else { a }
+}
+
 pub trait UtilMath {
     fn sq(self) -> Self;
 }

@@ -22,7 +22,7 @@ use crate::{
 };
 use rapier3d::control::KinematicCharacterController;
 use rapier3d::prelude::*;
-use shared::utils::{encode_cell_id, yaw_from_xz, UtilMath};
+use shared::utils::{encode_cell_id, yaw_from_xz, yaw_to_u8, UtilMath};
 use spacetimedb::ReducerContext;
 
 /// Performs a single movement step for one actor.
@@ -82,7 +82,7 @@ pub fn movement_step_actor(
 
     // Update yaw based on intent direction (not post-collision motion).
     if let Some(yaw) = yaw_from_xz(planar.x, planar.z) {
-        transform.yaw = yaw;
+        transform.yaw = yaw_to_u8(yaw);
     }
 
     // Vertical motion.

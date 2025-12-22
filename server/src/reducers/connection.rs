@@ -21,7 +21,7 @@ pub fn identity_connected(ctx: &ReducerContext) {
         let transform_data = ctx.db.transform_data().insert(TransformData {
             id: 0,
             translation: DbVec3::new(0.0, 3.85, 0.0),
-            yaw: 0.0,
+            yaw: 0,
         });
         let movement_data = ctx.db.movement_data().insert(MovementData {
             id: 0,
