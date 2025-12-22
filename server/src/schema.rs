@@ -2,6 +2,48 @@ use crate::types::*;
 use shared::utils::get_aoi_block;
 use spacetimedb::*;
 
+/// Aggregated timing statistics for reducers/spans over time.
+///
+/// This is intended for lightweight, always-on profiling via sampling:
+/// - `event` is typically the reducer name (e.g. "movement_tick").
+/// - `span` is either "event" (whole reducer) or a named section (e.g. "kcc_move_shape").
+/// - `key` is a stable unique identifier: "{event}::{span}".
+///
+/// Notes:
+/// - Durations are stored in microseconds as integers to avoid float drift.
+/// - `ema_us` is a best-effort exponential moving average in microseconds.
+/// - You can periodically query/log these rows to identify hotspots.
+#[table(name = timing_stats)]
+pub struct TimingStats {
+    /// Unique key per (event, span) pair.
+    #[primary_key]
+    pub key: String,
+
+    /// Reducer/event name.
+    #[index(btree)]
+    pub event: String,
+
+    /// Span name (or "event").
+    #[index(btree)]
+    pub span: String,
+
+    /// Number of samples aggregated.
+    pub samples: u64,
+
+    /// Sum of durations (microseconds).
+    pub total_us: u128,
+
+    /// Running min/max duration in microseconds.
+    pub min_us: u64,
+    pub max_us: u64,
+
+    /// Exponential moving average in microseconds (best-effort).
+    pub ema_us: f64,
+
+    /// Timestamp of the last update.
+    pub last_updated_at: Timestamp,
+}
+
 /// Player account data persisted across sessions.
 ///
 /// This table persists the last known actor state so players can rejoin
@@ -17,15 +59,11 @@ pub struct Player {
     pub secondary_stats_id: u32,
     pub vital_stats_id: u32,
     pub transform_data_id: u32,
-    pub movement_data_id: u32,
 
-    /// Optional live actor id. None if not currently in-world.
-    #[index(btree)]
     pub actor_id: Option<u64>,
 
-    /// Capsule radius used by the actor's kinematic collider (meters).
+    /// Capsule collider parameters (meters).
     pub capsule_radius: f32,
-    /// Capsule half-height used by the actor's kinematic collider (meters).
     pub capsule_half_height: f32,
 }
 
@@ -34,7 +72,7 @@ pub struct Player {
 /// An `Actor` exists only while the player is "in world". The authoritative
 /// values here are updated every tick by the server and may be mirrored
 /// back to the `Player` row when leaving or disconnecting.
-#[table(name = actor)]
+#[table(name = actor, index(name=should_move_and_is_player, btree(columns=[should_move, is_player])))]
 pub struct Actor {
     /// Auto-incremented unique id (primary key).
     #[primary_key]
@@ -46,9 +84,6 @@ pub struct Actor {
     pub vital_stats_id: u32,
 
     #[unique]
-    pub movement_data_id: u32,
-
-    #[unique]
     pub transform_data_id: u32,
 
     // pub kind: ActorKind,
@@ -57,6 +92,30 @@ pub struct Actor {
     /// Used alongside identity for faster btree lookups
     #[index(btree)]
     pub is_player: bool,
+
+    /// Whether this actor should be processed by movement ticks.
+    ///
+    /// This is indexed (along with `is_player`) so ticks can efficiently iterate only active actors.
+    ///
+    /// Convention:
+    /// - `true` if the actor has non-idle intent OR is airborne (needs gravity)
+    /// - `false` if the actor is idle and grounded
+    #[index(btree)]
+    pub should_move: bool,
+
+    /// Current movement intent.
+    ///
+    /// Note:
+    /// - `MoveIntent::Idle(since_us)` replaces the old `MoveIntent::None`.
+    /// - The `since_us` value (micros since Unix epoch) is used for tie-breaking overlap resolution
+    ///   (e.g. push the most recently idle actor).
+    pub move_intent: MoveIntent,
+
+    /// Whether the actor was grounded on the previous movement step.
+    pub grounded: bool,
+
+    /// Grace steps remaining for groundedness (helps avoid flicker on edges/stairs).
+    pub grounded_grace_steps: u8,
 
     #[index(btree)]
     pub cell_id: u32,
@@ -73,28 +132,14 @@ pub struct TransformData {
     #[auto_inc]
     pub id: u32,
 
-    pub translation: DbVec3,
+    /// Mixed-precision translation optimized for replication/storage:
+    /// - `x`/`z` are stored as `f32` meters (full precision)
+    /// - `y` is stored as quantized `i16` (0.1m per unit)
+    pub translation: DbVec3i16,
 
-    pub yaw: f32,
-}
-
-#[table(name = movement_data)]
-pub struct MovementData {
-    #[primary_key]
-    #[auto_inc]
-    pub id: u32,
-
-    #[index(btree)]
-    pub should_move: bool,
-
-    /// Current movement intent.
-    pub move_intent: MoveIntent,
-
-    /// Whether the Actor was grounded last X grounded_grace_steps ago
-    pub grounded: bool,
-
-    /// The number of steps to wait before flipping grounded state
-    pub grounded_grace_steps: u8,
+    /// Quantized yaw (radians) stored as a single byte.
+    /// Convention: `0..=u8::MAX` maps uniformly onto `[0, 2π)`.
+    pub yaw: u8,
 }
 
 #[table(name = primary_stats)]
@@ -231,7 +276,7 @@ pub struct WorldStatic {
 }
 
 #[view(name = aoi_actor, public)]
-fn aoi_actor_view(ctx: &ViewContext) -> Vec<Actor> {
+fn aoi_actor_view(ctx: &ViewContext) -> Vec<AoiActor> {
     let Some(player) = ctx.db.player().identity().find(ctx.sender) else {
         return Vec::new();
     };
@@ -247,6 +292,7 @@ fn aoi_actor_view(ctx: &ViewContext) -> Vec<Actor> {
     aoi_block
         .into_iter()
         .flat_map(|cell_id| ctx.db.actor().cell_id().filter(cell_id))
+        .map(|a| a.into())
         .collect()
 }
 

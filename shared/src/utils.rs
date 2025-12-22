@@ -1,5 +1,6 @@
 use super::constants::*;
 use nalgebra as na;
+use std::f32::consts::TAU;
 
 pub fn yaw_from_xz(x: f32, z: f32) -> Option<f32> {
     if x.sq() + z.sq() > YAW_EPS {
@@ -7,6 +8,43 @@ pub fn yaw_from_xz(x: f32, z: f32) -> Option<f32> {
     }
 
     None
+}
+
+/// Wrap an angle in radians into [0, 2π).
+fn wrap_0_tau(mut a: f32) -> f32 {
+    a = a % TAU;
+    if a < 0.0 {
+        a += TAU;
+    }
+    a
+}
+
+/// Quantize yaw (radians) into a single byte.
+///
+/// Convention:
+/// - input: yaw in radians (any range; e.g. [-π, π] or [0, 2π))
+/// - output: `u8` in 0..=u8::MAX representing [0, 2π) in 256 uniform steps
+///
+/// Notes:
+/// - resolution: 2π / 256 ≈ 0.02454 rad ≈ 1.40625°
+/// - `floor` is deterministic and avoids rounding-overflow at the upper edge.
+pub fn yaw_to_u8(yaw_radians: f32) -> u8 {
+    let yaw = wrap_0_tau(yaw_radians); // [0, 2π)
+
+    // Number of discrete steps (256).
+    let steps = (u8::MAX as f32) + 1.0;
+
+    // [0, 2π) -> [0, steps)
+    let scaled = yaw * (steps / TAU);
+
+    // floor keeps it deterministic; `scaled` should be < steps so this stays <= u8::MAX.
+    scaled.floor() as u8
+}
+
+/// Dequantize `u8` yaw back into radians in [0, 2π).
+pub fn yaw_from_u8(code: u8) -> f32 {
+    let steps = (u8::MAX as f32) + 1.0;
+    (code as f32) * (TAU / steps)
 }
 
 pub trait UtilMath {

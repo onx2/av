@@ -1,6 +1,13 @@
-use crate::module_bindings::{DbQuat, DbVec3};
+use crate::module_bindings::{DbQuat, DbVec3, DbVec3I16};
 use bevy::prelude::*;
 use nalgebra as na;
+use shared::constants::Y_QUANTIZE_STEP_M;
+
+/// Mixed-precision translation convention (matches the server schema):
+/// - `x`/`z` are meters stored as `f32` (full precision)
+/// - `y` is quantized `i16` in `Y_QUANTIZE_STEP_M` meter units
+///
+/// Note: `DbVec3I16` is generated; confirm its field types whenever you re-generate bindings.
 
 impl From<DbVec3> for Vec3 {
     fn from(vec3: DbVec3) -> Self {
@@ -49,6 +56,24 @@ impl From<&na::Vector3<f32>> for DbVec3 {
             y: v.y,
             z: v.z,
         }
+    }
+}
+
+/// Decode mixed-precision `DbVec3I16` into a Bevy `Vec3` in meters.
+///
+/// Convention:
+/// - `x`/`z` are already meters (`f32`)
+/// - `y` is quantized `i16` in `Y_QUANTIZE_STEP_M` meter units
+impl From<DbVec3I16> for Vec3 {
+    fn from(v: DbVec3I16) -> Self {
+        Vec3::new(v.x, v.y as f32 * Y_QUANTIZE_STEP_M, v.z)
+    }
+}
+
+/// Decode mixed-precision `DbVec3I16` into a nalgebra `Vector3<f32>` in meters.
+impl From<DbVec3I16> for na::Vector3<f32> {
+    fn from(v: DbVec3I16) -> Self {
+        na::Vector3::new(v.x, v.y as f32 * Y_QUANTIZE_STEP_M, v.z)
     }
 }
 

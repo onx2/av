@@ -1,15 +1,29 @@
 use crate::{
     schema::{
-        actor, movement_data, primary_stats, secondary_stats, transform_data, vital_stats, Actor,
-        MovementData, PrimaryStats, SecondaryStats, TransformData, VitalStats,
+        actor, primary_stats, secondary_stats, transform_data, vital_stats, Actor, PrimaryStats,
+        SecondaryStats, TransformData, VitalStats,
     },
-    types::{DbVec3, MoveIntent},
+    types::{ts_us, DbVec3, DbVec3i16, MoveIntent},
+    utils::LogStopwatch,
 };
-use shared::utils::encode_cell_id;
+use shared::{constants::Y_QUANTIZE_STEP_M, utils::encode_cell_id};
+use spacetimedb::Table;
 use spacetimedb::*;
 
+/// Convert a SpacetimeDB `Timestamp` into an integer suitable for btree ranged-index scans.
+///
+/// We intentionally store the scheduled time as `u64` microseconds since epoch because:
+/// - `Timestamp` itself is not filterable for `RangedIndex::filter`
+/// - integers are filterable and support ranges efficiently
+///
+/// Implementation note:
+/// - `Timestamp` itself is not filterable for `RangedIndex::filter`, so we store a filterable
+///   surrogate (`u64` microseconds since unix epoch).
+/// - This uses the stable numeric accessor `to_micros_since_unix_epoch()`.
+// NOTE: `ts_us(...)` is provided by `crate::types` and should be used instead of a local helper.
+
 /// How often the scheduled reducer wakes up to check which fakes need new targets.
-const FAKE_WANDER_TICK_HZ: i64 = 2; // 2 Hz = every 500ms
+const FAKE_WANDER_TICK_HZ: i64 = 1;
 
 /// Spawn radius around origin for initial placement (meters).
 const SPAWN_RADIUS_M: f32 = 100.0;
@@ -18,8 +32,17 @@ const SPAWN_RADIUS_M: f32 = 100.0;
 const DEFAULT_WANDER_RADIUS_M: f32 = 35.0;
 
 /// Random delay range between wander target picks (seconds).
-const WANDER_DELAY_MIN_S: i64 = 3;
-const WANDER_DELAY_MAX_S: i64 = 10;
+const WANDER_DELAY_MIN_S: i64 = 5;
+const WANDER_DELAY_MAX_S: i64 = 20;
+
+/// Chance that a fake will idle instead of picking a new movement target when its timer elapses.
+/// This is to simulate more realistic stop/start behavior and reduce the number of NPCs moving
+/// continuously in stress tests.
+const WANDER_IDLE_CHANCE: f32 = 0.4;
+
+/// Random idle duration range (seconds) when idling is chosen.
+const IDLE_DELAY_MIN_S: i64 = 5;
+const IDLE_DELAY_MAX_S: i64 = 10;
 
 /// Default movement speed for fakes (m/s).
 const DEFAULT_FAKE_SPEED_MPS: f32 = 3.5;
@@ -42,8 +65,14 @@ pub struct FakeWanderState {
     pub wander_radius_m: f32,
 
     /// Next time this actor should pick a new random target (server timestamp).
-    #[index(btree)]
     pub next_wander_at: Timestamp,
+
+    /// Filterable surrogate key for `next_wander_at` (microseconds since epoch).
+    ///
+    /// SpacetimeDB ranged index scans require a `FilterableValue` type; `Timestamp` is not
+    /// filterable, so we store an integer representation specifically for indexed range scans.
+    #[index(btree)]
+    pub next_wander_at_us: u64,
 }
 
 /// Scheduled driver for fake wandering.
@@ -87,7 +116,10 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
     for _ in 0..count {
         // Random initial location around origin, planar (XZ). Keep y=0 and let KCC settle.
         let (sx, sz) = rng.random_point_in_disc(SPAWN_RADIUS_M);
-        let spawn_translation = DbVec3::new(sx, 0.0, sz);
+        // Mixed-precision translation:
+        // - x/z are meters (f32)
+        // - y is quantized i16 in 0.1m units
+        let spawn_translation = DbVec3i16::new(sx, 0, sz);
 
         // Create baseline stat rows.
         let primary = ctx.db.primary_stats().insert(PrimaryStats {
@@ -117,26 +149,27 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
         let transform = ctx.db.transform_data().insert(TransformData {
             id: 0,
             translation: spawn_translation,
-            yaw: 0.0,
+            yaw: 0u8,
         });
 
-        let movement = ctx.db.movement_data().insert(MovementData {
-            id: 0,
-            should_move: false,
-            move_intent: MoveIntent::None,
-            grounded: false,
-            grounded_grace_steps: 0,
-        });
-
+        // Movement state is stored directly on the live Actor (MovementData table removed).
+        // Spawn fakes as idle; KCC will settle grounded state on the first movement tick.
         let actor = ctx.db.actor().insert(Actor {
             id: 0,
             primary_stats_id: primary.id,
             secondary_stats_id: secondary.id,
             vital_stats_id: vital.id,
             transform_data_id: transform.id,
-            movement_data_id: movement.id,
             identity: None,
             is_player: false,
+
+            move_intent: MoveIntent::Idle(ts_us(ctx.timestamp)),
+            grounded: false,
+            grounded_grace_steps: 0,
+            // Process at least once so gravity/grounding can settle.
+            should_move: true,
+
+            // `spawn_translation` is mixed precision (`DbVec3i16`): x/z are already meters (f32).
             cell_id: encode_cell_id(spawn_translation.x, spawn_translation.z),
             capsule_radius: DEFAULT_CAPSULE_RADIUS_M,
             capsule_half_height: DEFAULT_CAPSULE_HALF_HEIGHT_M,
@@ -151,9 +184,15 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
 
         ctx.db.fake_wander_state().insert(FakeWanderState {
             actor_id: actor.id,
-            home_translation: spawn_translation,
+            // Store home in full-precision meters (DbVec3) for path/intent generation.
+            home_translation: DbVec3::new(
+                spawn_translation.x,
+                spawn_translation.y as f32 * Y_QUANTIZE_STEP_M,
+                spawn_translation.z,
+            ),
             wander_radius_m: DEFAULT_WANDER_RADIUS_M,
             next_wander_at: next_at,
+            next_wander_at_us: ts_us(next_at),
         });
     }
 
@@ -166,19 +205,30 @@ pub fn fake_wander_tick_reducer(
     ctx: &ReducerContext,
     _timer: FakeWanderTickTimer,
 ) -> Result<(), String> {
+    // Sampled span logging (LogStopwatch-style; WASM-safe).
+    // With ~5000 rows, avoid per-row span logging (it dominates log volume and adds overhead).
+    let mut sw = LogStopwatch::new(ctx, "fake_wander_tick_reducer", false, 0.02);
+
+    sw.span("auth");
     // Only the server (module identity) may invoke scheduled reducers.
     if ctx.sender != ctx.identity() {
         return Err("`fake_wander_tick_reducer` may not be invoked by clients.".into());
     }
 
+    sw.span("rng_init");
     let mut rng = SimpleRng::from_timestamp(ctx.timestamp);
 
-    // Iterate all fakes whose timer has elapsed and pick a new target within radius of home.
-    // NOTE: If this grows large, add a btree index on `next_wander_at` and filter by it.
-    for mut state in ctx.db.fake_wander_state().iter() {
-        if state.next_wander_at > ctx.timestamp {
-            continue;
-        }
+    sw.span("iterate_due_states");
+    // Iterate ONLY states that are due (next_wander_at_us <= now_us) using the btree index.
+    let now_us = ts_us(ctx.timestamp);
+    for mut state in ctx
+        .db
+        .fake_wander_state()
+        .next_wander_at_us()
+        .filter(..=now_us)
+    {
+        // Only instrument the expensive/meaningful path (due rows).
+        // sw.span("process_due_state");
 
         let Some(a) = ctx.db.actor().id().find(state.actor_id) else {
             // Orphan state; clean it up.
@@ -195,23 +245,48 @@ pub fn fake_wander_tick_reducer(
             continue;
         };
 
-        let Some(mut m) = ctx.db.movement_data().id().find(a.movement_data_id) else {
-            continue;
-        };
+        // Movement state is stored directly on the Actor (MovementData table removed).
 
         let (dx, dz) = rng.random_point_in_disc(state.wander_radius_m);
 
         // Keep y from current transform (KCC will adjust as it moves).
+        //
+        // `TransformData.translation` is mixed precision (`DbVec3i16`), so decode y to meters.
         let target = DbVec3::new(
             state.home_translation.x + dx,
-            t.translation.y,
+            t.translation.y as f32 * Y_QUANTIZE_STEP_M,
             state.home_translation.z + dz,
         );
 
-        // Set a new target.
-        m.move_intent = MoveIntent::Point(target);
-        m.should_move = true;
-        ctx.db.movement_data().id().update(m);
+        // Decide whether to idle or to pick a new movement target.
+        // This reduces the fraction of non-players that are continuously moving.
+        if rng.next_f32_01() < WANDER_IDLE_CHANCE {
+            // Enter idle: set intent to Idle(now). Keep should_move true if airborne (gravity needs processing).
+            let mut a2 = a;
+            a2.move_intent = MoveIntent::Idle(ts_us(ctx.timestamp));
+
+            let is_idle = matches!(a2.move_intent, MoveIntent::Idle(_));
+            a2.should_move = !is_idle || !a2.grounded;
+
+            ctx.db.actor().id().update(a2);
+
+            // Schedule when we should decide again (idle duration).
+            let delay_s = rng.gen_range_i64_inclusive(IDLE_DELAY_MIN_S, IDLE_DELAY_MAX_S);
+            state.next_wander_at = ctx
+                .timestamp
+                .checked_add(TimeDuration::from_micros(delay_s.saturating_mul(1_000_000)))
+                .ok_or_else(|| "timestamp overflow computing next wander time".to_string())?;
+            state.next_wander_at_us = ts_us(state.next_wander_at);
+            ctx.db.fake_wander_state().actor_id().update(state);
+
+            continue;
+        }
+
+        // Otherwise: pick a new target and start moving.
+        let mut a2 = a;
+        a2.move_intent = MoveIntent::Point(target);
+        a2.should_move = true;
+        ctx.db.actor().id().update(a2);
 
         // Schedule the next change.
         let delay_s = rng.gen_range_i64_inclusive(WANDER_DELAY_MIN_S, WANDER_DELAY_MAX_S);
@@ -219,9 +294,11 @@ pub fn fake_wander_tick_reducer(
             .timestamp
             .checked_add(TimeDuration::from_micros(delay_s.saturating_mul(1_000_000)))
             .ok_or_else(|| "timestamp overflow computing next wander time".to_string())?;
+        state.next_wander_at_us = ts_us(state.next_wander_at);
         ctx.db.fake_wander_state().actor_id().update(state);
     }
 
+    sw.end_span();
     Ok(())
 }
 

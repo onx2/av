@@ -12,13 +12,16 @@ pub mod reducers {
     pub mod movement_tick;
     pub mod request_move;
 
+    // Periodic corrective nudges (e.g. push idle overlapping players apart).
+    pub mod overlap_push;
+
     // Temporary dev tooling: spawn and drive fake (non-player) actors.
     pub mod spawn_fake;
 }
 
 // Re-export reducers so callers (and generated bindings) can refer to them at the crate root.
 use crate::{
-    reducers::{movement_tick, spawn_fake},
+    reducers::{movement_tick, overlap_push, spawn_fake},
     schema::*,
     types::*,
 };
@@ -26,9 +29,14 @@ use spacetimedb::*;
 
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {
-    // Configure scheduled ticks.
+    // Configure scheduled ticks:
+    // - player movement @ 30 Hz
+    // - non-player movement @ 15 Hz
     movement_tick::init(ctx);
     // aoi_tick::init(ctx);
+
+    // Start the idle overlap push tick (10Hz by default).
+    overlap_push::init(ctx);
 
     // Start the scheduled fake wandering driver (no-op if no fakes exist).
     spawn_fake::init(ctx);

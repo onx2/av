@@ -1,16 +1,17 @@
 use super::{LocalPlayer, NetworkTransform, Player, RemotePlayer};
 use crate::{
-    module_bindings::{Actor, AoiTransformDataTableAccess, TransformData},
+    module_bindings::{AoiActor, AoiTransformDataTableAccess, TransformData},
     player::NetworkTransformEntityMapping,
     server::SpacetimeDB,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage, ReadUpdateMessage};
+use shared::utils::yaw_from_u8;
 use spacetimedb_sdk::Table;
 
 pub(super) fn on_actor_deleted(
     mut commands: Commands,
-    mut msgs: ReadDeleteMessage<Actor>,
+    mut msgs: ReadDeleteMessage<AoiActor>,
     mut entity_mapping: ResMut<NetworkTransformEntityMapping>,
 ) {
     for msg in msgs.read() {
@@ -26,7 +27,7 @@ pub(super) fn on_actor_inserted(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     stdb: SpacetimeDB,
-    mut msgs: ReadInsertMessage<Actor>,
+    mut msgs: ReadInsertMessage<AoiActor>,
     mut actor_entity_mapping: ResMut<NetworkTransformEntityMapping>,
 ) {
     for msg in msgs.read() {
@@ -43,14 +44,14 @@ pub(super) fn on_actor_inserted(
             .db()
             .aoi_transform_data()
             .iter()
-            .find(|data| data.id == msg.row.transform_data_id)
+            .find(|data| data.id == new_actor.transform_data_id)
         else {
             println!("Failed to find transform data for actor {:?}", new_actor);
             continue;
         };
 
         let translation: Vec3 = transform_data.translation.into();
-        let rotation = Quat::from_rotation_y(transform_data.yaw);
+        let rotation = Quat::from_rotation_y(yaw_from_u8(transform_data.yaw));
 
         let mut entity_commands = commands.spawn((
             Mesh3d(meshes.add(Mesh::from(Capsule3d {
@@ -127,6 +128,6 @@ pub(super) fn sync(
         };
 
         network_transform.translation = transform_data.translation.into();
-        network_transform.rotation = Quat::from_rotation_y(transform_data.yaw);
+        network_transform.rotation = Quat::from_rotation_y(yaw_from_u8(transform_data.yaw));
     }
 }
