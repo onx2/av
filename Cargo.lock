@@ -1317,7 +1317,7 @@ dependencies = [
 [[package]]
 name = "bevy_spacetimedb"
 version = "0.7.2"
-source = "git+https://github.com/BigWoofStudios/bevy_spacetimedb?rev=2196c3136bb5a6045d1b4f2a8fae657243a2886e#2196c3136bb5a6045d1b4f2a8fae657243a2886e"
+source = "git+https://github.com/BigWoofStudios/bevy_spacetimedb?rev=9b8f417cc407d2511d07f364531e2310645001a9#9b8f417cc407d2511d07f364531e2310645001a9"
 dependencies = [
  "bevy",
  "bevy_spacetimedb_macros",
