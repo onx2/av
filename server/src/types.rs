@@ -73,6 +73,11 @@ impl From<na::Point3<f32>> for DbVec3 {
     }
 }
 
+impl From<DbVec3> for rapier3d::math::Isometry<f32> {
+    fn from(v: DbVec3) -> Self {
+        Self::translation(v.x, v.y, v.z)
+    }
+}
 /// A unit quaternion (w + xi + yj + zk), stored as four `f32` scalars.
 ///
 /// Semantics:

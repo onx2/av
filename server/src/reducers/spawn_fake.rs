@@ -160,6 +160,7 @@ pub fn spawn_fake(ctx: &ReducerContext, count: u32) -> Result<(), String> {
             identity: None,
             is_player: false,
             should_move: false,
+            stuck_grace_steps: 0,
             move_intent: MoveIntent::None,
             grounded: false,
             cell_id: encode_cell_id(spawn_translation.x, spawn_translation.z),

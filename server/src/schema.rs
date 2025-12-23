@@ -57,11 +57,11 @@ pub struct Actor {
     #[index(btree)]
     pub should_move: bool,
 
-    /// Current movement intent.
     pub move_intent: MoveIntent,
 
-    /// Whether the Actor was grounded last X grounded_grace_steps ago
     pub grounded: bool,
+
+    pub stuck_grace_steps: u8,
 
     #[index(btree)]
     pub cell_id: u32,

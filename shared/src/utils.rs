@@ -1,9 +1,9 @@
 use super::constants::*;
 use nalgebra as na;
 
-pub fn yaw_from_xz(x: f32, z: f32) -> Option<f32> {
-    if x.sq() + z.sq() > YAW_EPS {
-        return Some((-x).atan2(-z));
+pub fn yaw_from_xz(xz: &na::Vector2<f32>) -> Option<f32> {
+    if xz.norm_squared() > YAW_EPS {
+        return Some((-xz[0]).atan2(-xz[1]));
     }
 
     None
@@ -52,6 +52,10 @@ where
     fn sq(self) -> Self {
         self * self
     }
+}
+
+pub fn to_planar(vec: &na::Vector3<f32>) -> na::Vector2<f32> {
+    na::Vector2::new(vec.x, vec.z)
 }
 
 /// Planar (XZ) distance squared between two world positions (meters^2).

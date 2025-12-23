@@ -38,16 +38,14 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         secondary_stats_id: player.secondary_stats_id,
         vital_stats_id: player.vital_stats_id,
         transform_data_id: player.transform_data_id,
-        // kind: ActorKind::Player(player.identity),
         is_player: true,
         identity: Some(player.identity),
-        // translation: player.translation,
-        // yaw: player.yaw,
         capsule_radius: player.capsule_radius,
         capsule_half_height: player.capsule_half_height,
         should_move: true,
         move_intent: MoveIntent::None,
         grounded: false,
+        stuck_grace_steps: 0,
         cell_id: encode_cell_id(transform_data.translation.x, transform_data.translation.z),
     });
 
