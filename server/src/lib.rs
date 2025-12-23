@@ -40,15 +40,15 @@ pub fn init(ctx: &ReducerContext) {
     ctx.db.kcc_settings().id().delete(1);
     ctx.db.kcc_settings().insert(KccSettings {
         id: 1,
-        offset: 0.05,
+        offset: 0.02,
         max_slope_climb_deg: 52.0,
         min_slope_slide_deg: 45.0,
-        autostep_max_height: 0.325,
+        autostep_max_height: 0.75,
         autostep_min_width: 0.2,
         slide: true,
-        normal_nudge_factor: 0.05,
+        normal_nudge_factor: 0.075,
         fall_speed_mps: 12.,
-        grounded_down_bias_mps: 1.75,
+        grounded_down_bias_mps: 1.15,
         point_acceptance_radius_sq: 0.0225,
     });
 
@@ -103,9 +103,9 @@ pub fn init(ctx: &ReducerContext) {
 
     // A simple staircase to test autostep up/down.
     let stairs_origin = DbVec3::new(0.0, 0.0, -6.0);
-    let step_run: f32 = 0.55;
-    let step_rise: f32 = 0.4;
-    let step_count: u32 = 20;
+    let step_run: f32 = 0.4;
+    let step_rise: f32 = 0.25;
+    let step_count: u32 = 100;
 
     // Half extents for each step: total height = 0.20, total depth = 0.50.
     let step_half = DbVec3::new(step_run * 0.5, step_rise * 0.5, 1.5);
