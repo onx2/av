@@ -47,9 +47,8 @@ pub fn init(ctx: &ReducerContext) {
         autostep_min_width: 0.2,
         slide: true,
         normal_nudge_factor: 0.05,
-        fall_speed_mps: 9.82,
-        grounded_down_bias_mps: 0.5,
-        hard_airborne_probe_distance: 0.6,
+        fall_speed_mps: 12.,
+        grounded_down_bias_mps: 1.75,
         point_acceptance_radius_sq: 0.0225,
     });
 

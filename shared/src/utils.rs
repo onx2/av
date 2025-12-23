@@ -41,14 +41,6 @@ pub fn yaw_from_u8(code: u8) -> f32 {
     (code as f32) * (tau / 256.0)
 }
 
-/// Dequantize `u8` yaw back into radians in [-π, π).
-pub fn yaw_from_u8_signed(code: u8) -> f32 {
-    let tau = std::f32::consts::TAU;
-    let pi = std::f32::consts::PI;
-    let a = yaw_from_u8(code); // [0, 2π)
-    if a >= pi { a - tau } else { a }
-}
-
 pub trait UtilMath {
     fn sq(self) -> Self;
 }

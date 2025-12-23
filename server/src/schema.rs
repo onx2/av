@@ -2,48 +2,6 @@ use crate::types::*;
 use shared::utils::get_aoi_block;
 use spacetimedb::*;
 
-/// Aggregated timing statistics for reducers/spans over time.
-///
-/// This is intended for lightweight, always-on profiling via sampling:
-/// - `event` is typically the reducer name (e.g. "movement_tick").
-/// - `span` is either "event" (whole reducer) or a named section (e.g. "kcc_move_shape").
-/// - `key` is a stable unique identifier: "{event}::{span}".
-///
-/// Notes:
-/// - Durations are stored in microseconds as integers to avoid float drift.
-/// - `ema_us` is a best-effort exponential moving average in microseconds.
-/// - You can periodically query/log these rows to identify hotspots.
-#[table(name = timing_stats)]
-pub struct TimingStats {
-    /// Unique key per (event, span) pair.
-    #[primary_key]
-    pub key: String,
-
-    /// Reducer/event name.
-    #[index(btree)]
-    pub event: String,
-
-    /// Span name (or "event").
-    #[index(btree)]
-    pub span: String,
-
-    /// Number of samples aggregated.
-    pub samples: u64,
-
-    /// Sum of durations (microseconds).
-    pub total_us: u128,
-
-    /// Running min/max duration in microseconds.
-    pub min_us: u64,
-    pub max_us: u64,
-
-    /// Exponential moving average in microseconds (best-effort).
-    pub ema_us: f64,
-
-    /// Timestamp of the last update.
-    pub last_updated_at: Timestamp,
-}
-
 /// Player account data persisted across sessions.
 ///
 /// This table persists the last known actor state so players can rejoin
@@ -59,7 +17,6 @@ pub struct Player {
     pub secondary_stats_id: u32,
     pub vital_stats_id: u32,
     pub transform_data_id: u32,
-    pub movement_data_id: u32,
 
     /// Optional live actor id. None if not currently in-world.
     #[index(btree)]
@@ -88,9 +45,6 @@ pub struct Actor {
     pub vital_stats_id: u32,
 
     #[unique]
-    pub movement_data_id: u32,
-
-    #[unique]
     pub transform_data_id: u32,
 
     // pub kind: ActorKind,
@@ -102,6 +56,12 @@ pub struct Actor {
 
     #[index(btree)]
     pub should_move: bool,
+
+    /// Current movement intent.
+    pub move_intent: MoveIntent,
+
+    /// Whether the Actor was grounded last X grounded_grace_steps ago
+    pub grounded: bool,
 
     #[index(btree)]
     pub cell_id: u32,
@@ -124,25 +84,6 @@ pub struct TransformData {
     ///
     /// Convention: `0..=255` maps uniformly onto `[0, 2π)`.
     pub yaw: u8,
-}
-
-#[table(name = movement_data)]
-pub struct MovementData {
-    #[primary_key]
-    #[auto_inc]
-    pub id: u32,
-
-    #[index(btree)]
-    pub should_move: bool,
-
-    /// Current movement intent.
-    pub move_intent: MoveIntent,
-
-    /// Whether the Actor was grounded last X grounded_grace_steps ago
-    pub grounded: bool,
-
-    /// The number of steps to wait before flipping grounded state
-    pub grounded_grace_steps: u8,
 }
 
 #[table(name = primary_stats)]
@@ -245,13 +186,6 @@ pub struct KccSettings {
 
     /// Small downward bias magnitude (m/s) applied while grounded to satisfy snap-to-ground preconditions.
     pub grounded_down_bias_mps: f32,
-
-    /// Probe distance (meters) used to detect whether the character is truly unsupported.
-    ///
-    /// If the actor is not grounded but still within the grounded grace period, a downward probe
-    /// of this length can be used to decide whether to cancel the grace immediately (e.g. when
-    /// stepping off a ledge) or keep it (e.g. stair edge flicker).
-    pub hard_airborne_probe_distance: f32,
 
     /// The squared distance from a point that we consider reached / close enough
     /// Helpful to prevent floating point errors and jitter

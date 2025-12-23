@@ -1,4 +1,4 @@
-use crate::schema::*;
+use crate::{schema::*, types::MoveIntent};
 use shared::utils::encode_cell_id;
 use spacetimedb::{ReducerContext, Table};
 
@@ -28,18 +28,16 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         return Err("No transform found!".into());
     };
 
-    let Some(movement_data) = ctx.db.movement_data().id().find(player.movement_data_id) else {
-        return Err("No movement data found!".into());
-    };
-
     // Rebuild actor from persisted Player state.
+    //
+    // Movement state now lives directly on `Actor` (the old `MovementData` table is removed),
+    // so seed the movement-related fields from sensible defaults.
     let actor = ctx.db.actor().insert(Actor {
         id: 0,
         primary_stats_id: player.primary_stats_id,
         secondary_stats_id: player.secondary_stats_id,
         vital_stats_id: player.vital_stats_id,
         transform_data_id: player.transform_data_id,
-        movement_data_id: movement_data.id,
         // kind: ActorKind::Player(player.identity),
         is_player: true,
         identity: Some(player.identity),
@@ -47,8 +45,9 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         // yaw: player.yaw,
         capsule_radius: player.capsule_radius,
         capsule_half_height: player.capsule_half_height,
-        // Keep the duplicated flag consistent with the persisted MovementData row.
-        should_move: movement_data.should_move,
+        should_move: true,
+        move_intent: MoveIntent::None,
+        grounded: false,
         cell_id: encode_cell_id(transform_data.translation.x, transform_data.translation.z),
     });
 

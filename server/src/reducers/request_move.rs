@@ -25,17 +25,9 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
     else {
         return Err("Transform data not found".into());
     };
-    let Some(mut movement_data) = ctx
-        .db
-        .movement_data()
-        .id()
-        .find(source_actor.movement_data_id)
-    else {
-        return Err("Transform data not found".into());
-    };
 
     let current: na::Vector3<f32> = transform_data.translation.into();
-    match (&movement_data.move_intent, &intent) {
+    match (&source_actor.move_intent, &intent) {
         // 1. Idling Check
         (MoveIntent::None, MoveIntent::None) => {
             return Err("Already idling".into());
@@ -64,18 +56,15 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
         }
 
         _ => {
-            // Compute before updating to avoid using `movement_data` after it's moved into `update(...)`.
-            let should_move = intent != MoveIntent::None || !movement_data.grounded;
+            // Movement state now lives directly on `Actor`.
+            //
+            // Keep `should_move` consistent with the movement tick behavior:
+            // - should_move if we have a non-idle intent, OR if we're airborne (gravity needs processing).
+            let should_move = intent != MoveIntent::None || !source_actor.grounded;
 
-            movement_data.should_move = should_move;
-            movement_data.move_intent = intent;
-            ctx.db.movement_data().id().update(movement_data);
-
-            // Keep the duplicated flag on `Actor` consistent with `MovementData.should_move`.
-            // Movement ticks iterate `actor(should_move, is_player)`, so if this isn't set,
-            // the actor will never be processed.
-            if source_actor.should_move != should_move {
+            if source_actor.move_intent != intent || source_actor.should_move != should_move {
                 ctx.db.actor().id().update(Actor {
+                    move_intent: intent,
                     should_move,
                     ..source_actor
                 });

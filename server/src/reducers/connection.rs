@@ -23,13 +23,7 @@ pub fn identity_connected(ctx: &ReducerContext) {
             translation: DbVec3::new(0.0, 3.85, 0.0),
             yaw: 0,
         });
-        let movement_data = ctx.db.movement_data().insert(MovementData {
-            id: 0,
-            move_intent: MoveIntent::None,
-            grounded: false,
-            should_move: true,
-            grounded_grace_steps: 0,
-        });
+
         let primary_stats = ctx.db.primary_stats().insert(PrimaryStats {
             id: 0,
             strength: 10,
@@ -56,7 +50,6 @@ pub fn identity_connected(ctx: &ReducerContext) {
             identity: ctx.sender,
             actor_id: None,
             transform_data_id: transform_data.id,
-            movement_data_id: movement_data.id,
             capsule_radius: 0.35,
             capsule_half_height: 0.75,
             primary_stats_id: primary_stats.id,
