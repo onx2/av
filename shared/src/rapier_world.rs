@@ -8,7 +8,10 @@
 //! - Query-focused: supports scene queries and the Rapier `KinematicCharacterController`.
 //! - Immutable world: this builder assumes statics do not move after construction.
 
-use rapier3d::{na::{Translation3, UnitQuaternion}, prelude::*};
+use rapier3d::{
+    na::{Translation3, UnitQuaternion},
+    prelude::*,
+};
 
 /// Canonical, schema-agnostic definition of an immutable world collider.
 ///

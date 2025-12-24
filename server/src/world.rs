@@ -43,7 +43,7 @@ pub fn get_kcc(ctx: &ReducerContext) -> &'static KinematicCharacterController {
 }
 
 /// Cached in-memory Rapier query world built from immutable `world_static` rows.
-static WORLD_QUERY_WORLD: OnceLock<RapierQueryWorld> = OnceLock::new();
+static RAPIER_WORLD: OnceLock<RapierQueryWorld> = OnceLock::new();
 
 /// Return the cached Rapier query world.
 ///
@@ -52,7 +52,7 @@ static WORLD_QUERY_WORLD: OnceLock<RapierQueryWorld> = OnceLock::new();
 ///
 /// Note: This assumes world statics do not change at runtime.
 pub fn get_rapier_world(ctx: &ReducerContext) -> &'static RapierQueryWorld {
-    WORLD_QUERY_WORLD.get_or_init(|| {
+    RAPIER_WORLD.get_or_init(|| {
         let defs = ctx.db.world_static().iter().map(row_to_def).collect();
         RapierQueryWorld::build(defs)
     })
