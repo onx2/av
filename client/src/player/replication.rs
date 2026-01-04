@@ -117,9 +117,7 @@ pub(super) fn sync(
     net_transform_entity_mapping: Res<NetworkTransformEntityMapping>,
 ) {
     for msg in messages.read() {
-        println!("UPDATED: {:?}", msg.new);
         let transform_data = msg.new.clone();
-        // Pull the authoritative row from the local STDB cache.
         let Some(bevy_entity) = net_transform_entity_mapping.0.get(&transform_data.id) else {
             continue;
         };

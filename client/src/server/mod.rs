@@ -16,7 +16,7 @@ pub(super) fn plugin(app: &mut App) {
 
     let stdb_plugin = StdbPlugin::default()
         .with_uri("http://127.0.0.1:3000")
-        .with_module_name("aurorasveil");
+        .with_module_name("av");
 
     let stdb_plugin = if let Some(tok) = token {
         info!("Using JWT from CLI/ENV for SpacetimeDB connection.");

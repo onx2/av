@@ -21,7 +21,7 @@ pub(super) fn interpolate(
         // Position smoothing
         transform
             .translation
-            .smooth_nudge(&net.translation, 12.0, dt);
+            .smooth_nudge(&net.translation, 18.0, dt);
 
         // Rotation smoothing
         transform.rotation = transform
