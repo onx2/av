@@ -110,7 +110,6 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         let supported = if actor.grounded {
             true
         } else {
-            log::warn!("No support autodetected, calculating...");
             has_support_within(
                 &query_pipeline,
                 &transform.translation,

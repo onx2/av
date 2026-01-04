@@ -10,28 +10,18 @@ pub fn yaw_from_xz(xz: &na::Vector2<f32>) -> Option<f32> {
     None
 }
 
-/// Wrap an angle in radians into [0, 2π).
-fn wrap_0_tau(mut a: f32) -> f32 {
-    a = a % TAU;
-    if a < 0.0 {
-        a += TAU;
-    }
-    a
-}
-
 /// Quantize yaw (radians) into a single byte.
 ///
 /// Convention:
 /// - input: yaw in radians (any range; e.g. [-π, π] or [0, 2π))
 /// - output: `u8` in 0..=255 representing [0, 2π) in 256 uniform steps
-///
-/// Notes:
-/// - resolution: 2π / 256 ≈ 0.02454 rad ≈ 1.40625°
-/// - `floor` is deterministic and avoids rounding-overflow at the upper edge.
 pub fn yaw_to_u8(yaw_radians: f32) -> u8 {
-    let yaw = wrap_0_tau(yaw_radians); // [0, 2π)
-    let scaled = yaw * (256.0 / TAU); // [0, 256)
-    (scaled.floor() as u32 & 0xFF) as u8
+    const SCALE: f32 = 256.0 / TAU;
+
+    // 1. Multiply to get range approx [-128.0, 128.0]
+    // 2. Cast to i32 to handle the negative sign
+    // 3. Cast to u8 to truncate to the 0..255 range
+    (yaw_radians * SCALE) as i32 as u8
 }
 
 /// Dequantize `u8` yaw back into radians in [0, 2π).
