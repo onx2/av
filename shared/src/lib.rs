@@ -1,21 +1,13 @@
 pub mod constants;
-/// Shared, deterministic logic intended to run identically on server and client.
-///
-/// Rapier transition
-/// -----------------
-/// This crate is transitioning to a Rapier-first architecture:
-/// - The authoritative/static collision world is defined by DB rows.
-/// - Server and client build the same in-memory Rapier query world from those rows.
-/// - Movement/scene queries operate at the Rapier level (not Parry-level wrappers).
-///
-/// Public API policy
-/// -----------------
-/// Keep the public surface small and stable:
-/// - `rapier_world`: schema-agnostic world definitions + builder for an in-memory Rapier query world.
-///
-/// Everything else should be considered internal and subject to change.
-pub mod rapier_world;
+pub mod rapier;
 pub mod utils;
 
-// Re-exports for callers building the world from DB rows.
-pub use rapier_world::{ColliderShapeDef, RapierQueryWorld, WorldStaticDef};
+pub use constants::{
+    CELL_SIZE, DIRECTIONAL_MOVEMENT_INTERVAL, MAX_INTENT_DISTANCE_SQ, MAX_INTENT_PATH_LEN,
+    SMALLEST_MOVE_DISTANCE_SQ, SMALLEST_REQUEST_DISTANCE_SQ, WORLD_OFFSET, YAW_EPS,
+};
+pub use rapier::{ColliderShapeDef, WorldStaticDef, collider_from_def};
+pub use utils::{
+    decode_cell_id, encode_cell_id, planar_distance_sq, to_planar, yaw_from_u8, yaw_from_xz,
+    yaw_to_u8,
+};

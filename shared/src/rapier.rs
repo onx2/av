@@ -1,30 +1,8 @@
-//! Rapier-based query world builder for immutable/static world geometry.
-//!
-//! This module is intended to be used by both server and client to build an in-memory
-//! Rapier scene from a set of static collider definitions (typically sourced from DB rows).
-//!
-//! Design goals
-//! - Deterministic: given the same inputs (sorted by `id`), build identical in-memory sets.
-//! - Query-focused: supports scene queries and the Rapier `KinematicCharacterController`.
-//! - Immutable world: this builder assumes statics do not move after construction.
-
-use rapier3d::{
-    na::{Translation3, UnitQuaternion},
-    prelude::*,
-};
+use rapier3d::{na::UnitQuaternion, prelude::*};
 
 /// Canonical, schema-agnostic definition of an immutable world collider.
-///
-/// Server/client should map DB rows to this type, then call [`RapierQueryWorld::build`].
-///
-/// Conventions
-/// - Units are meters.
-/// - Rotation is a unit quaternion.
-/// - For planes, we use a pose-derived normal: `normal = rotation * +Y`,
-///   and compute `dist = dot(normal, translation) + offset_along_normal`.
 #[derive(Clone, Debug)]
 pub struct WorldStaticDef {
-    /// Stable unique identifier used to ensure deterministic insertion order.
     pub id: u32,
     /// World-space translation.
     pub translation: Vector<f32>,
@@ -35,8 +13,6 @@ pub struct WorldStaticDef {
 }
 
 /// Supported static collider shapes.
-///
-/// Keep this intentionally small and deterministic. Extend as needed.
 #[derive(Clone, Debug)]
 pub enum ColliderShapeDef {
     /// Infinite plane (half-space).
@@ -91,95 +67,11 @@ pub enum ColliderShapeDef {
     },
 }
 
-/// In-memory Rapier structures needed for scene queries and KCC against a static world.
-///
-/// This stores:
-/// - `RigidBodySet`/`ColliderSet` containing the static world geometry.
-/// - `NarrowPhase` and `BroadPhaseBvh` used to create a borrowed `QueryPipeline`.
-///
-/// For immutable statics, these can be built once at startup and reused.
-pub struct RapierQueryWorld {
-    pub bodies: RigidBodySet,
-    pub colliders: ColliderSet,
-    pub broad_phase: BroadPhaseBvh,
-    pub narrow_phase: NarrowPhase,
-}
-
-impl RapierQueryWorld {
-    /// Build a query world from a list of static collider definitions.
-    ///
-    /// Determinism
-    /// - The input is sorted by `id` before insertion.
-    /// - Any NaN/invalid values should be filtered/validated by the caller.
-    pub fn build(mut defs: Vec<WorldStaticDef>) -> Self {
-        // Ensure deterministic insertion order.
-        defs.sort_by_key(|d| d.id);
-
-        let mut bodies = RigidBodySet::new();
-        let mut colliders = ColliderSet::new();
-
-        // Insert each static as a fixed rigid-body + attached collider.
-        // This is convenient and matches typical Rapier usage.
-        for def in defs.into_iter() {
-            let iso = Isometry::from_parts(Translation3::from(def.translation), def.rotation);
-
-            let rb = RigidBodyBuilder::fixed().pose(iso).build();
-            let rb_handle = bodies.insert(rb);
-
-            let collider = collider_from_def(&def);
-            colliders.insert_with_parent(collider, rb_handle, &mut bodies);
-        }
-
-        // Initialize broad/narrow phases so queries can run.
-        let mut broad_phase = BroadPhaseBvh::new();
-        let mut narrow_phase = NarrowPhase::new();
-        let mut collision_pipeline = CollisionPipeline::new();
-
-        // Using default hooks/events (none). This will update broad + narrow phases.
-        let hooks = ();
-        let events = ();
-
-        collision_pipeline.step(
-            0.0,
-            &mut broad_phase,
-            &mut narrow_phase,
-            &mut bodies,
-            &mut colliders,
-            &hooks,
-            &events,
-        );
-
-        Self {
-            bodies,
-            colliders,
-            broad_phase,
-            narrow_phase,
-        }
-    }
-
-    /// Create a borrowed `QueryPipeline` view suitable for scene queries and KCC.
-    ///
-    /// The returned pipeline borrows `self`, so it should be used within the scope
-    /// of the borrow.
-    ///
-    /// Filters
-    /// - Provide a `QueryFilter` to exclude things (e.g., the character collider if you insert it
-    ///   into the same scene as the statics).
-    pub fn query_pipeline<'a>(&'a self, filter: QueryFilter<'a>) -> QueryPipeline<'a> {
-        self.broad_phase.as_query_pipeline(
-            self.narrow_phase.query_dispatcher(),
-            &self.bodies,
-            &self.colliders,
-            filter,
-        )
-    }
-}
-
 /// Build a Rapier collider from a `WorldStaticDef`.
 ///
 /// This uses the pose stored on the rigid-body as the collider parent transform.
 /// So the collider is created with identity local transform.
-fn collider_from_def(def: &WorldStaticDef) -> Collider {
+pub fn collider_from_def(def: &WorldStaticDef) -> Collider {
     match &def.shape {
         ColliderShapeDef::Plane {
             offset_along_normal,
