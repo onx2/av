@@ -1,65 +1,12 @@
 use crate::{
-    schema::{kcc_settings, world_static, WorldStatic},
+    schema::{world_static, WorldStatic},
     types::*,
 };
-use rapier3d::control::{CharacterAutostep, CharacterLength, KinematicCharacterController};
-use shared::{ColliderShapeDef, RapierQueryWorld, WorldStaticDef};
+use shared::{ColliderShapeDef, WorldStaticDef};
 use spacetimedb::{ReducerContext, Table};
-use std::sync::OnceLock;
-
-/// Cached in-memory Rapier query world built from immutable `world_static` rows.
-static SHARED_KCC: OnceLock<KinematicCharacterController> = OnceLock::new();
-
-/// Return the cached Rapier query world.
-///
-/// The first call reads the `world_static` table, converts rows to shared definitions,
-/// builds the Rapier query world, and caches it. Subsequent calls return the cached world.
-///
-/// Note: This assumes world statics do not change at runtime.
-pub fn get_kcc(ctx: &ReducerContext) -> &'static KinematicCharacterController {
-    SHARED_KCC.get_or_init(|| {
-        let kcc = ctx
-            .db
-            .kcc_settings()
-            .id()
-            .find(1)
-            .expect("Missing kcc_settings row (expected id = 1)");
-
-        KinematicCharacterController {
-            offset: CharacterLength::Absolute(kcc.offset),
-            max_slope_climb_angle: kcc.max_slope_climb_deg.to_radians(),
-            min_slope_slide_angle: kcc.min_slope_slide_deg.to_radians(),
-            snap_to_ground: Some(CharacterLength::Absolute(0.3)),
-            autostep: Some(CharacterAutostep {
-                max_height: CharacterLength::Absolute(kcc.autostep_max_height),
-                min_width: CharacterLength::Absolute(kcc.autostep_min_width),
-                include_dynamic_bodies: false,
-            }),
-            slide: kcc.slide,
-            normal_nudge_factor: kcc.normal_nudge_factor,
-            ..KinematicCharacterController::default()
-        }
-    })
-}
-
-/// Cached in-memory Rapier query world built from immutable `world_static` rows.
-static RAPIER_WORLD: OnceLock<RapierQueryWorld> = OnceLock::new();
-
-/// Return the cached Rapier query world.
-///
-/// The first call reads the `world_static` table, converts rows to shared definitions,
-/// builds the Rapier query world, and caches it. Subsequent calls return the cached world.
-///
-/// Note: This assumes world statics do not change at runtime.
-pub fn get_rapier_world(ctx: &ReducerContext) -> &'static RapierQueryWorld {
-    RAPIER_WORLD.get_or_init(|| {
-        let defs = ctx.db.world_static().iter().map(row_to_def).collect();
-        RapierQueryWorld::build(defs)
-    })
-}
 
 /// Convert a single `WorldStatic` row to the shared schema-agnostic definition.
-fn row_to_def(row: WorldStatic) -> WorldStaticDef {
+pub fn row_to_def(row: WorldStatic) -> WorldStaticDef {
     let shape = match row.shape {
         ColliderShape::Plane(offset_along_normal) => ColliderShapeDef::Plane {
             offset_along_normal,
@@ -118,5 +65,88 @@ fn row_to_def(row: WorldStatic) -> WorldStaticDef {
         translation: row.translation.into(),
         rotation: row.rotation.into(),
         shape,
+    }
+}
+
+pub fn recreate_static_world(ctx: &ReducerContext) {
+    for row in ctx.db.world_static().iter() {
+        ctx.db.world_static().delete(row);
+    }
+
+    // Infinite ground plane at y = 0.
+    ctx.db.world_static().insert(WorldStatic {
+        id: 0,
+        translation: DbVec3::new(0.0, 0.0, 0.0),
+        rotation: DbQuat {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            w: 1.0,
+        },
+        // Visual-only for planes.
+        scale: DbVec3::new(10.0, 1.0, 10.0),
+        shape: ColliderShape::Plane(0.0),
+    });
+
+    // A simple oriented cuboid test object.
+    ctx.db.world_static().insert(WorldStatic {
+        id: 0,
+        translation: DbVec3::new(3.0, 1.0, 0.0),
+        rotation: DbQuat {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0,
+            w: 0.0,
+        },
+        scale: DbVec3::new(1.0, 1.0, 1.0),
+        // Half-extents (hx, hy, hz) before scale is applied by the server's world loader.
+        shape: ColliderShape::Cuboid(DbVec3::new(1.0, 1.0, 1.0)),
+    });
+
+    // A downhill ramp (tilted cuboid) to test snap-to-ground and slope behavior.
+    // Tilt around X by -20 degrees so moving +Z goes "uphill".
+    ctx.db.world_static().insert(WorldStatic {
+        id: 0,
+        translation: DbVec3::new(-3.0, 0.0, 6.0),
+        rotation: DbQuat {
+            x: -0.17364818,
+            y: 0.0,
+            z: 0.0,
+            w: 0.98480775,
+        },
+        scale: DbVec3::new(1.0, 1.0, 1.0),
+        shape: ColliderShape::Cuboid(DbVec3::new(1.0, 1.0, 10.0)),
+    });
+
+    // A simple staircase to test autostep up/down.
+    let stairs_origin = DbVec3::new(0.0, 0.0, -6.0);
+    let step_run: f32 = 0.55;
+    let step_rise: f32 = 0.4;
+    let step_count: u32 = 20;
+
+    // Half extents for each step: total height = 0.20, total depth = 0.50.
+    let step_half = DbVec3::new(step_run * 0.5, step_rise * 0.5, 1.5);
+
+    for i in 0..step_count {
+        let ix = i as u32;
+        let fx = ix as f32;
+
+        // Center of the step in world space.
+        let cx = stairs_origin.x + fx * step_run;
+        let cy = stairs_origin.y + (fx * step_rise) + step_half.y;
+        let cz = stairs_origin.z;
+
+        ctx.db.world_static().insert(WorldStatic {
+            id: 0,
+            translation: DbVec3::new(cx, cy, cz),
+            rotation: DbQuat {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                w: 1.0,
+            },
+            scale: DbVec3::ONE,
+            shape: ColliderShape::Cuboid(step_half),
+        });
     }
 }

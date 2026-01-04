@@ -45,7 +45,6 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         should_move: true,
         move_intent: MoveIntent::None,
         grounded: false,
-        stuck_grace_steps: 0,
         cell_id: encode_cell_id(transform_data.translation.x, transform_data.translation.z),
     });
 

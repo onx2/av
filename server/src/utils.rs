@@ -1,10 +1,8 @@
-use crate::types::DbVec3;
-use log::info;
-use nalgebra::point;
+use crate::{schema::world_static, types::DbVec3, world::row_to_def};
+use nalgebra::{point, Translation3};
 use rapier3d::prelude::*;
-use spacetimedb::{
-    log_stopwatch::LogStopwatch as SpacetimeLogStopwatch, ReducerContext, ScheduleAt,
-};
+use shared::rapier::collider_from_def;
+use spacetimedb::{ReducerContext, ScheduleAt, Table};
 
 pub fn get_variable_delta_time(
     now: spacetimedb::Timestamp,
@@ -47,97 +45,63 @@ pub fn has_support_within(
     }
 }
 
-/// LogStopwatch-style sampled span logging (WASM-safe).
+/// Owns the Rapier structures needed to create a `QueryPipeline<'_>` in Rapier 0.31.
 ///
-/// This mirrors the approach from the reference repo:
-/// - logs a begin/end wrapper for the event
-/// - logs total event time via SpacetimeDB's `log_stopwatch`
-/// - supports sequential spans (`span()` ends the previous span)
-///
-/// This is intended for ad-hoc profiling without adding any monotonic clock dependencies.
-pub struct LogStopwatch {
-    event_sw: Option<SpacetimeLogStopwatch>,
-    span_sw: Option<SpacetimeLogStopwatch>,
-    name: String,
-    should_sample: bool,
+/// In 0.31, `QueryPipeline` borrows the broad-phase BVH and the sets, so you can't
+/// return it directly from a builder function without also returning the owned data.
+pub struct StaticQueryWorld {
+    bodies: RigidBodySet,
+    colliders: ColliderSet,
+    broad_phase: BroadPhaseBvh,
+    narrow_phase: NarrowPhase,
 }
 
-impl LogStopwatch {
-    /// Creates a new `LogStopwatch` that conditionally logs timing information.
-    ///
-    /// Sampling:
-    /// - If `force_debug` is true, always logs.
-    /// - Otherwise logs with probability `sample_rate` in [0, 1].
-    ///
-    /// Note: sampling uses `ctx.random::<f32>()` so the module remains deterministic.
-    pub fn new(
-        ctx: &ReducerContext,
-        name: impl Into<String>,
-        force_debug: bool,
-        sample_rate: f32,
-    ) -> Self {
-        let name = name.into();
-        let should_sample =
-            force_debug || (sample_rate > 0.0 && ctx.random::<f32>() <= sample_rate);
-
-        if should_sample {
-            info!("--------- {name} begin ---------");
-        }
-
-        Self {
-            event_sw: if should_sample {
-                Some(SpacetimeLogStopwatch::new("event_time"))
-            } else {
-                None
-            },
-            span_sw: None,
-            name,
-            should_sample,
-        }
-    }
-
-    /// Starts a new span within the event, ending any previous span.
-    pub fn span(&mut self, section_name: &str) {
-        if !self.should_sample {
-            return;
-        }
-
-        if let Some(sw) = self.span_sw.take() {
-            sw.end();
-        }
-
-        self.span_sw = Some(SpacetimeLogStopwatch::new(section_name));
-    }
-
-    /// Ends the current span, if any.
-    pub fn end_span(&mut self) {
-        if let Some(sw) = self.span_sw.take() {
-            sw.end();
-        }
-    }
-
-    /// Whether this event is currently being sampled/logged.
-    pub fn should_sample(&self) -> bool {
-        self.should_sample
+impl StaticQueryWorld {
+    pub fn as_query_pipeline(&self) -> QueryPipeline<'_> {
+        self.broad_phase.as_query_pipeline(
+            self.narrow_phase.query_dispatcher(),
+            &self.bodies,
+            &self.colliders,
+            QueryFilter::default(),
+        )
     }
 }
 
-impl Drop for LogStopwatch {
-    fn drop(&mut self) {
-        if !self.should_sample {
-            return;
-        }
+pub fn build_static_query_world(ctx: &ReducerContext, dt: f32) -> StaticQueryWorld {
+    let mut bodies = RigidBodySet::new();
+    let mut colliders = ColliderSet::new();
+    let mut modified_colliders = Vec::new();
 
-        // Close any open span first.
-        if let Some(sw) = self.span_sw.take() {
-            sw.end();
-        }
+    ctx.db.world_static().iter().for_each(|row| {
+        let def = row_to_def(row);
+        let iso = Isometry::from_parts(Translation3::from(def.translation), def.rotation);
 
-        // Close event timer.
-        if let Some(sw) = self.event_sw.take() {
-            sw.end();
-        }
+        let rb = RigidBodyBuilder::fixed().pose(iso).build();
+        let rb_handle = bodies.insert(rb);
 
-        info!("---------- {} end ----------", self.name);
+        let collider = collider_from_def(&def);
+        let co_handle = colliders.insert_with_parent(collider, rb_handle, &mut bodies);
+        modified_colliders.push(co_handle);
+    });
+
+    let mut broad_phase = BroadPhaseBvh::new();
+    let mut events = Vec::new();
+    broad_phase.update(
+        &IntegrationParameters {
+            dt,
+            ..IntegrationParameters::default()
+        },
+        &colliders,
+        &bodies,
+        &modified_colliders,
+        &[],
+        &mut events,
+    );
+
+    StaticQueryWorld {
+        bodies,
+        colliders,
+        broad_phase,
+        narrow_phase: NarrowPhase::default(),
     }
 }

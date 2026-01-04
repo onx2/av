@@ -9,7 +9,6 @@ use spacetimedb::*;
 /// is created/destroyed on demand and references back to this row.
 #[table(name = player, public)]
 pub struct Player {
-    /// Unique identity (primary key).
     #[primary_key]
     pub identity: Identity,
 
@@ -22,9 +21,7 @@ pub struct Player {
     #[index(btree)]
     pub actor_id: Option<u64>,
 
-    /// Capsule radius used by the actor's kinematic collider (meters).
     pub capsule_radius: f32,
-    /// Capsule half-height used by the actor's kinematic collider (meters).
     pub capsule_half_height: f32,
 }
 
@@ -35,7 +32,6 @@ pub struct Player {
 /// back to the `Player` row when leaving or disconnecting.
 #[table(name = actor, index(name=should_move_and_is_player, btree(columns=[should_move, is_player])))]
 pub struct Actor {
-    /// Auto-incremented unique id (primary key).
     #[primary_key]
     #[auto_inc]
     pub id: u64,
@@ -47,9 +43,9 @@ pub struct Actor {
     #[unique]
     pub transform_data_id: u32,
 
-    // pub kind: ActorKind,
     /// An optional player identity when this actor is controlled, NOT a server actor.
     pub identity: Option<Identity>,
+
     /// Used alongside identity for faster btree lookups
     #[index(btree)]
     pub is_player: bool,
@@ -61,12 +57,9 @@ pub struct Actor {
 
     pub grounded: bool,
 
-    pub stuck_grace_steps: u8,
-
     #[index(btree)]
     pub cell_id: u32,
 
-    /// Capsule collider parameters (meters).
     pub capsule_radius: f32,
     pub capsule_half_height: f32,
 }
