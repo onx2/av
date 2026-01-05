@@ -1,5 +1,4 @@
 use crate::types::*;
-use shared::utils::get_aoi_block;
 use spacetimedb::*;
 
 /// Player account data persisted across sessions.
@@ -129,14 +128,6 @@ pub struct VitalStats {
     pub stamina: u16,
 }
 
-/// NOTE: `FakeWanderTickTimer` was moved out of `schema.rs` into the reducer module
-/// (`server/src/reducers/spawn_fake.rs`) so the scheduled reducer symbol is in scope.
-///
-/// If you remove the fake-wander system later, delete:
-/// - the timer table in `spawn_fake.rs`
-/// - `FakeWanderState` (above)
-/// - the reducers in `spawn_fake.rs`
-
 /// Kinematic Character Controller (KCC) settings shared by server and clients.
 ///
 /// This is intended to be a single-row table (e.g. `id = 1`) that both:
@@ -203,52 +194,4 @@ pub struct WorldStatic {
 
     /// Collider shape definition.
     pub shape: ColliderShape,
-}
-
-#[view(name = aoi_actor, public)]
-fn aoi_actor_view(ctx: &ViewContext) -> Vec<AoiActor> {
-    let Some(player) = ctx.db.player().identity().find(ctx.sender) else {
-        return Vec::new();
-    };
-    let Some(actor_id) = player.actor_id else {
-        return Vec::new();
-    };
-    let Some(actor) = ctx.db.actor().id().find(actor_id) else {
-        return Vec::new();
-    };
-
-    let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
-
-    aoi_block
-        .into_iter()
-        .flat_map(|cell_id| ctx.db.actor().cell_id().filter(cell_id))
-        .map(|a| a.into())
-        .collect()
-}
-
-#[view(name = aoi_transform_data, public)]
-fn aoi_transform_data_view(ctx: &ViewContext) -> Vec<TransformData> {
-    let Some(player) = ctx.db.player().identity().find(ctx.sender) else {
-        return Vec::new();
-    };
-    let Some(actor_id) = player.actor_id else {
-        return Vec::new();
-    };
-    let Some(actor) = ctx.db.actor().id().find(actor_id) else {
-        return Vec::new();
-    };
-
-    let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
-    aoi_block
-        .into_iter()
-        .flat_map(|cell_id| {
-            ctx.db.actor().cell_id().filter(cell_id).map(|actor| {
-                ctx.db
-                    .transform_data()
-                    .id()
-                    .find(actor.transform_data_id)
-                    .unwrap_or_default()
-            })
-        })
-        .collect()
 }

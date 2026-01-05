@@ -8,6 +8,7 @@ mod reducers {
 pub mod schema;
 pub mod types;
 mod utils;
+pub mod views;
 mod world;
 
 use crate::schema::*;
