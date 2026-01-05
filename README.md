@@ -29,12 +29,12 @@ The story of its coming is told through Aurora, the one who unearthed the artifa
 ## TODO
 
 ### [ ] Pathfinding
-- The main source of pathfinding should be client/server agnostic in the shared folder.
-- Use rerecast for navmesh generation from Rapier3D colliders and navmesh crate for pathfinding (pure Rust, no engine dependencies).
-- Precompute the full navmesh in the `init` reducer from DB-based colliders, serialize vertices/indices, store in a singleton table row.
+- The main source of pathfinding should be client/server agnostic in the `shared` folder.
+- Use [`rerecast`](https://github.com/janhohenheim/rerecast) for navmesh generation from Rapier3D colliders and [`polyanya`](https://docs.rs/polyanya) for any-angle pathfinding (engine/client agnostic).
+- Precompute the full navmesh in the `init` reducer from DB-based colliders, convert to Polyanya format, serialize vertices/polygons, store in a singleton table row.
 - Client/server load the precomputed navmesh from DB for queries.
-- Client sends request_move() reducer with MoveIntent::Path(points). Server runs pathfinding on precomputed navmesh, verifies path validity, updates position in DB.
-- Client compute predictive paths locally using same navmesh; rare differences reconciled on server update (usually unnoticeable).
+- Client sends `request_move()` reducer with `MoveIntent::Path` (points). Server runs pathfinding on precomputed navmesh, verifies path validity, updates position in DB.
+- Client may compute predictive paths locally using same navmesh; rare differences reconciled on server update (usually unnoticeable).
 
 ### [ ] Attribute Set/System
 - Attributes are integer and float values that represent some statistics/meaning about an actor such as health, strength, critical hit chance etc...
@@ -46,6 +46,8 @@ The story of its coming is told through Aurora, the one who unearthed the artifa
 - Vital attributes are considered "Hot", as they need to potentially update each frame, so they should be subscribed to separately to reduce network overhead
 - All attributes should be restricted to thei owner, meaning one actor cannot view the attributes of another actor (security and network perf).
 - Computed stats do not _need_ to be stored in a table but could as a cache, however, they might make more sense as regular functions in the `shared` (for prediction) or just as functions in server.
+
+800-255-7828
 
 ### [ ] Ability System
 - The ability system is a set of reducers, tables, and functions that are used to represent the abilities the player can activate and the response and action of them.
