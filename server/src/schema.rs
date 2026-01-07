@@ -74,7 +74,7 @@ pub struct TransformData {
 
     /// Quantized yaw (radians) stored as a single byte.
     ///
-    /// Convention: `0..=255` maps uniformly onto `[0, 2π)`.
+    /// Convention: `0..=255` maps onto `[0, 2π)`.
     pub yaw: u8,
 }
 

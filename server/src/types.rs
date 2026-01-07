@@ -8,7 +8,7 @@ use crate::schema::Actor;
 /// Semantics:
 /// - Used for translations, scales, and general scalar triplets.
 /// - This is a data type only; math/conversions live outside the schema.
-#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub struct DbVec3 {
     /// X axis (east-west)
     pub x: f32,
@@ -132,7 +132,7 @@ impl From<na::UnitQuaternion<f32>> for DbQuat {
 /// - `radius`: radius of spherical caps and cylinder.
 /// - `half_height`: half of the cylinder length along local +Y.
 /// - Total capsule height = `2*half_height + 2*radius`.
-#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub struct DbCapsule {
     pub radius: f32,
     pub half_height: f32,
@@ -144,7 +144,7 @@ pub struct DbCapsule {
 /// - `radius`: radius of the cylinder.
 /// - `half_height`: half of the cylinder length along local +Y.
 /// - Total height = `2*half_height`.
-#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub struct DbCylinder {
     pub radius: f32,
     pub half_height: f32,
@@ -156,7 +156,7 @@ pub struct DbCylinder {
 /// - `radius`: radius of the cone base.
 /// - `half_height`: half of the cone height along local +Y.
 /// - Total height = `2*half_height`.
-#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub struct DbCone {
     pub radius: f32,
     pub half_height: f32,
@@ -167,7 +167,7 @@ pub struct DbCone {
 /// Semantics:
 /// - `half_extents`: half extents of the cuboid (hx, hy, hz).
 /// - `border_radius`: rounding radius applied to edges/corners.
-#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub struct DbRoundCuboid {
     pub half_extents: DbVec3,
     pub border_radius: f32,
@@ -179,7 +179,7 @@ pub struct DbRoundCuboid {
 /// - `radius`: radius of the cylinder.
 /// - `half_height`: half of the cylinder height along +Y.
 /// - `border_radius`: rounding radius applied to edges/caps.
-#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub struct DbRoundCylinder {
     pub radius: f32,
     pub half_height: f32,
@@ -192,7 +192,7 @@ pub struct DbRoundCylinder {
 /// - `radius`: base radius.
 /// - `half_height`: half of the cone height along +Y.
 /// - `border_radius`: rounding radius applied to edges.
-#[derive(SpacetimeType, Clone, Copy, PartialEq)]
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub struct DbRoundCone {
     pub radius: f32,
     pub half_height: f32,
@@ -233,7 +233,7 @@ pub enum ColliderShape {
 ///
 /// Match arms are handled by the server's tick reducer; unsupported variants
 /// can be extended in the future.
-#[derive(SpacetimeType, PartialEq)]
+#[derive(SpacetimeType, Debug, Clone, PartialEq)]
 pub enum MoveIntent {
     /// Follow a sequence of waypoints (in world space) across multiple frames.
     Path(Vec<DbVec3>),
@@ -251,7 +251,7 @@ pub enum MoveIntent {
 /// Logical kind/ownership for an actor.
 ///
 /// Extend as needed for NPCs, bosses, and other categories.
-#[derive(SpacetimeType, PartialEq)]
+#[derive(SpacetimeType, Debug, Clone, PartialEq)]
 pub enum ActorKind {
     /// A player-controlled actor keyed by the user's identity.
     Player(Identity),

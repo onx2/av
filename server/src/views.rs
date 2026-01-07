@@ -19,7 +19,6 @@ fn aoi_actor_view(ctx: &ViewContext) -> Vec<AoiActor> {
     };
 
     let aoi_block: [u32; 9] = get_aoi_block(actor.cell_id);
-
     aoi_block
         .into_iter()
         .flat_map(|cell_id| ctx.db.actor().cell_id().filter(cell_id))

@@ -37,7 +37,6 @@ pub fn init_movement_tick(ctx: &ReducerContext) {
 
 #[spacetimedb::reducer]
 fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> Result<(), String> {
-    // Only the server (module identity) may invoke scheduled reducers.
     if ctx.sender != ctx.identity() {
         return Err("`movement_tick_reducer` may not be invoked by clients.".into());
     }
@@ -84,6 +83,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             _ => current_planar,
         };
 
+        let mut actor_dirty = false;
         let mut desired_planar = ctx
             .db
             .secondary_stats()
@@ -95,6 +95,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
                 let dist_sq = displacement.norm_squared();
                 if dist_sq <= kcc_settings.point_acceptance_radius_sq {
                     actor.move_intent = MoveIntent::None;
+                    actor_dirty = true;
                     None
                 } else {
                     let dist = dist_sq.sqrt();
@@ -150,21 +151,26 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         let new_cell_id = encode_cell_id(transform.translation.x, transform.translation.z);
         if new_cell_id != actor.cell_id {
             actor.cell_id = new_cell_id;
+            actor_dirty = true;
         }
 
         // Only update grounded state when it has changed
         if actor.grounded != corrected.grounded {
             actor.grounded = corrected.grounded;
+            actor_dirty = true;
         }
 
         // Actor should move when it has a movement intent or is not grounded.
         let new_should_move = actor.move_intent != MoveIntent::None || !actor.grounded;
         if actor.should_move != new_should_move {
             actor.should_move = new_should_move;
+            actor_dirty = true;
         }
 
         ctx.db.transform_data().id().update(transform);
-        ctx.db.actor().id().update(actor);
+        if actor_dirty == true {
+            ctx.db.actor().id().update(actor);
+        }
     }
 
     // Persist timer state.
