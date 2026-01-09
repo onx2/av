@@ -1,8 +1,8 @@
 use crate::{schema::world_static, types::DbVec3, world::row_to_def};
 use nalgebra::{point, Translation3};
 use rapier3d::prelude::*;
-use shared::rapier::collider_from_def;
-use spacetimedb::{ReducerContext, ScheduleAt, Table};
+use shared::{rapier::collider_from_def, utils::get_aoi_block};
+use spacetimedb::{ReducerContext, ScheduleAt};
 
 pub fn get_variable_delta_time(
     now: spacetimedb::Timestamp,
@@ -67,21 +67,35 @@ impl StaticQueryWorld {
     }
 }
 
-pub fn build_static_query_world(ctx: &ReducerContext, dt: f32) -> StaticQueryWorld {
-    let mut bodies = RigidBodySet::new();
+pub fn build_static_query_world(
+    ctx: &ReducerContext,
+    dt: f32,
+    actor_cell_id: u32,
+) -> StaticQueryWorld {
+    let bodies = RigidBodySet::new();
     let mut colliders = ColliderSet::new();
     let mut modified_colliders = Vec::new();
 
-    ctx.db.world_static().iter().for_each(|row| {
+    let by_global_and_cell = ctx.db.world_static().is_global_and_cell_id();
+
+    for row in by_global_and_cell.filter((true, 0u32..)) {
         let def = row_to_def(row);
+        let mut collider = collider_from_def(&def);
         let iso = Isometry::from_parts(Translation3::from(def.translation), def.rotation);
-
-        let rb = RigidBodyBuilder::fixed().pose(iso).build();
-        let rb_handle = bodies.insert(rb);
-
-        let collider = collider_from_def(&def);
-        let co_handle = colliders.insert_with_parent(collider, rb_handle, &mut bodies);
+        collider.set_position(iso);
+        let co_handle = colliders.insert(collider);
         modified_colliders.push(co_handle);
+    }
+
+    get_aoi_block(actor_cell_id).iter().for_each(|cell_id| {
+        for row in by_global_and_cell.filter((false, *cell_id)) {
+            let def = row_to_def(row);
+            let mut collider = collider_from_def(&def);
+            let iso = Isometry::from_parts(Translation3::from(def.translation), def.rotation);
+            collider.set_position(iso);
+            let co_handle = colliders.insert(collider);
+            modified_colliders.push(co_handle);
+        }
     });
 
     let mut broad_phase = BroadPhaseBvh::new();
@@ -97,6 +111,8 @@ pub fn build_static_query_world(ctx: &ReducerContext, dt: f32) -> StaticQueryWor
         &[],
         &mut events,
     );
+
+    log::info!("modified_colliders #: {:?}", modified_colliders.len());
 
     StaticQueryWorld {
         bodies,

@@ -2,7 +2,7 @@ use crate::{
     schema::{world_static, WorldStatic},
     types::*,
 };
-use shared::{ColliderShapeDef, WorldStaticDef};
+use shared::{encode_cell_id, ColliderShapeDef, WorldStaticDef};
 use spacetimedb::{ReducerContext, Table};
 
 /// Convert a single `WorldStatic` row to the shared schema-agnostic definition.
@@ -83,6 +83,8 @@ pub fn recreate_static_world(ctx: &ReducerContext) {
             z: 0.0,
             w: 1.0,
         },
+        cell_id: encode_cell_id(0.0, 0.0),
+        is_global: true,
         // Visual-only for planes.
         scale: DbVec3::new(10.0, 1.0, 10.0),
         shape: ColliderShape::Plane(0.0),
@@ -98,6 +100,8 @@ pub fn recreate_static_world(ctx: &ReducerContext) {
             z: 1.0,
             w: 0.0,
         },
+        cell_id: encode_cell_id(3.0, 0.0),
+        is_global: false,
         scale: DbVec3::new(1.0, 1.0, 1.0),
         // Half-extents (hx, hy, hz) before scale is applied by the server's world loader.
         shape: ColliderShape::Cuboid(DbVec3::new(1.0, 1.0, 1.0)),
@@ -114,6 +118,8 @@ pub fn recreate_static_world(ctx: &ReducerContext) {
             z: 0.0,
             w: 0.98480775,
         },
+        cell_id: encode_cell_id(-3.0, 6.0),
+        is_global: false,
         scale: DbVec3::new(1.0, 1.0, 1.0),
         shape: ColliderShape::Cuboid(DbVec3::new(1.0, 1.0, 10.0)),
     });
@@ -145,6 +151,8 @@ pub fn recreate_static_world(ctx: &ReducerContext) {
                 z: 0.0,
                 w: 1.0,
             },
+            cell_id: encode_cell_id(cx, cz),
+            is_global: false,
             scale: DbVec3::ONE,
             shape: ColliderShape::Cuboid(step_half),
         });

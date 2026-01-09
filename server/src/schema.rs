@@ -180,7 +180,7 @@ pub struct KccSettings {
 ///
 /// The server reads these rows into an in-memory Rapier query world once, and reuses it
 /// every tick for scene queries and the kinematic character controller (KCC).
-#[table(name = world_static, public)]
+#[table(name = world_static, public, index(name = is_global_and_cell_id, btree(columns = [is_global, cell_id])))]
 pub struct WorldStatic {
     /// Unique id (primary key).
     #[primary_key]
@@ -191,6 +191,9 @@ pub struct WorldStatic {
     pub translation: DbVec3,
     pub rotation: DbQuat,
     pub scale: DbVec3,
+
+    pub cell_id: u32,
+    pub is_global: bool,
 
     /// Collider shape definition.
     pub shape: ColliderShape,

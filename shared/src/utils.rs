@@ -102,10 +102,10 @@ pub fn decode_cell_id(id: u32) -> [f32; 2] {
 /// [6] South-West | [7] South     | [8] South-East
 ///
 /// Index 4 is always the input `id`. Neighbors use saturating arithmetic to clamp at u16 bounds (0..65535).
-pub fn get_aoi_block(id: u32) -> [u32; 9] {
+pub fn get_aoi_block(cell_id: u32) -> [u32; 9] {
     // Cell ID format: [x: u16 (bits 31-16)] [z: u16 (bits 15-0)]
-    let x = (id >> 16) as u16; // Extract grid X from low 16 bits after right shift
-    let z = (id & 0xFFFF) as u16; // Extract grid Z from low 16 bits after bitwise AND
+    let x = (cell_id >> 16) as u16; // Extract grid X from low 16 bits after right shift
+    let z = (cell_id & 0xFFFF) as u16; // Extract grid Z from low 16 bits after bitwise AND
 
     // Neighbor coordinates (clamp to valid range)
     let xw = x.saturating_sub(1); // West
@@ -124,7 +124,7 @@ pub fn get_aoi_block(id: u32) -> [u32; 9] {
         x_shifted | u32::from(zn),  // N
         xe_shifted | u32::from(zn), // NE
         xw_shifted | u32::from(z),  // W
-        id,                         // Center
+        cell_id,                    // Center
         xe_shifted | u32::from(z),  // E
         xw_shifted | u32::from(zs), // SW
         x_shifted | u32::from(zs),  // S

@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use crate::{
     schema::{actor, kcc_settings, secondary_stats, transform_data},
     types::MoveIntent,
     utils::{
-        build_static_query_world, get_fixed_delta_time, get_variable_delta_time, has_support_within,
+        build_static_query_world, get_fixed_delta_time, get_variable_delta_time,
+        has_support_within, StaticQueryWorld,
     },
 };
 use nalgebra::vector;
@@ -66,9 +69,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         ..KinematicCharacterController::default()
     };
 
-    let query_world = build_static_query_world(ctx, real_dt);
-    let query_pipeline = query_world.as_query_pipeline();
-
+    let mut query_world_map: HashMap<u32, StaticQueryWorld> = HashMap::new();
     // ---------------------------------------------------------------------------------------------------------
     // Move each actor and update
     // ---------------------------------------------------------------------------------------------------------
@@ -76,6 +77,12 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         let Some(mut transform) = ctx.db.transform_data().id().find(actor.transform_data_id) else {
             continue;
         };
+
+        let query_world = query_world_map
+            .entry(actor.cell_id)
+            .or_insert_with(|| build_static_query_world(ctx, real_dt, actor.cell_id));
+
+        let query_pipeline = query_world.as_query_pipeline();
 
         let current_planar = to_planar(&transform.translation.into());
         let target_planar = match &actor.move_intent {
