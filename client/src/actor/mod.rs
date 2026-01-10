@@ -3,6 +3,8 @@ mod replication;
 
 use bevy::{platform::collections::HashMap, prelude::*};
 
+use crate::module_bindings::MoveIntent;
+
 pub(super) fn plugin(app: &mut App) {
     app.insert_resource(NetworkTransformDataEntityMapping::default());
     app.add_systems(
@@ -12,12 +14,14 @@ pub(super) fn plugin(app: &mut App) {
             replication::on_actor_inserted,
         ),
     );
-
-    // Replication sync should run before interpolation, so we always smooth toward the latest
-    // received snapshot in the same frame.
     app.add_systems(
         PostUpdate,
-        (replication::sync_transform, interpolate::interpolate),
+        (
+            replication::sync_transform,
+            replication::sync_move_intent,
+            interpolate::interpolate,
+        )
+            .chain(),
     );
 }
 
@@ -32,7 +36,10 @@ pub struct NetworkTransform {
 }
 
 #[derive(Component)]
-pub struct LocalActor;
+pub struct LocalActor {
+    pub id: u64,
+    pub move_intent: MoveIntent,
+}
 
 #[derive(Component)]
 pub struct RemoteActor;

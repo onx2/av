@@ -1,4 +1,5 @@
 use crate::{
+    actor::LocalActor,
     cursor::{CurrentCursor, set_cursor_to_ability, set_cursor_to_combat, set_cursor_to_default},
     input::InputAction,
     module_bindings::{MoveIntent, enter_world, request_move},
@@ -8,6 +9,7 @@ use bevy::{picking::pointer::PointerInteraction, prelude::*};
 use leafwing_input_manager::prelude::ActionState;
 
 pub(super) fn handle_lmb_movement(
+    mut local_actor_q: Single<&mut LocalActor>,
     actions: Res<ActionState<InputAction>>,
     interactions: Query<&PointerInteraction>,
     stdb: SpacetimeDB,
@@ -29,7 +31,9 @@ pub(super) fn handle_lmb_movement(
 
     if pressed {
         match stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
-            Ok(_) => {}
+            Ok(_) => {
+                local_actor_q.move_intent = MoveIntent::Point(pos.into());
+            }
             Err(e) => println!("Error: {e}"),
         }
         return;
@@ -37,7 +41,9 @@ pub(super) fn handle_lmb_movement(
 
     if just_released {
         match stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
-            Ok(_) => {}
+            Ok(_) => {
+                local_actor_q.move_intent = MoveIntent::Point(pos.into());
+            }
             Err(e) => println!("Error: {e}"),
         }
         return;

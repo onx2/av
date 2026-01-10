@@ -1,6 +1,6 @@
 mod input;
 
-use bevy::{platform::collections::HashMap, prelude::*};
+use bevy::prelude::*;
 
 pub(super) fn plugin(app: &mut App) {
     // Gameplay/input systems

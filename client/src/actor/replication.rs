@@ -99,7 +99,13 @@ pub(super) fn on_actor_inserted(
         });
 
         // Only players get local/remote tags (monsters get neither).
-        entity_commands.insert_if(LocalActor, || is_local);
+        entity_commands.insert_if(
+            LocalActor {
+                id: new_actor.id,
+                move_intent: new_actor.move_intent,
+            },
+            || is_local,
+        );
         entity_commands.insert_if(RemoteActor, || !is_local);
 
         let bevy_entity = entity_commands.id();
@@ -125,5 +131,16 @@ pub(super) fn sync_transform(
 
         network_transform.translation = transform_data.translation.into();
         network_transform.rotation = Quat::from_rotation_y(yaw_from_u8(transform_data.yaw));
+    }
+}
+
+pub(super) fn sync_move_intent(
+    mut local_actor: Single<&mut LocalActor>,
+    mut messages: ReadUpdateMessage<AoiActor>,
+) {
+    for msg in messages.read() {
+        if msg.new.id == local_actor.id {
+            local_actor.move_intent = msg.new.move_intent.clone();
+        }
     }
 }
