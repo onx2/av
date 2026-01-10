@@ -1,7 +1,10 @@
 use super::{NetworkTransform, NetworkTransformDataEntityMapping};
 use crate::{
-    actor::{LocalActor, RemoteActor},
-    module_bindings::{AoiActor, AoiTransformDataTableAccess, TransformData},
+    actor::{LocalActor, MovementData, RemoteActor},
+    module_bindings::{
+        AoiActor, AoiTransformDataTableAccess, KccSettingsTableAccess, SecondaryStatsTableAccess,
+        TransformData,
+    },
     server::SpacetimeDB,
 };
 use bevy::prelude::*;
@@ -15,7 +18,6 @@ pub(super) fn on_actor_deleted(
     mut actor_entity_mapping: ResMut<NetworkTransformDataEntityMapping>,
 ) {
     for msg in msgs.read() {
-        println!("REMOVED: {:?}", msg.row);
         if let Some(bevy_entity) = actor_entity_mapping.0.remove(&msg.row.transform_data_id) {
             commands.entity(bevy_entity).despawn();
         }
@@ -39,11 +41,26 @@ pub(super) fn on_actor_inserted(
             Color::linear_rgb(0.9, 0.2, 0.2)
         };
 
+        let Some(kcc_settings) = stdb.db().kcc_settings().id().find(&1) else {
+            println!("Failed to find shared KCC settings.");
+            continue;
+        };
+
         let Some(transform_data) = stdb
             .db()
             .aoi_transform_data()
             .iter()
             .find(|data| data.id == new_actor.transform_data_id)
+        else {
+            println!("Failed to find transform data for actor {:?}", new_actor);
+            continue;
+        };
+
+        let Some(secondary_stats) = stdb
+            .db()
+            .secondary_stats()
+            .id()
+            .find(&new_actor.secondary_stats_id)
         else {
             println!("Failed to find transform data for actor {:?}", new_actor);
             continue;
@@ -69,6 +86,14 @@ pub(super) fn on_actor_inserted(
             NetworkTransform {
                 translation,
                 rotation,
+            },
+            MovementData {
+                move_intent: new_actor.move_intent,
+                grounded: new_actor.grounded,
+                movement_speed: secondary_stats.movement_speed,
+                grounded_down_bias_mps: kcc_settings.grounded_down_bias_mps,
+                point_acceptance_radius_sq: kcc_settings.point_acceptance_radius_sq,
+                fall_speed_mps: kcc_settings.fall_speed_mps,
             },
         ));
 
@@ -99,13 +124,7 @@ pub(super) fn on_actor_inserted(
         });
 
         // Only players get local/remote tags (monsters get neither).
-        entity_commands.insert_if(
-            LocalActor {
-                id: new_actor.id,
-                move_intent: new_actor.move_intent,
-            },
-            || is_local,
-        );
+        entity_commands.insert_if(LocalActor, || is_local);
         entity_commands.insert_if(RemoteActor, || !is_local);
 
         let bevy_entity = entity_commands.id();
@@ -134,13 +153,22 @@ pub(super) fn sync_transform(
     }
 }
 
-pub(super) fn sync_move_intent(
-    mut local_actor: Single<&mut LocalActor>,
+pub(super) fn sync_aoi_actor(
+    mut actor_q: Query<&mut MovementData>,
     mut messages: ReadUpdateMessage<AoiActor>,
+    net_mapping: Res<NetworkTransformDataEntityMapping>,
 ) {
     for msg in messages.read() {
-        if msg.new.id == local_actor.id {
-            local_actor.move_intent = msg.new.move_intent.clone();
-        }
+        let aoi_actor = msg.new.clone();
+        let Some(bevy_entity) = net_mapping.0.get(&aoi_actor.transform_data_id) else {
+            continue;
+        };
+        let Ok(mut actor_move_intent) = actor_q.get_mut(*bevy_entity) else {
+            continue;
+        };
+        actor_move_intent.move_intent = aoi_actor.move_intent;
+        actor_move_intent.grounded = aoi_actor.grounded;
     }
 }
+
+// TODO sync_secondary_stats... need this for real-time updates of the movement_speed in MovementData

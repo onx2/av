@@ -18,12 +18,12 @@ pub fn yaw_from_xz(xz: &na::Vector2<f32>) -> Option<f32> {
 
 /// Returns true if two world positions are within the planar (XZ) acceptance radius.
 pub fn is_at_target_planar(
-    current_xyz: [f32; 3],
-    target_xyz: [f32; 3],
+    current: [f32; 2],
+    target: [f32; 2],
     point_acceptance_radius_sq: f32,
 ) -> bool {
-    let dx = target_xyz[0] - current_xyz[0];
-    let dz = target_xyz[2] - current_xyz[2];
+    let dx = target[0] - current[0];
+    let dz = target[1] - current[1];
     (dx * dx) + (dz * dz) <= point_acceptance_radius_sq
 }
 
@@ -36,7 +36,7 @@ pub fn compute_desired_translation(
     supported: bool,
     grounded_down_bias_mps: f32,
     fall_speed_mps: f32,
-    airborne_planar_scale: f32,
+    point_acceptance_radius_sq: f32,
 ) -> [f32; 3] {
     // Planar displacement (XZ)
     let current_planar = na::Vector2::new(current_planar[0], current_planar[1]);
@@ -46,8 +46,9 @@ pub fn compute_desired_translation(
     let displacement = target_planar - current_planar;
     let dist_sq = displacement.norm_squared();
 
-    // If we're already at the target, we still apply vertical bias/gravity, but no planar movement.
-    let mut desired_planar = if dist_sq <= SMALLEST_REQUEST_DISTANCE_SQ {
+    // If we're already at the target (within the same acceptance radius used by movement intent),
+    // we still apply vertical bias/gravity, but no planar movement.
+    let mut desired_planar = if dist_sq <= point_acceptance_radius_sq {
         na::Vector2::new(0.0, 0.0)
     } else {
         let dist = dist_sq.sqrt();
@@ -59,7 +60,7 @@ pub fn compute_desired_translation(
     let gravity = if supported {
         0.0
     } else {
-        desired_planar *= airborne_planar_scale;
+        desired_planar *= 0.35;
         -fall_speed_mps * dt
     };
 

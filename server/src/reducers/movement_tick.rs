@@ -120,7 +120,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
                     supported,
                     kcc_settings.grounded_down_bias_mps,
                     kcc_settings.fall_speed_mps,
-                    0.35,
+                    kcc_settings.point_acceptance_radius_sq,
                 );
                 vector![translation[0], translation[1], translation[2]]
             })
@@ -154,18 +154,14 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         transform.translation.z += corrected.translation.z;
 
         let mut actor_dirty = false;
-        // Clear move intent after the actual move, once we're within acceptance radius.
-        if let MoveIntent::Point(p) = actor.move_intent {
-            let new_xyz = [
-                transform.translation.x,
-                transform.translation.y,
-                transform.translation.z,
-            ];
-            let target_xyz = [p.x, p.y, p.z];
-            if is_at_target_planar(new_xyz, target_xyz, kcc_settings.point_acceptance_radius_sq) {
-                actor.move_intent = MoveIntent::None;
-                actor_dirty = true;
-            }
+
+        if is_at_target_planar(
+            [transform.translation.x, transform.translation.z],
+            target_planar,
+            kcc_settings.point_acceptance_radius_sq,
+        ) {
+            actor.move_intent = MoveIntent::None;
+            actor_dirty = true;
         }
 
         // Update cell id on actor when crossing cells (cell encoding expects meters).

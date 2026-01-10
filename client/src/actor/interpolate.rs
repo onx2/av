@@ -15,11 +15,10 @@ pub(super) fn interpolate(
     mut transform_q: Query<(&mut Transform, &NetworkTransform)>,
 ) {
     let dt = time.delta_secs();
-
     transform_q.par_iter_mut().for_each(|(mut transform, net)| {
         transform
             .translation
-            .smooth_nudge(&net.translation, 18.0, dt);
+            .smooth_nudge(&net.translation, 8.0, dt);
         transform.rotation = transform
             .rotation
             .slerp(net.rotation, 1.0 - (-24.0 * dt).exp());
