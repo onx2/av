@@ -1,5 +1,11 @@
+use crate::{WorldStaticDef, collider_from_def};
+
 use super::constants::*;
-use nalgebra as na;
+use nalgebra::{self as na, Isometry, Translation3, point, vector};
+use rapier3d::prelude::{
+    BroadPhaseBvh, ColliderSet, IntegrationParameters, NarrowPhase, QueryFilter, QueryPipeline,
+    Ray, RigidBodySet,
+};
 use std::f32::consts::TAU;
 
 pub fn yaw_from_xz(xz: &na::Vector2<f32>) -> Option<f32> {
@@ -8,6 +14,56 @@ pub fn yaw_from_xz(xz: &na::Vector2<f32>) -> Option<f32> {
     }
 
     None
+}
+
+/// Returns true if two world positions are within the planar (XZ) acceptance radius.
+pub fn is_at_target_planar(
+    current_xyz: [f32; 3],
+    target_xyz: [f32; 3],
+    point_acceptance_radius_sq: f32,
+) -> bool {
+    let dx = target_xyz[0] - current_xyz[0];
+    let dz = target_xyz[2] - current_xyz[2];
+    (dx * dx) + (dz * dz) <= point_acceptance_radius_sq
+}
+
+/// Computes the desired_translation used as an input to KCC's move_shape function.
+pub fn compute_desired_translation(
+    current_planar: [f32; 2],
+    target_planar: [f32; 2],
+    movement_speed_mps: f32,
+    dt: f32,
+    supported: bool,
+    grounded_down_bias_mps: f32,
+    fall_speed_mps: f32,
+    airborne_planar_scale: f32,
+) -> [f32; 3] {
+    // Planar displacement (XZ)
+    let current_planar = na::Vector2::new(current_planar[0], current_planar[1]);
+    let target_planar = na::Vector2::new(target_planar[0], target_planar[1]);
+
+    let max_step = movement_speed_mps * dt;
+    let displacement = target_planar - current_planar;
+    let dist_sq = displacement.norm_squared();
+
+    // If we're already at the target, we still apply vertical bias/gravity, but no planar movement.
+    let mut desired_planar = if dist_sq <= SMALLEST_REQUEST_DISTANCE_SQ {
+        na::Vector2::new(0.0, 0.0)
+    } else {
+        let dist = dist_sq.sqrt();
+        displacement * (max_step.min(dist) / dist)
+    };
+
+    // Vertical components
+    let down_bias = -grounded_down_bias_mps * dt;
+    let gravity = if supported {
+        0.0
+    } else {
+        desired_planar *= airborne_planar_scale;
+        -fall_speed_mps * dt
+    };
+
+    [desired_planar.x, down_bias + gravity, desired_planar.y]
 }
 
 /// Quantize yaw (radians) into a single byte.
@@ -130,4 +186,87 @@ pub fn get_aoi_block(cell_id: u32) -> [u32; 9] {
         x_shifted | u32::from(zs),  // S
         xe_shifted | u32::from(zs), // SE
     ]
+}
+
+pub fn has_support_within(
+    query_pipeline: &QueryPipeline<'_>,
+    translation: &[f32; 3],
+    capsule_half_height: f32,
+    capsule_radius: f32,
+    max_dist: f32,
+    min_ground_normal_y: f32,
+) -> bool {
+    // Probe from the capsule "feet" (slightly above to avoid starting inside geometry).
+    let feet_y: f32 = translation[1] - (capsule_half_height + capsule_radius);
+    let origin_y = feet_y + 0.02;
+
+    let ray = Ray::new(
+        point![translation[0], origin_y, translation[2]],
+        vector![0.0, -1.0, 0.0],
+    );
+
+    if let Some((_handle, hit)) =
+        query_pipeline.cast_ray_and_get_normal(&ray, max_dist.max(0.0), true)
+    {
+        hit.normal.y >= min_ground_normal_y
+    } else {
+        false
+    }
+}
+
+/// Owns the Rapier structures needed to create a `QueryPipeline<'_>` in Rapier 0.31.
+///
+/// In 0.31, `QueryPipeline` borrows the broad-phase BVH and the sets, so you can't
+/// return it directly from a builder function without also returning the owned data.
+pub struct StaticQueryWorld {
+    bodies: RigidBodySet,
+    colliders: ColliderSet,
+    broad_phase: BroadPhaseBvh,
+    narrow_phase: NarrowPhase,
+}
+
+impl StaticQueryWorld {
+    pub fn as_query_pipeline(&self) -> QueryPipeline<'_> {
+        self.broad_phase.as_query_pipeline(
+            self.narrow_phase.query_dispatcher(),
+            &self.bodies,
+            &self.colliders,
+            QueryFilter::default(),
+        )
+    }
+}
+
+pub fn build_static_query_world(world_statics: Vec<WorldStaticDef>, dt: f32) -> StaticQueryWorld {
+    let bodies = RigidBodySet::new();
+    let mut colliders = ColliderSet::new();
+    let mut modified_colliders = Vec::new();
+
+    world_statics.iter().for_each(|def| {
+        let mut collider = collider_from_def(&def);
+        let iso = Isometry::from_parts(Translation3::from(def.translation), def.rotation);
+        collider.set_position(iso);
+        let co_handle = colliders.insert(collider);
+        modified_colliders.push(co_handle);
+    });
+
+    let mut broad_phase = BroadPhaseBvh::new();
+    let mut events = Vec::new();
+    broad_phase.update(
+        &IntegrationParameters {
+            dt,
+            ..IntegrationParameters::default()
+        },
+        &colliders,
+        &bodies,
+        &modified_colliders,
+        &[],
+        &mut events,
+    );
+
+    StaticQueryWorld {
+        bodies,
+        colliders,
+        broad_phase,
+        narrow_phase: NarrowPhase::default(),
+    }
 }

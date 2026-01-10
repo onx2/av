@@ -14,7 +14,8 @@ pub struct Player {
     pub primary_stats_id: u32,
     pub secondary_stats_id: u32,
     pub vital_stats_id: u32,
-    pub transform_data_id: u32,
+
+    pub transform_data_id: u64,
 
     /// Optional live actor id. None if not currently in-world.
     #[index(btree)]
@@ -40,7 +41,7 @@ pub struct Actor {
     pub vital_stats_id: u32,
 
     #[unique]
-    pub transform_data_id: u32,
+    pub transform_data_id: u64,
 
     /// An optional player identity when this actor is controlled, NOT a server actor.
     pub identity: Option<Identity>,
@@ -68,7 +69,7 @@ pub struct Actor {
 pub struct TransformData {
     #[primary_key]
     #[auto_inc]
-    pub id: u32,
+    pub id: u64,
 
     pub translation: DbVec3,
 
@@ -78,7 +79,7 @@ pub struct TransformData {
     pub yaw: u8,
 }
 
-#[table(name = primary_stats)]
+#[table(name = primary_stats, public)]
 pub struct PrimaryStats {
     #[primary_key]
     #[auto_inc]
@@ -91,7 +92,7 @@ pub struct PrimaryStats {
     pub piety: u8,
 }
 
-#[table(name = secondary_stats)]
+#[table(name = secondary_stats, public)]
 pub struct SecondaryStats {
     #[primary_key]
     #[auto_inc]
@@ -117,7 +118,7 @@ impl Default for SecondaryStats {
     }
 }
 
-#[table(name = vital_stats)]
+#[table(name = vital_stats, public)]
 pub struct VitalStats {
     #[primary_key]
     #[auto_inc]
@@ -180,7 +181,7 @@ pub struct KccSettings {
 ///
 /// The server reads these rows into an in-memory Rapier query world once, and reuses it
 /// every tick for scene queries and the kinematic character controller (KCC).
-#[table(name = world_static, public, index(name = is_global_and_cell_id, btree(columns = [is_global, cell_id])))]
+#[table(name = world_static, public)]
 pub struct WorldStatic {
     /// Unique id (primary key).
     #[primary_key]
@@ -191,9 +192,6 @@ pub struct WorldStatic {
     pub translation: DbVec3,
     pub rotation: DbQuat,
     pub scale: DbVec3,
-
-    pub cell_id: u32,
-    pub is_global: bool,
 
     /// Collider shape definition.
     pub shape: ColliderShape,

@@ -262,11 +262,12 @@ pub enum ActorKind {
 #[derive(SpacetimeType)]
 pub struct AoiActor {
     pub id: u64,
-    pub transform_data_id: u32,
+    pub transform_data_id: u64,
     pub identity: Option<Identity>,
     pub is_player: bool,
     pub capsule_radius: f32,
     pub capsule_half_height: f32,
+    pub move_intent: MoveIntent,
 }
 impl From<Actor> for AoiActor {
     fn from(actor: Actor) -> Self {
@@ -277,6 +278,7 @@ impl From<Actor> for AoiActor {
             is_player: actor.is_player,
             capsule_radius: actor.capsule_radius,
             capsule_half_height: actor.capsule_half_height,
+            move_intent: actor.move_intent,
         }
     }
 }

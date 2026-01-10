@@ -23,7 +23,7 @@ pub const YAW_U16_WRAP: f32 = 65536.0;
 
 /// Size of one grid cell in world units (meters).
 /// All cells are square
-pub const CELL_SIZE: f32 = 5.0;
+pub const CELL_SIZE: f32 = 10.0;
 
 /// Offset applied when converting world positions to grid coordinates.
 /// Shifts the world origin so that grid (0,0) corresponds to world position (-32768, -32768).

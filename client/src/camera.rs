@@ -1,6 +1,5 @@
+use crate::actor::LocalActor;
 use bevy::prelude::*;
-
-use crate::player::LocalPlayer;
 
 pub(super) fn plugin(app: &mut App) {
     app.add_systems(Startup, add_camera);
@@ -19,17 +18,17 @@ fn add_camera(mut commands: Commands) {
 
 fn follow_player(
     mut camera_query: Query<&mut Transform, With<Camera3d>>,
-    player_query: Query<&Transform, (With<LocalPlayer>, Without<Camera3d>)>,
+    local_q: Query<&Transform, (With<LocalActor>, Without<Camera3d>)>,
     time: Res<Time>,
 ) {
     let Ok(mut cam_tf) = camera_query.single_mut() else {
         return;
     };
-    let Ok(player_tf) = player_query.single() else {
+    let Ok(local_tf) = local_q.single() else {
         return;
     };
 
-    let target = player_tf.translation + CAMERA_OFFSET_GLOBAL;
+    let target = local_tf.translation + CAMERA_OFFSET_GLOBAL;
     cam_tf
         .translation
         .smooth_nudge(&target, CAMERA_DECAY_RATE, time.delta_secs());

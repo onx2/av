@@ -11,6 +11,7 @@ mod cursor;
 mod input;
 // From the project root `av`, run this command to generate bindings:
 // spacetime generate --lang rust -p server -o .\client\src\module_bindings
+mod actor;
 mod module_bindings;
 mod player;
 mod server;
@@ -53,6 +54,7 @@ impl Plugin for AppPlugin {
             server::plugin,
             world::plugin,
             player::plugin,
+            actor::plugin,
             camera::plugin,
             input::plugin,
             cursor::plugin,

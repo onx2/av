@@ -1,6 +1,5 @@
+use super::NetworkTransform;
 use bevy::prelude::*;
-
-use super::{NetworkTransform, Player};
 
 /// Smoothly interpolate rendered transforms toward the latest network state.
 ///
@@ -13,17 +12,14 @@ use super::{NetworkTransform, Player};
 /// This system drives the scene `Transform` toward that snapshot.
 pub(super) fn interpolate(
     time: Res<Time>,
-    mut transform_q: Query<(&mut Transform, &NetworkTransform), With<Player>>,
+    mut transform_q: Query<(&mut Transform, &NetworkTransform)>,
 ) {
     let dt = time.delta_secs();
 
     transform_q.par_iter_mut().for_each(|(mut transform, net)| {
-        // Position smoothing
         transform
             .translation
             .smooth_nudge(&net.translation, 18.0, dt);
-
-        // Rotation smoothing
         transform.rotation = transform
             .rotation
             .slerp(net.rotation, 1.0 - (-24.0 * dt).exp());

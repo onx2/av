@@ -6,29 +6,17 @@ use crate::{
 };
 use bevy::{picking::pointer::PointerInteraction, prelude::*};
 use leafwing_input_manager::prelude::ActionState;
-use shared::constants::{DIRECTIONAL_MOVEMENT_INTERVAL, SMALLEST_REQUEST_DISTANCE_SQ};
-use std::time::Duration;
-
-/// The time since the last directional movement was sent to the server.
-#[derive(Resource, Default)]
-pub(super) struct LastDirectionSentAt {
-    pub duration: Duration,
-    pub position: Vec3,
-}
 
 pub(super) fn handle_lmb_movement(
-    mut last_sent_at: ResMut<LastDirectionSentAt>,
     actions: Res<ActionState<InputAction>>,
     interactions: Query<&PointerInteraction>,
     stdb: SpacetimeDB,
 ) {
-    let just_pressed = actions.just_pressed(&InputAction::LeftClick);
     let pressed = actions.pressed(&InputAction::LeftClick);
     let just_released = actions.just_released(&InputAction::LeftClick);
-    if !just_pressed && !pressed && !just_released {
+    if !pressed && !just_released {
         return;
     }
-
     let Ok(interaction) = interactions.single() else {
         return;
     };
@@ -39,48 +27,20 @@ pub(super) fn handle_lmb_movement(
         return;
     };
 
-    if just_pressed {
-        if let Err(e) = stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
-            println!("Error: {e}");
-        }
-        return;
-    }
-
-    if just_released {
-        // Reset the "Direct Movement" tracker so the next click feels fresh.
-        last_sent_at.duration = Duration::ZERO;
-        last_sent_at.position = Vec3::ZERO;
-
+    if pressed {
         match stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
-            Ok(_) => println!("JUST RELEASED: {:?}", pos),
+            Ok(_) => {}
             Err(e) => println!("Error: {e}"),
         }
         return;
     }
 
-    // pressed (held)
-    let distance_ready = last_sent_at.position.distance_squared(pos) > SMALLEST_REQUEST_DISTANCE_SQ;
-    if !distance_ready {
-        return;
-    }
-
-    let held_dur = actions.current_duration(&InputAction::LeftClick);
-    if held_dur < Duration::from_millis(150) {
-        return;
-    }
-
-    let timer_ready = held_dur == Duration::ZERO
-        || held_dur.saturating_sub(last_sent_at.duration) >= DIRECTIONAL_MOVEMENT_INTERVAL;
-    if !timer_ready {
-        return;
-    }
-
-    match stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
-        Ok(_) => {
-            last_sent_at.position = pos;
-            last_sent_at.duration = held_dur;
+    if just_released {
+        match stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
+            Ok(_) => {}
+            Err(e) => println!("Error: {e}"),
         }
-        Err(e) => println!("Error: {e}"),
+        return;
     }
 }
 

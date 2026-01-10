@@ -1,19 +1,19 @@
-use std::collections::HashMap;
-
 use crate::{
-    schema::{actor, kcc_settings, secondary_stats, transform_data},
+    schema::{actor, kcc_settings, secondary_stats, transform_data, world_static},
     types::MoveIntent,
-    utils::{
-        build_static_query_world, get_fixed_delta_time, get_variable_delta_time,
-        has_support_within, StaticQueryWorld,
-    },
+    utils::{get_fixed_delta_time, get_variable_delta_time},
+    world::row_to_def,
 };
 use nalgebra::vector;
 use rapier3d::{
     control::{CharacterAutostep, CharacterLength, KinematicCharacterController},
     prelude::Capsule,
 };
-use shared::{encode_cell_id, to_planar, yaw_from_xz, yaw_to_u8};
+use shared::{
+    compute_desired_translation, encode_cell_id, is_at_target_planar,
+    utils::{build_static_query_world, has_support_within},
+    yaw_from_xz, yaw_to_u8,
+};
 use spacetimedb::{ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
 
 #[spacetimedb::table(
@@ -69,7 +69,12 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         ..KinematicCharacterController::default()
     };
 
-    let mut query_world_map: HashMap<u32, StaticQueryWorld> = HashMap::new();
+    let query_world = build_static_query_world(
+        ctx.db.world_static().iter().map(row_to_def).collect(),
+        real_dt,
+    );
+    let query_pipeline = query_world.as_query_pipeline();
+
     // ---------------------------------------------------------------------------------------------------------
     // Move each actor and update
     // ---------------------------------------------------------------------------------------------------------
@@ -78,49 +83,22 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             continue;
         };
 
-        let query_world = query_world_map
-            .entry(actor.cell_id)
-            .or_insert_with(|| build_static_query_world(ctx, real_dt, actor.cell_id));
-
-        let query_pipeline = query_world.as_query_pipeline();
-
-        let current_planar = to_planar(&transform.translation.into());
+        let current_planar = [transform.translation.x, transform.translation.z];
         let target_planar = match &actor.move_intent {
-            MoveIntent::Point(p) => to_planar(&p.into()),
+            MoveIntent::Point(p) => [p.x, p.z],
             _ => current_planar,
         };
-
-        let mut actor_dirty = false;
-        let mut desired_planar = ctx
-            .db
-            .secondary_stats()
-            .id()
-            .find(actor.secondary_stats_id)
-            .and_then(|row| {
-                let max_step = row.movement_speed * real_dt;
-                let displacement = target_planar - current_planar;
-                let dist_sq = displacement.norm_squared();
-                if dist_sq <= kcc_settings.point_acceptance_radius_sq {
-                    actor.move_intent = MoveIntent::None;
-                    actor_dirty = true;
-                    None
-                } else {
-                    let dist = dist_sq.sqrt();
-                    let desired_planar = displacement * (max_step.min(dist) / dist);
-                    if let Some(yaw) = yaw_from_xz(&desired_planar) {
-                        transform.yaw = yaw_to_u8(yaw);
-                    }
-                    Some(desired_planar)
-                }
-            })
-            .unwrap_or_else(|| vector![0.0, 0.0]);
 
         let supported = if actor.grounded {
             true
         } else {
             has_support_within(
                 &query_pipeline,
-                &transform.translation,
+                &[
+                    transform.translation.x,
+                    transform.translation.y,
+                    transform.translation.z,
+                ],
                 actor.capsule_half_height,
                 actor.capsule_radius,
                 0.75,
@@ -128,16 +106,37 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             )
         };
 
-        // Apply down-bias always; apply fall speed only if we were airborne last step.
-        let down_bias = -kcc_settings.grounded_down_bias_mps * real_dt;
-        let gravity = if supported {
-            0.0
-        } else {
-            desired_planar *= 0.35;
-            -kcc_settings.fall_speed_mps * real_dt
+        let Some(desired_translation) = ctx
+            .db
+            .secondary_stats()
+            .id()
+            .find(actor.secondary_stats_id)
+            .map(|row| {
+                let translation = compute_desired_translation(
+                    current_planar,
+                    target_planar,
+                    row.movement_speed,
+                    real_dt,
+                    supported,
+                    kcc_settings.grounded_down_bias_mps,
+                    kcc_settings.fall_speed_mps,
+                    0.35,
+                );
+                vector![translation[0], translation[1], translation[2]]
+            })
+        else {
+            log::error!(
+                "Unable to find the secondary stats of actor: {:?}",
+                actor.id
+            );
+            continue;
         };
-        let desired_translation =
-            vector![desired_planar[0], down_bias + gravity, desired_planar[1]];
+
+        // Yaw based on planar (XZ) movement this tick.
+        let desired_planar = desired_translation.xz();
+        if let Some(yaw) = yaw_from_xz(&desired_planar) {
+            transform.yaw = yaw_to_u8(yaw);
+        }
 
         // KCC move against the static collision world.
         let corrected = kcc.move_shape(
@@ -153,6 +152,21 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         transform.translation.x += corrected.translation.x;
         transform.translation.y += corrected.translation.y;
         transform.translation.z += corrected.translation.z;
+
+        let mut actor_dirty = false;
+        // Clear move intent after the actual move, once we're within acceptance radius.
+        if let MoveIntent::Point(p) = actor.move_intent {
+            let new_xyz = [
+                transform.translation.x,
+                transform.translation.y,
+                transform.translation.z,
+            ];
+            let target_xyz = [p.x, p.y, p.z];
+            if is_at_target_planar(new_xyz, target_xyz, kcc_settings.point_acceptance_radius_sq) {
+                actor.move_intent = MoveIntent::None;
+                actor_dirty = true;
+            }
+        }
 
         // Update cell id on actor when crossing cells (cell encoding expects meters).
         let new_cell_id = encode_cell_id(transform.translation.x, transform.translation.z);
