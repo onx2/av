@@ -11,10 +11,13 @@ pub struct Player {
     #[primary_key]
     pub identity: Identity,
 
+    #[unique]
     pub primary_stats_id: u32,
+    #[unique]
     pub secondary_stats_id: u32,
+    #[unique]
     pub vital_stats_id: u32,
-
+    #[unique]
     pub transform_data_id: u64,
 
     /// Optional live actor id. None if not currently in-world.
@@ -30,25 +33,23 @@ pub struct Player {
 /// An `Actor` exists only while the player is "in world". The authoritative
 /// values here are updated every tick by the server and may be mirrored
 /// back to the `Player` row when leaving or disconnecting.
-#[table(name = actor, index(name=should_move_and_is_player, btree(columns=[should_move, is_player])))]
+#[table(name = actor)]
 pub struct Actor {
     #[primary_key]
     #[auto_inc]
     pub id: u64,
 
+    #[unique]
     pub primary_stats_id: u32,
+    #[unique]
     pub secondary_stats_id: u32,
+    #[unique]
     pub vital_stats_id: u32,
-
     #[unique]
     pub transform_data_id: u64,
 
     /// An optional player identity when this actor is controlled, NOT a server actor.
     pub identity: Option<Identity>,
-
-    /// Used alongside identity for faster btree lookups
-    #[index(btree)]
-    pub is_player: bool,
 
     #[index(btree)]
     pub should_move: bool,
@@ -64,7 +65,7 @@ pub struct Actor {
     pub capsule_half_height: f32,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 #[table(name = transform_data)]
 pub struct TransformData {
     #[primary_key]
@@ -73,13 +74,12 @@ pub struct TransformData {
 
     pub translation: DbVec3,
 
-    /// Quantized yaw (radians) stored as a single byte.
-    ///
-    /// Convention: `0..=255` maps onto `[0, 2π)`.
+    /// Quantized yaw (radians) stored as a single byte (`0..=255` maps onto `[0, 2π)`)
     pub yaw: u8,
 }
 
-#[table(name = primary_stats, public)]
+#[derive(Default, Debug)]
+#[table(name = primary_stats)]
 pub struct PrimaryStats {
     #[primary_key]
     #[auto_inc]
@@ -92,7 +92,8 @@ pub struct PrimaryStats {
     pub piety: u8,
 }
 
-#[table(name = secondary_stats, public)]
+#[derive(Default, Debug)]
+#[table(name = secondary_stats)]
 pub struct SecondaryStats {
     #[primary_key]
     #[auto_inc]
@@ -106,19 +107,8 @@ pub struct SecondaryStats {
     pub max_stamina: u16,
 }
 
-impl Default for SecondaryStats {
-    fn default() -> Self {
-        Self {
-            id: 0,
-            movement_speed: 0.0,
-            max_health: 0,
-            max_mana: 0,
-            max_stamina: 0,
-        }
-    }
-}
-
-#[table(name = vital_stats, public)]
+#[derive(Default, Debug)]
+#[table(name = vital_stats)]
 pub struct VitalStats {
     #[primary_key]
     #[auto_inc]

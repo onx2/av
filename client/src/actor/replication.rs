@@ -2,8 +2,8 @@ use super::{NetworkTransform, NetworkTransformDataEntityMapping};
 use crate::{
     actor::{LocalActor, MovementData, RemoteActor},
     module_bindings::{
-        AoiActor, AoiTransformDataTableAccess, KccSettingsTableAccess, SecondaryStatsTableAccess,
-        TransformData,
+        AoiActor, AoiSecondaryStatsTableAccess, AoiTransformDataTableAccess,
+        KccSettingsTableAccess, TransformData,
     },
     server::SpacetimeDB,
 };
@@ -58,11 +58,11 @@ pub(super) fn on_actor_inserted(
 
         let Some(secondary_stats) = stdb
             .db()
-            .secondary_stats()
-            .id()
-            .find(&new_actor.secondary_stats_id)
+            .aoi_secondary_stats()
+            .iter()
+            .find(|data| data.id == new_actor.secondary_stats_id)
         else {
-            println!("Failed to find transform data for actor {:?}", new_actor);
+            println!("Failed to find secondary stats for actor {:?}", new_actor);
             continue;
         };
 
@@ -170,5 +170,23 @@ pub(super) fn sync_aoi_actor(
         actor_move_intent.grounded = aoi_actor.grounded;
     }
 }
+
+// pub(super) fn sync_aoi_secondary_data(
+//     mut actor_q: Query<&mut MovementData>,
+//     mut messages: ReadUpdateMessage<AoiSecondaryData>,
+//     net_mapping: Res<NetworkTransformDataEntityMapping>,
+// ) {
+//     for msg in messages.read() {
+//         let aoi_secondary_data = msg.new.clone();
+//         let Some(bevy_entity) = net_mapping.0.get(&aoi_secondary_data.transform_data_id) else {
+//             continue;
+//         };
+//         let Ok(mut actor_move_intent) = actor_q.get_mut(*bevy_entity) else {
+//             continue;
+//         };
+//         actor_move_intent.move_intent = aoi_actor.move_intent;
+//         actor_move_intent.grounded = aoi_actor.grounded;
+//     }
+// }
 
 // TODO sync_secondary_stats... need this for real-time updates of the movement_speed in MovementData

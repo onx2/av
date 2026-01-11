@@ -2,8 +2,8 @@ pub mod reducers;
 pub mod types;
 
 use crate::module_bindings::{
-    AoiActorTableAccess, AoiTransformDataTableAccess, DbConnection, KccSettingsTableAccess,
-    PlayerTableAccess, RemoteTables, SecondaryStatsTableAccess, WorldStaticTableAccess,
+    AoiActorTableAccess, AoiSecondaryStatsTableAccess, AoiTransformDataTableAccess, DbConnection,
+    KccSettingsTableAccess, PlayerTableAccess, RemoteTables, WorldStaticTableAccess,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadStdbConnectedMessage, StdbConnection, StdbPlugin};
@@ -38,10 +38,10 @@ pub(super) fn plugin(app: &mut App) {
             // Register all tables
             // --------------------------------
             .add_table(RemoteTables::player)
+            .add_view_with_pk(RemoteTables::aoi_secondary_stats, |s| s.id)
             .add_view_with_pk(RemoteTables::aoi_actor, |a| a.id)
             .add_view_with_pk(RemoteTables::aoi_transform_data, |t| t.id)
             .add_table(RemoteTables::world_static)
-            .add_table(RemoteTables::secondary_stats) /* TODO: Area of interest */
             .add_table(RemoteTables::kcc_settings)
             .with_run_fn(DbConnection::run_threaded),
     );
@@ -56,7 +56,7 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
             "SELECT * FROM player",
             "SELECT * FROM world_static",
             "SELECT * FROM kcc_settings",
-            "SELECT * FROM secondary_stats", /* TODO: Area of interest */
+            "SELECT * FROM aoi_secondary_stats",
             "SELECT * FROM aoi_actor",
             "SELECT * FROM aoi_transform_data",
         ]);

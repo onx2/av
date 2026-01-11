@@ -38,7 +38,6 @@ pub fn enter_world(ctx: &ReducerContext) -> Result<(), String> {
         secondary_stats_id: player.secondary_stats_id,
         vital_stats_id: player.vital_stats_id,
         transform_data_id: player.transform_data_id,
-        is_player: true,
         identity: Some(player.identity),
         capsule_radius: player.capsule_radius,
         capsule_half_height: player.capsule_half_height,
