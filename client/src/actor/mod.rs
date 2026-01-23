@@ -17,7 +17,7 @@ pub(super) fn plugin(app: &mut App) {
             replication::sync_transform,
         ),
     );
-    app.add_systems(Update, extrapolate::extrapolate_movement);
+    // app.add_systems(Update, extrapolate::extrapolate_movement);
     app.add_systems(PostUpdate, interpolate::interpolate);
 }
 
@@ -39,9 +39,6 @@ pub struct MovementData {
     pub move_intent: MoveIntent,
     pub grounded: bool,
     pub movement_speed: f32,
-    pub grounded_down_bias_mps: f32,
-    pub point_acceptance_radius_sq: f32,
-    pub fall_speed_mps: f32,
 }
 
 /// Marker component for the locally controlled actor/entity (represents the entity controlled by the person behind the keyboard, YOU!)

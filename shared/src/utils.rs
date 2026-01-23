@@ -1,14 +1,15 @@
 use crate::{WorldStaticDef, collider_from_def};
 
 use super::constants::*;
-use nalgebra::{self as na, Isometry, Translation3, point, vector};
+use nalgebra::{self as na, Isometry, Translation3};
 use rapier3d::prelude::{
     BroadPhaseBvh, ColliderSet, IntegrationParameters, NarrowPhase, QueryFilter, QueryPipeline,
-    Ray, RigidBodySet,
+    RigidBodySet,
 };
 use std::f32::consts::TAU;
 
-pub fn yaw_from_xz(xz: &na::Vector2<f32>) -> Option<f32> {
+pub fn yaw_from_xz(xz: [f32; 2]) -> Option<f32> {
+    let xz: na::Vector2<f32> = xz.into();
     if xz.norm_squared() > YAW_EPS {
         return Some((-xz[0]).atan2(-xz[1]));
     }
@@ -17,27 +18,21 @@ pub fn yaw_from_xz(xz: &na::Vector2<f32>) -> Option<f32> {
 }
 
 /// Returns true if two world positions are within the planar (XZ) acceptance radius.
-pub fn is_at_target_planar(
-    current: [f32; 2],
-    target: [f32; 2],
-    point_acceptance_radius_sq: f32,
-) -> bool {
+pub fn is_at_target_planar(current: [f32; 2], target: [f32; 2]) -> bool {
+    const CM_SQ: f32 = 1.0e-4;
     let dx = target[0] - current[0];
     let dz = target[1] - current[1];
-    (dx * dx) + (dz * dz) <= point_acceptance_radius_sq
+    (dx * dx) + (dz * dz) <= CM_SQ
 }
 
-/// Computes the desired_translation used as an input to KCC's move_shape function.
-pub fn compute_desired_translation(
+pub fn get_desired_delta(
     current_planar: [f32; 2],
     target_planar: [f32; 2],
     movement_speed_mps: f32,
+    grounded: bool,
     dt: f32,
-    supported: bool,
-    grounded_down_bias_mps: f32,
-    fall_speed_mps: f32,
-    point_acceptance_radius_sq: f32,
 ) -> [f32; 3] {
+    const MM_SQ: f32 = 1.0e-6;
     // Planar displacement (XZ)
     let current_planar = na::Vector2::new(current_planar[0], current_planar[1]);
     let target_planar = na::Vector2::new(target_planar[0], target_planar[1]);
@@ -46,25 +41,21 @@ pub fn compute_desired_translation(
     let displacement = target_planar - current_planar;
     let dist_sq = displacement.norm_squared();
 
-    // If we're already at the target (within the same acceptance radius used by movement intent),
-    // we still apply vertical bias/gravity, but no planar movement.
-    let mut desired_planar = if dist_sq <= point_acceptance_radius_sq {
+    let desired_planar = if dist_sq <= MM_SQ {
         na::Vector2::new(0.0, 0.0)
     } else {
         let dist = dist_sq.sqrt();
         displacement * (max_step.min(dist) / dist)
     };
 
-    // Vertical components
-    let down_bias = -grounded_down_bias_mps * dt;
-    let gravity = if supported {
-        0.0
+    if grounded {
+        [desired_planar.x, 0.0, desired_planar.y]
     } else {
-        desired_planar *= 0.35;
-        -fall_speed_mps * dt
-    };
-
-    [desired_planar.x, down_bias + gravity, desired_planar.y]
+        // Air control reduction in planar and gravity.
+        // Gravity is linear because I don't expect to have a need for "real" gravity...
+        // in the world, it is only applied here to make sure we end up on the ground eventually.
+        [desired_planar.x * 0.35, -9.81 * dt, desired_planar.y * 0.35]
+    }
 }
 
 /// Quantize yaw (radians) into a single byte.
@@ -189,36 +180,6 @@ pub fn get_aoi_block(cell_id: u32) -> [u32; 9] {
     ]
 }
 
-pub fn has_support_within(
-    query_pipeline: &QueryPipeline<'_>,
-    translation: &[f32; 3],
-    capsule_half_height: f32,
-    capsule_radius: f32,
-    max_dist: f32,
-    min_ground_normal_y: f32,
-) -> bool {
-    // Probe from the capsule "feet" (slightly above to avoid starting inside geometry).
-    let feet_y: f32 = translation[1] - (capsule_half_height + capsule_radius);
-    let origin_y = feet_y + 0.02;
-
-    let ray = Ray::new(
-        point![translation[0], origin_y, translation[2]],
-        vector![0.0, -1.0, 0.0],
-    );
-
-    if let Some((_handle, hit)) =
-        query_pipeline.cast_ray_and_get_normal(&ray, max_dist.max(0.0), true)
-    {
-        hit.normal.y >= min_ground_normal_y
-    } else {
-        false
-    }
-}
-
-/// Owns the Rapier structures needed to create a `QueryPipeline<'_>` in Rapier 0.31.
-///
-/// In 0.31, `QueryPipeline` borrows the broad-phase BVH and the sets, so you can't
-/// return it directly from a builder function without also returning the owned data.
 pub struct StaticQueryWorld {
     bodies: RigidBodySet,
     colliders: ColliderSet,
@@ -227,22 +188,25 @@ pub struct StaticQueryWorld {
 }
 
 impl StaticQueryWorld {
-    pub fn as_query_pipeline(&self) -> QueryPipeline<'_> {
+    pub fn as_query_pipeline<'a>(&'a self, filter: QueryFilter<'a>) -> QueryPipeline<'a> {
         self.broad_phase.as_query_pipeline(
             self.narrow_phase.query_dispatcher(),
             &self.bodies,
             &self.colliders,
-            QueryFilter::default(),
+            filter,
         )
     }
 }
 
-pub fn build_static_query_world(world_statics: Vec<WorldStaticDef>, dt: f32) -> StaticQueryWorld {
+pub fn build_static_query_world(
+    world_statics: impl IntoIterator<Item = WorldStaticDef>,
+    dt: f32,
+) -> StaticQueryWorld {
     let bodies = RigidBodySet::new();
     let mut colliders = ColliderSet::new();
     let mut modified_colliders = Vec::new();
 
-    world_statics.iter().for_each(|def| {
+    world_statics.into_iter().for_each(|def| {
         let mut collider = collider_from_def(&def);
         let iso = Isometry::from_parts(Translation3::from(def.translation), def.rotation);
         collider.set_position(iso);

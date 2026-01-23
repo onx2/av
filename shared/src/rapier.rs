@@ -3,7 +3,7 @@ use rapier3d::{na::UnitQuaternion, prelude::*};
 /// Canonical, schema-agnostic definition of an immutable world collider.
 #[derive(Clone, Debug)]
 pub struct WorldStaticDef {
-    pub id: u32,
+    pub id: u64,
     /// World-space translation.
     pub translation: Vector<f32>,
     /// World-space rotation (unit quaternion).

@@ -2,8 +2,7 @@ use super::{NetworkTransform, NetworkTransformDataEntityMapping};
 use crate::{
     actor::{LocalActor, MovementData, RemoteActor},
     module_bindings::{
-        AoiActor, AoiSecondaryStatsTableAccess, AoiTransformDataTableAccess,
-        KccSettingsTableAccess, TransformData,
+        AoiActor, AoiSecondaryStatsTableAccess, AoiTransformDataTableAccess, TransformData,
     },
     server::SpacetimeDB,
 };
@@ -39,11 +38,6 @@ pub(super) fn on_actor_inserted(
             Color::linear_rgb(0.2, 0.9, 0.8)
         } else {
             Color::linear_rgb(0.9, 0.2, 0.2)
-        };
-
-        let Some(kcc_settings) = stdb.db().kcc_settings().id().find(&1) else {
-            println!("Failed to find shared KCC settings.");
-            continue;
         };
 
         let Some(transform_data) = stdb
@@ -91,9 +85,6 @@ pub(super) fn on_actor_inserted(
                 move_intent: new_actor.move_intent,
                 grounded: new_actor.grounded,
                 movement_speed: secondary_stats.movement_speed,
-                grounded_down_bias_mps: kcc_settings.grounded_down_bias_mps,
-                point_acceptance_radius_sq: kcc_settings.point_acceptance_radius_sq,
-                fall_speed_mps: kcc_settings.fall_speed_mps,
             },
         ));
 
@@ -148,6 +139,10 @@ pub(super) fn sync_transform(
             continue;
         };
 
+        println!(
+            "Syncing transform for entity {:?}",
+            transform_data.translation
+        );
         network_transform.translation = transform_data.translation.into();
         network_transform.rotation = Quat::from_rotation_y(yaw_from_u8(transform_data.yaw));
     }

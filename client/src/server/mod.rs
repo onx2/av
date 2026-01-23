@@ -3,7 +3,7 @@ pub mod types;
 
 use crate::module_bindings::{
     AoiActorTableAccess, AoiSecondaryStatsTableAccess, AoiTransformDataTableAccess, DbConnection,
-    KccSettingsTableAccess, PlayerTableAccess, RemoteTables, WorldStaticTableAccess,
+    PlayerTableAccess, RemoteTables, WorldStaticTableAccess,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadStdbConnectedMessage, StdbConnection, StdbPlugin};
@@ -42,7 +42,6 @@ pub(super) fn plugin(app: &mut App) {
             .add_view_with_pk(RemoteTables::aoi_actor, |a| a.id)
             .add_view_with_pk(RemoteTables::aoi_transform_data, |t| t.id)
             .add_table(RemoteTables::world_static)
-            .add_table(RemoteTables::kcc_settings)
             .with_run_fn(DbConnection::run_threaded),
     );
     app.add_systems(Update, on_connect);
@@ -55,7 +54,6 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
         stdb.subscription_builder().subscribe(vec![
             "SELECT * FROM player",
             "SELECT * FROM world_static",
-            "SELECT * FROM kcc_settings",
             "SELECT * FROM aoi_secondary_stats",
             "SELECT * FROM aoi_actor",
             "SELECT * FROM aoi_transform_data",

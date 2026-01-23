@@ -10,7 +10,7 @@ pub struct WorldStatic {
     /// Unique id (primary key).
     #[primary_key]
     #[auto_inc]
-    pub id: u32,
+    pub id: u64,
 
     /// World transform applied to the shape.
     pub translation: DbVec3,
