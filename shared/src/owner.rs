@@ -68,7 +68,7 @@ pub fn unpack_owner_kind(owner: Owner) -> OwnerKind {
 /// Prefer handling `None` by failing fast in reducers, since an unknown kind means you
 /// cannot safely interpret the remaining fields.
 pub fn try_unpack_owner_kind(owner: Owner) -> Option<OwnerKind> {
-    const KIND_MASK: u64 = 0xFF;
+    const KIND_MASK: u64 = u8::MAX as u64;
     let tag = ((owner >> OwnerId::BITS) & KIND_MASK) as u8;
 
     match tag {
