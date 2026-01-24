@@ -10,7 +10,7 @@ use rapier3d::{
 };
 use shared::{
     encode_cell_id, get_desired_delta, is_at_target_planar, utils::build_static_query_world,
-    yaw_from_xz, yaw_to_u8,
+    yaw_from_xz, yaw_to_u16,
 };
 use spacetimedb::{ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
 
@@ -69,9 +69,9 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             continue;
         };
 
-        let current_planar = [transform.translation.x, transform.translation.z];
+        let current_planar = transform.translation.vec2_xz();
         let target_planar = match &actor.move_intent {
-            MoveIntent::Point(p) => [p.x, p.z],
+            MoveIntent::Point(p) => p.vec2_xz(),
             _ => current_planar,
         };
 
@@ -83,6 +83,9 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             .map(|s| s.movement_speed)
             .unwrap_or_default();
 
+        let direction = (target_planar - current_planar)
+            .try_normalize(0.0)
+            .unwrap_or_default();
         let desired_delta = get_desired_delta(
             current_planar,
             target_planar,
@@ -106,14 +109,11 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
 
         // Yaw based on desired planar (XZ) movement this tick, not the corrected because we want to have the
         // actor look like they are facing their intended direction not the actual direction they are moving.
-        if let Some(yaw) = yaw_from_xz([desired_delta[0], desired_delta[2]]) {
-            transform.yaw = yaw_to_u8(yaw);
+        if let Some(yaw) = yaw_from_xz([direction.x, direction.y]) {
+            transform.yaw = yaw_to_u16(yaw);
         }
 
-        if is_at_target_planar(
-            [transform.translation.x, transform.translation.z],
-            target_planar,
-        ) {
+        if is_at_target_planar(current_planar, target_planar) {
             actor.move_intent = MoveIntent::None;
         }
         actor.should_move = actor.move_intent != MoveIntent::None || !correction.grounded;

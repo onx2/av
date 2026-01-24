@@ -1,4 +1,5 @@
 pub mod constants;
+pub mod owner;
 pub mod rapier;
 pub mod utils;
 
@@ -9,5 +10,5 @@ pub use constants::{
 pub use rapier::{ColliderShapeDef, WorldStaticDef, collider_from_def};
 pub use utils::{
     decode_cell_id, encode_cell_id, get_desired_delta, is_at_target_planar, planar_distance_sq,
-    to_planar, yaw_from_u8, yaw_from_xz, yaw_to_u8,
+    to_planar, yaw_from_u16, yaw_from_xz, yaw_to_u16,
 };

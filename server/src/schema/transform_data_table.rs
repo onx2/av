@@ -10,6 +10,6 @@ pub struct TransformData {
 
     pub translation: DbVec3,
 
-    /// Quantized yaw (radians) stored as a single byte (`0..=255` maps onto `[0, 2π)`)
-    pub yaw: u8,
+    /// Quantized yaw (radians) stored as two bytes (`0..=~65k` maps onto `[0, 2π)`)
+    pub yaw: u16,
 }
