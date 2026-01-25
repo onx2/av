@@ -1,6 +1,6 @@
 use super::{Quat, Vec3};
 use shared::owner::Owner;
-use spacetimedb::{table, ReducerContext, SpacetimeType};
+use spacetimedb::{table, SpacetimeType};
 
 /// Ephemeral
 ///

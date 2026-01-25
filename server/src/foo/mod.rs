@@ -21,7 +21,7 @@ pub use monster::{monster_tbl, Monster};
 pub use npc::{npc_tbl, Npc};
 pub use player::{player_tbl, Player};
 pub use primary_stats::{primary_stats_tbl, PrimaryStats, PrimaryStatsData};
-pub use progression::{progression_tbl, Progression};
+pub use progression::{progression_tbl, Progression, ProgressionData};
 pub use quat::Quat;
 pub use secondary_stats::{secondary_stats_tbl, SecondaryStats, SecondaryStatsData};
 pub use transform::{transform_tbl, Transform, TransformData};

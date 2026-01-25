@@ -1,4 +1,4 @@
-use shared::owner::OwnerId;
+use shared::owner::{pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
 use spacetimedb::table;
 
 /// The persistence layer for the types of enemies that can be spawned into the world (Actor)
@@ -11,4 +11,16 @@ pub struct Npc {
     pub owner_id: OwnerId,
 
     pub name: String,
+}
+
+impl AsOwner for Npc {
+    fn owner(&self) -> Owner {
+        pack_owner(self.owner_id, OwnerKind::Npc)
+    }
+    fn owner_id(&self) -> OwnerId {
+        self.owner_id
+    }
+    fn owner_kind(&self) -> OwnerKind {
+        OwnerKind::Npc
+    }
 }

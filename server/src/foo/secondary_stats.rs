@@ -14,12 +14,14 @@ pub struct SecondaryStats {
 #[derive(SpacetimeType, Debug, PartialEq, Clone, Copy)]
 pub struct SecondaryStatsData {
     pub movement_speed: f32,
+    pub critical_hit_chance: f32
 }
 
 impl Default for SecondaryStatsData {
     fn default() -> Self {
         Self {
             movement_speed: 5.0,
+            critical_hit_chance: 5.0,
         }
     }
 }

@@ -5,7 +5,7 @@ use spacetimedb::{table, SpacetimeType};
 
 #[table(name = progression_tbl)]
 pub struct Progression {
-    #[primary_key] // or index on owner
+    #[primary_key]
     pub owner: Owner,
 
     pub data: ProgressionData,
@@ -16,6 +16,11 @@ pub struct ProgressionData {
     pub exp: u32,
 }
 
+impl Default for ProgressionData {
+    fn default() -> Self {
+        Self { level: 1, exp: 0 }
+    }
+}
 impl ProgressionData {
     // TODO
     // /// Returns the TOTAL experience required to reach the NEXT level.

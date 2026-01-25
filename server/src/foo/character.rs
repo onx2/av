@@ -3,8 +3,8 @@ use spacetimedb::{table, Identity, ReducerContext, Table};
 
 use super::{
     actor_tbl, health_tbl, mana_tbl, primary_stats_tbl, secondary_stats_tbl, transform_tbl, Actor,
-    Health, HealthData, Mana, ManaData, PrimaryStats, PrimaryStatsData, SecondaryStats,
-    SecondaryStatsData, Transform, TransformData,
+    Health, HealthData, Mana, ManaData, PrimaryStats, PrimaryStatsData, ProgressionData,
+    SecondaryStats, SecondaryStatsData, Transform, TransformData,
 };
 
 /// The persistence layer for a player's characters
@@ -21,6 +21,7 @@ pub struct Character {
     pub name: String,
 
     pub transform: TransformData,
+    pub progression: ProgressionData,
     pub primary_stats: PrimaryStatsData,
     pub secondary_stats: SecondaryStatsData,
     pub health: HealthData,
@@ -54,12 +55,17 @@ impl Character {
             return Err("Name must be alphanumeric");
         }
 
+        if !primary_stats.validate() {
+            return Err("Primary stats are not valid");
+        }
+
         let inserted = ctx.db.character_tbl().insert(Character {
             owner_id: 0,
             identity: ctx.sender,
             name,
             transform: TransformData::default(),
             primary_stats,
+            progression: ProgressionData::default(),
             // TODO: build these other stats based on the primary_stats... but this required defining relationships
             secondary_stats: SecondaryStatsData::default(),
             health: HealthData::new(100),

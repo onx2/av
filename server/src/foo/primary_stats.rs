@@ -34,18 +34,33 @@ impl Default for PrimaryStatsData {
 }
 
 impl PrimaryStatsData {
+    const CREATION_POINTS: u8 = 15;
     const MIN_STAT: u8 = 10;
     const MAX_STAT: u8 = 100;
 
     pub fn validate(&self) -> bool {
-        [
+        let stats = [
             self.strength,
             self.dexterity,
             self.fortitude,
             self.intelligence,
             self.piety,
-        ]
-        .iter()
-        .all(|&v| v >= Self::MIN_STAT && v <= Self::MAX_STAT)
+        ];
+
+        // Per-stat bounds.
+        if !stats
+            .iter()
+            .all(|&v| v >= Self::MIN_STAT && v <= Self::MAX_STAT)
+        {
+            return false;
+        }
+
+        // Total cap: (# of stats * MIN_STAT) + CREATION_POINTS
+        // Use u16 to avoid any chance of overflow during accumulation.
+        let max_total =
+            (Self::MIN_STAT as u16) * (stats.len() as u16) + (Self::CREATION_POINTS as u16);
+        let total = stats.iter().map(|&v| v as u16).sum::<u16>();
+
+        total == max_total
     }
 }
