@@ -24,6 +24,12 @@ pub struct Quat {
     pub w: f32,
 }
 
+impl Default for Quat {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
+
 impl Quat {
     /// The "No Rotation" quaternion.
     /// Aligns the entity with the global axes (Forward = -Z, Up = +Y).

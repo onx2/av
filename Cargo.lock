@@ -5442,6 +5442,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "nalgebra",
+ "num-traits",
  "rapier3d",
  "shared",
  "spacetimedb",

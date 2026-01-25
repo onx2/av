@@ -1,6 +1,6 @@
 use super::{Quat, Vec3};
 use shared::owner::Owner;
-use spacetimedb::{table, SpacetimeType};
+use spacetimedb::{table, ReducerContext, SpacetimeType};
 
 /// Ephemeral
 ///
@@ -12,7 +12,8 @@ pub struct Transform {
 
     pub data: TransformData,
 }
-#[derive(SpacetimeType, Debug, PartialEq, Clone)]
+
+#[derive(SpacetimeType, Debug, Default, PartialEq, Clone, Copy)]
 pub struct TransformData {
     pub translation: Vec3,
     pub rotation: Quat,

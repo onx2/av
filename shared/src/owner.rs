@@ -25,6 +25,13 @@ pub type Owner = u64;
 /// The primary_key (unique ID) used for a specific kind of owner (e.g. Character, Monster, NPC)
 pub type OwnerId = u32;
 
+/// A generic way to retrieve the unpacked owner data
+pub trait AsOwner {
+    fn owner(&self) -> Owner;
+    fn owner_id(&self) -> OwnerId;
+    fn owner_kind(&self) -> OwnerKind;
+}
+
 /// Discriminator for the kind of entity referenced by an [`Owner`].
 ///
 /// The numeric values of this enum are part of the packed-ID storage format. Do not reorder

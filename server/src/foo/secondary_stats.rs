@@ -11,10 +11,15 @@ pub struct SecondaryStats {
 
     pub data: SecondaryStatsData,
 }
-#[derive(SpacetimeType, Debug, PartialEq, Clone)]
+#[derive(SpacetimeType, Debug, PartialEq, Clone, Copy)]
 pub struct SecondaryStatsData {
-    pub max_health: u16,
-    pub max_mana: u16,
-    pub max_stamina: u16,
     pub movement_speed: f32,
+}
+
+impl Default for SecondaryStatsData {
+    fn default() -> Self {
+        Self {
+            movement_speed: 5.0,
+        }
+    }
 }

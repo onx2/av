@@ -1,4 +1,4 @@
-use shared::owner::OwnerId;
+use shared::owner::{pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
 use spacetimedb::table;
 
 /// TODO: Monsters should maybe be different, not DataOwner impl but some partial amount of data like stats?
@@ -10,7 +10,19 @@ use spacetimedb::table;
 pub struct Monster {
     #[auto_inc]
     #[primary_key]
-    pub id: OwnerId,
+    pub owner_id: OwnerId,
 
     pub name: String,
+}
+
+impl AsOwner for Monster {
+    fn owner(&self) -> Owner {
+        pack_owner(self.owner_id, OwnerKind::Monster)
+    }
+    fn owner_id(&self) -> OwnerId {
+        self.owner_id
+    }
+    fn owner_kind(&self) -> OwnerKind {
+        OwnerKind::Monster
+    }
 }
