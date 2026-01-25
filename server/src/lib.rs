@@ -22,3 +22,12 @@
 // }
 
 pub mod foo;
+
+use spacetimedb::*;
+
+#[reducer(init)]
+pub fn init(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("Database initializing...");
+    foo::Progression::regenerate(ctx);
+    Ok(())
+}

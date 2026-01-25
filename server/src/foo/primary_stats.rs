@@ -11,7 +11,6 @@ pub struct PrimaryStats {
 
     pub data: PrimaryStatsData,
 }
-
 #[derive(SpacetimeType, Debug, PartialEq, Clone, Copy)]
 pub struct PrimaryStatsData {
     pub strength: u8,
@@ -20,6 +19,11 @@ pub struct PrimaryStatsData {
     pub intelligence: u8,
     pub piety: u8,
 }
+crate::impl_data_table!(
+    table_handle = primary_stats_tbl,
+    row = PrimaryStats,
+    data = PrimaryStatsData
+);
 
 impl Default for PrimaryStatsData {
     fn default() -> Self {

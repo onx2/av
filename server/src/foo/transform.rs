@@ -12,9 +12,13 @@ pub struct Transform {
 
     pub data: TransformData,
 }
-
 #[derive(SpacetimeType, Debug, Default, PartialEq, Clone, Copy)]
 pub struct TransformData {
     pub translation: Vec3,
     pub rotation: Quat,
 }
+crate::impl_data_table!(
+    table_handle = transform_tbl,
+    row = Transform,
+    data = TransformData
+);
