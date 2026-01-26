@@ -6,6 +6,7 @@ use spacetimedb::{LocalReadOnly, ViewContext};
 pub struct MovementSpeed;
 impl ComputedStat for MovementSpeed {
     type Output = Stat<f32>;
+
     fn compute(db: &LocalReadOnly, owner: Owner) -> Option<Self::Output> {
         let Some(primary_stats) = db.primary_stats_tbl().owner().find(owner) else {
             return None;
@@ -14,9 +15,22 @@ impl ComputedStat for MovementSpeed {
             return None;
         };
 
-        let dex_multiplier = primary_stats.data.dexterity as f32 / 10.0;
-        let level_multiplier = level.data.level as f32 / 10.0;
-        Some(Stat::new(3.0 * dex_multiplier * level_multiplier))
+        let base_speed = 4.0;
+        // +2% per point of DEX
+        let dex_bonus = primary_stats.data.dexterity as f32 * 0.02;
+        // +1% per Level, at lvl 50 = 50% bonus so 6m/s total
+        let level_bonus = level.data.level as f32 * 0.01;
+
+        // TODO: buffs / modifiers from spells or equipment
+        // Velocity spell might give +10% speed, boots might give +5% speed
+        // I might just have a "modifier" table that has rows attached to the owner
+        // such that I can find all modifiers and then filter by the type of modifier
+        // to find how we add here...
+
+        // Compute the speed from multipliers but cap at 10m/s
+        let speed = base_speed * (1.0 + dex_bonus + level_bonus).min(10.0);
+
+        Some(Stat::new(speed))
     }
 }
 
