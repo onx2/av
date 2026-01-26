@@ -62,7 +62,7 @@ impl ProgressionSystem {
             total_exp += exp_for_this_level;
 
             ctx.db
-                .progression_tbl()
+                .progression_system_tbl()
                 .insert(ProgressionSystem::new(level, total_exp));
         }
     }
