@@ -26,8 +26,8 @@ use spacetimedb::{table, ReducerContext, Table};
 /// **Note**: This assumes the following constants:
 /// const BASE_COEFFICIENT: u32 = 50;
 /// const MAX_LEVEL: u32 = 50;
-#[table(name = progression_tbl)]
-pub struct Progression {
+#[table(name = progression_system_tbl)]
+pub struct ProgressionSystem {
     /// The level associated with the total experience
     #[primary_key]
     pub level: u8,
@@ -36,7 +36,7 @@ pub struct Progression {
     pub total_exp: u32,
 }
 
-impl Progression {
+impl ProgressionSystem {
     const BASE_COEFFICIENT: f32 = 200.0;
     const MAX_LEVEL: u8 = 50;
 
@@ -45,8 +45,8 @@ impl Progression {
     }
 
     pub fn regenerate(ctx: &ReducerContext) {
-        ctx.db.progression_tbl().iter().for_each(|row| {
-            ctx.db.progression_tbl().delete(row);
+        ctx.db.progression_system_tbl().iter().for_each(|row| {
+            ctx.db.progression_system_tbl().delete(row);
         });
 
         let mut total_exp: u32 = 0;
@@ -63,7 +63,7 @@ impl Progression {
 
             ctx.db
                 .progression_tbl()
-                .insert(Progression::new(level, total_exp));
+                .insert(ProgressionSystem::new(level, total_exp));
         }
     }
 }

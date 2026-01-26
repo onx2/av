@@ -56,7 +56,7 @@ pub enum OwnerKind {
 /// assert_eq!(unpack_owner_id(owner), 42);
 /// ```
 pub fn pack_owner(id: OwnerId, kind: OwnerKind) -> Owner {
-    ((kind as u128) << OwnerId::BITS) | (id as u128)
+    (id as u128) | ((kind as u128) << OwnerId::BITS)
 }
 
 /// Extracts the [OwnerKind] encoded in an [Owner].
@@ -110,4 +110,83 @@ pub fn validate_owner_id(owner: Owner) -> Result<(), &'static str> {
         return Err("Owner has unknown kind tag");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pack_unpacks_owner_id_and_kind() {
+        let ids: [OwnerId; 6] = [0, 1, 42, 1337, u32::MAX as u64, u64::MAX];
+        let kinds = [OwnerKind::Character, OwnerKind::Npc, OwnerKind::Monster];
+
+        for &id in &ids {
+            for &kind in &kinds {
+                let owner = pack_owner(id, kind);
+
+                assert_eq!(unpack_owner_id(owner), id);
+                assert_eq!(unpack_owner_kind(owner), kind);
+                assert_eq!(try_unpack_owner_kind(owner), Some(kind));
+
+                // Validate should pass for properly-packed values.
+                assert_eq!(validate_owner_id(owner), Ok(()));
+            }
+        }
+    }
+
+    #[test]
+    fn pack_places_id_in_low_64_bits_and_kind_in_next_8_bits() {
+        let id: OwnerId = 0x0123_4567_89AB_CDEF;
+        let kind = OwnerKind::Monster;
+
+        let owner = pack_owner(id, kind);
+
+        let expected = (id as u128) | ((kind as u128) << 64);
+        assert_eq!(owner, expected);
+
+        // Sanity: upper reserved bits should be zero in normal packing.
+        assert_eq!((owner >> 72) as u64, 0);
+    }
+
+    #[test]
+    fn try_unpack_returns_none_for_unknown_kind() {
+        let id: OwnerId = 123;
+        let unknown_tag: u8 = 255;
+
+        let owner: Owner = (id as u128) | ((unknown_tag as u128) << 64);
+
+        assert_eq!(unpack_owner_id(owner), id);
+        assert_eq!(try_unpack_owner_kind(owner), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported OwnerKind.")]
+    fn unpack_owner_kind_panics_for_unknown_kind() {
+        let id: OwnerId = 123;
+        let unknown_tag: u8 = 200;
+
+        let owner: Owner = (id as u128) | ((unknown_tag as u128) << 64);
+
+        let _ = unpack_owner_kind(owner);
+    }
+
+    #[test]
+    fn validate_fails_if_reserved_bits_non_zero() {
+        let owner = pack_owner(42, OwnerKind::Character) | (1u128 << 72);
+
+        assert_eq!(
+            validate_owner_id(owner),
+            Err("Owner reserved bits are non-zero")
+        );
+    }
+
+    #[test]
+    fn validate_fails_if_kind_unknown_even_if_reserved_bits_zero() {
+        let id: OwnerId = 42;
+        let unknown_tag: u8 = 250;
+        let owner: Owner = (id as u128) | ((unknown_tag as u128) << 64);
+
+        assert_eq!(validate_owner_id(owner), Err("Owner has unknown kind tag"));
+    }
 }
