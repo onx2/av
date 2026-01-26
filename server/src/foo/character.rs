@@ -1,9 +1,10 @@
 use super::{
-    active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, primary_stats_tbl,
-    transform_tbl, ActiveCharacter, DataTable, Experience, ExperienceData, Health, HealthData,
-    Level, LevelData, Mana, ManaData, PrimaryStats, PrimaryStatsData, Transform, TransformData,
+    active_character_tbl, actor_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl,
+    primary_stats_tbl, transform_tbl, ActiveCharacter, Actor, DataTable, Experience,
+    ExperienceData, Health, HealthData, Level, LevelData, Mana, ManaData, PrimaryStats,
+    PrimaryStatsData, Transform, TransformData,
 };
-use shared::{pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
+use shared::{encode_cell_id, pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
 use spacetimedb::{table, Identity, ReducerContext, Table};
 
 /// The persistence layer for a player's characters
@@ -75,6 +76,7 @@ impl Character {
 
     pub fn leave_game(&self, ctx: &ReducerContext) {
         let owner = self.owner();
+        ctx.db.actor_tbl().owner().delete(owner);
         ctx.db.active_character_tbl().owner().delete(owner);
         ctx.db.transform_tbl().owner().delete(owner);
         ctx.db.primary_stats_tbl().owner().delete(owner);
@@ -86,6 +88,7 @@ impl Character {
         // Prevent multiple player characters from joining the game, only one character per player
         for character in ctx.db.character_tbl().identity().filter(ctx.sender) {
             let owner = character.owner();
+            ctx.db.actor_tbl().owner().delete(owner);
             ctx.db.active_character_tbl().owner().delete(owner);
             ctx.db.transform_tbl().owner().delete(owner);
             ctx.db.primary_stats_tbl().owner().delete(owner);
@@ -96,14 +99,16 @@ impl Character {
         }
 
         let owner = self.owner();
+        let cell_id = encode_cell_id(self.transform.translation.x, self.transform.translation.z);
         ctx.db
             .active_character_tbl()
             .insert(ActiveCharacter::new(ctx.sender, owner));
-        Transform::insert(ctx, owner, self.transform);
-        PrimaryStats::insert(ctx, owner, self.primary_stats);
-        Health::insert(ctx, owner, self.health);
-        Mana::insert(ctx, owner, self.mana);
-        Experience::insert(ctx, owner, self.experience);
-        Level::insert(ctx, owner, self.level);
+        ctx.db.actor_tbl().insert(Actor { owner, cell_id });
+        Transform::insert(ctx, owner, self.transform, cell_id);
+        PrimaryStats::insert(ctx, owner, self.primary_stats, cell_id);
+        Health::insert(ctx, owner, self.health, cell_id);
+        Mana::insert(ctx, owner, self.mana, cell_id);
+        Experience::insert(ctx, owner, self.experience, cell_id);
+        Level::insert(ctx, owner, self.level, cell_id);
     }
 }

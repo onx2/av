@@ -8,6 +8,9 @@ pub struct Level {
     pub owner: Owner,
 
     pub data: LevelData,
+
+    #[index(btree)]
+    pub cell_id: u32,
 }
 #[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LevelData {

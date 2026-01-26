@@ -8,6 +8,9 @@ pub struct Experience {
     pub owner: Owner,
 
     pub data: ExperienceData,
+
+    #[index(btree)]
+    pub cell_id: u32,
 }
 #[derive(SpacetimeType, Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ExperienceData {

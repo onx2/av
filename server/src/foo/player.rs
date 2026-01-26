@@ -1,3 +1,4 @@
+use shared::OwnerId;
 use spacetimedb::{table, Identity};
 
 /// Main persistence table a person's "account"
@@ -5,4 +6,6 @@ use spacetimedb::{table, Identity};
 pub struct Player {
     #[primary_key]
     pub identity: Identity,
+
+    pub owner_id: Option<OwnerId>,
 }

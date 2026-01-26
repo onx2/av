@@ -5,14 +5,14 @@
 /// SpacetimeDB currently restricts primary keys / indexes to primitive scalar column types.
 /// We cannot use a composite primary key like `(OwnerKind, owner_id)` or a custom struct type
 /// as an indexed key. To keep a single-column primary key while preventing cross-table ID
-/// collisions, owner_id and OwnerKind are packed into a single `u64`.
+/// collisions, owner_id and OwnerKind are packed into a single `u128`.
 ///
 /// # Bit layout
-/// This `u64` is a packed value with the following layout (least-significant bit = bit 0):
+/// This `u128` is a packed value with the following layout (least-significant bit = bit 0):
 ///
-/// - bits 0..=31   : `owner_id` (u32)
-/// - bits 32..=39  : `OwnerKind` tag (u8)
-/// - bits 40..=63  : reserved (must be zero for now)
+/// - bits 0..=63   : `owner_id` (u64)
+/// - bits 64..=71  : `OwnerKind` tag (u8)
+/// - bits 72..=127 : reserved (must be zero for now)
 ///
 /// # Invariants
 /// - Two different `(owner_id, kind)` pairs must never produce the same `Owner`.
@@ -20,10 +20,10 @@
 ///
 /// # Compatibility
 /// Treat the bit layout as a wire/storage format. Changing it requires a data migration
-pub type Owner = u64;
+pub type Owner = u128;
 
 /// The primary_key (unique ID) used for a specific kind of owner (e.g. Character, Monster, NPC)
-pub type OwnerId = u32;
+pub type OwnerId = u64;
 
 /// A generic way to retrieve the unpacked owner data
 pub trait AsOwner {
@@ -56,7 +56,7 @@ pub enum OwnerKind {
 /// assert_eq!(unpack_owner_id(owner), 42);
 /// ```
 pub fn pack_owner(id: OwnerId, kind: OwnerKind) -> Owner {
-    ((kind as u64) << OwnerId::BITS) | (id as u64)
+    ((kind as u128) << OwnerId::BITS) | (id as u128)
 }
 
 /// Extracts the [OwnerKind] encoded in an [Owner].
@@ -75,7 +75,7 @@ pub fn unpack_owner_kind(owner: Owner) -> OwnerKind {
 /// Prefer handling `None` by failing fast in reducers, since an unknown kind means you
 /// cannot safely interpret the remaining fields.
 pub fn try_unpack_owner_kind(owner: Owner) -> Option<OwnerKind> {
-    const KIND_MASK: u64 = u8::MAX as u64;
+    const KIND_MASK: u128 = u8::MAX as u128;
     let tag = ((owner >> OwnerId::BITS) & KIND_MASK) as u8;
 
     match tag {
@@ -90,7 +90,7 @@ pub fn try_unpack_owner_kind(owner: Owner) -> Option<OwnerKind> {
 ///
 /// Note: this does not validate the kind tag.
 pub fn unpack_owner_id(owner: Owner) -> OwnerId {
-    const ID_MASK: u64 = 0xFFFF_FFFF;
+    const ID_MASK: u128 = u64::MAX as u128;
     (owner & ID_MASK) as OwnerId
 }
 
@@ -102,7 +102,7 @@ pub fn unpack_owner_id(owner: Owner) -> OwnerId {
 /// - kind tag is recognized
 /// - reserved bits (40..=63) are zero
 pub fn validate_owner_id(owner: Owner) -> Result<(), &'static str> {
-    const RESERVED_MASK: u64 = !0u64 << 40; // bits 40..63 set
+    const RESERVED_MASK: u128 = !0u128 << 72; // bits 72..127 set
     if (owner & RESERVED_MASK) != 0 {
         return Err("Owner reserved bits are non-zero");
     }

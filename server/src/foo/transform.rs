@@ -11,6 +11,9 @@ pub struct Transform {
     pub owner: Owner,
 
     pub data: TransformData,
+
+    #[index(btree)]
+    pub cell_id: u32,
 }
 #[derive(SpacetimeType, Debug, Default, PartialEq, Clone, Copy)]
 pub struct TransformData {

@@ -10,6 +10,9 @@ pub struct PrimaryStats {
     pub owner: Owner,
 
     pub data: PrimaryStatsData,
+
+    #[index(btree)]
+    pub cell_id: u32,
 }
 #[derive(SpacetimeType, Debug, PartialEq, Clone, Copy)]
 pub struct PrimaryStatsData {

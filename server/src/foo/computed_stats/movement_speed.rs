@@ -1,7 +1,7 @@
 use super::{ComputedStat, Stat};
-use crate::foo::{active_character_tbl__view, level_tbl__view, primary_stats_tbl__view};
+use crate::foo::{get_computed_stat_view, level_tbl__view, primary_stats_tbl__view};
 use shared::Owner;
-use spacetimedb::{DbContext, LocalReadOnly, ViewContext};
+use spacetimedb::{LocalReadOnly, ViewContext};
 
 pub struct MovementSpeed;
 impl ComputedStat for MovementSpeed {
@@ -19,11 +19,8 @@ impl ComputedStat for MovementSpeed {
         Some(Stat::new(3.0 * dex_multiplier * level_multiplier))
     }
 }
-#[spacetimedb::view(name = movement_speed_view, public)]
-pub fn movement_speed_view(ctx: &ViewContext) -> Option<<MovementSpeed as ComputedStat>::Output> {
-    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
-        return None;
-    };
 
-    MovementSpeed::compute(ctx.db(), active_character.owner)
+#[spacetimedb::view(name = movement_speed_view, public)]
+pub fn movement_speed_view(ctx: &ViewContext) -> Vec<<MovementSpeed as ComputedStat>::Output> {
+    get_computed_stat_view::<MovementSpeed>(ctx)
 }

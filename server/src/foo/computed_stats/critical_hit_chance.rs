@@ -1,7 +1,7 @@
 use super::{ComputedStat, Stat};
-use crate::foo::active_character_tbl__view;
+use crate::foo::get_computed_stat_view;
 use shared::Owner;
-use spacetimedb::{DbContext, LocalReadOnly, ViewContext};
+use spacetimedb::{LocalReadOnly, ViewContext};
 
 pub struct CriticalHitChance;
 impl ComputedStat for CriticalHitChance {
@@ -11,12 +11,6 @@ impl ComputedStat for CriticalHitChance {
     }
 }
 #[spacetimedb::view(name = critical_chance_view, public)]
-pub fn critical_chance_view(
-    ctx: &ViewContext,
-) -> Option<<CriticalHitChance as ComputedStat>::Output> {
-    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
-        return None;
-    };
-
-    CriticalHitChance::compute(ctx.db(), active_character.owner)
+pub fn critical_chance_view(ctx: &ViewContext) -> Vec<<CriticalHitChance as ComputedStat>::Output> {
+    get_computed_stat_view::<CriticalHitChance>(ctx)
 }
