@@ -32,11 +32,7 @@ pub trait ComputedStat {
 
 /// Generic “computed stat view” helper: for the sender, compute `S` for every actor in AOI.
 ///
-/// This is intended to compile down to essentially the same code as writing the iterator chain
-/// inline in every view (monomorphized generics).
-///
-/// So for example, we could find all the [CriticalHitChance] values for actors in the AOI:
-///
+/// For example, we could find all the [CriticalHitChance] values for actors in the AOI:
 /// ```rust
 /// pub fn critical_chance_view(ctx: &ViewContext) -> Vec<CriticalHitChance> {
 ///     get_computed_stat_view::<CriticalHitChance>(ctx)

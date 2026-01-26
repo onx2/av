@@ -104,11 +104,11 @@ impl Character {
             .active_character_tbl()
             .insert(ActiveCharacter::new(ctx.sender, owner));
         ctx.db.actor_tbl().insert(Actor { owner, cell_id });
-        Transform::insert(ctx, owner, self.transform, cell_id);
-        PrimaryStats::insert(ctx, owner, self.primary_stats, cell_id);
-        Health::insert(ctx, owner, self.health, cell_id);
-        Mana::insert(ctx, owner, self.mana, cell_id);
-        Experience::insert(ctx, owner, self.experience, cell_id);
-        Level::insert(ctx, owner, self.level, cell_id);
+        Transform::insert(ctx, owner, self.transform);
+        PrimaryStats::insert(ctx, owner, self.primary_stats);
+        Health::insert(ctx, owner, self.health);
+        Mana::insert(ctx, owner, self.mana);
+        Experience::insert(ctx, owner, self.experience);
+        Level::insert(ctx, owner, self.level);
     }
 }

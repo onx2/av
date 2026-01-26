@@ -8,9 +8,6 @@ pub struct Mana {
     pub owner: Owner,
 
     pub data: ManaData,
-
-    #[index(btree)]
-    pub cell_id: u32,
 }
 #[derive(SpacetimeType, Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ManaData {
