@@ -9,11 +9,39 @@ pub trait DataTable<T> {
     fn update(&self, ctx: &ReducerContext, data: T) -> Self;
 }
 
-/// Used to implement basic CRUD actions for this [DataTable]
+/// Macro to implement the `DataTable<T>` trait for a SpacetimeDB table row.
+///
+/// Generates:
+/// - `impl DataTable<$data_ty> for $row_ty`
+/// - With standard CRUD methods using owner-based access:
+///   - `insert(ctx, owner, data)` → inserts new row
+///   - `delete(&self, ctx)` → deletes by owner
+///   - `update(&self, ctx, new_data)` → updates data, keeps owner
+///
+/// Assumptions:
+/// - Row struct has fields: `owner: Owner`, `data: $data_ty`
+/// - Table handle is accessible via `ctx.db.$table_handle()`
+/// - Primary key is on `owner`
+///
+/// Example:
+/// ```rust
+/// #[table(name = health_tbl)]
+/// pub struct Health {
+///     #[primary_key]
+///     pub owner: Owner,
+///     pub data: HealthData,
+/// }
+///
+/// impl_data_table!(
+///     table_handle = health_tbl,
+///     row         = Health,
+///     data        = HealthData
+/// );
+/// ```
 #[macro_export]
 macro_rules! impl_data_table {
     (table_handle = $table_handle:ident, row = $row_ty:ty, data = $data_ty:ty) => {
-        use super::DataTable;
+        use crate::foo::DataTable;
         impl DataTable<$data_ty> for $row_ty {
             fn insert(
                 ctx: &spacetimedb::ReducerContext,
