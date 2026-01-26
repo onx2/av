@@ -6,24 +6,6 @@ pub use critical_hit_chance::*;
 pub use movement_speed::*;
 use shared::{utils::get_aoi_block, Owner};
 use spacetimedb::{DbContext, LocalReadOnly, SpacetimeType, ViewContext};
-use std::ops::Deref;
-
-/// A small, reusable spacetime payload for "scalar" stats.
-#[derive(SpacetimeType, Debug, Default)]
-pub struct Stat<T: Copy + Default> {
-    pub value: T,
-}
-impl<T: Copy + Default> Stat<T> {
-    pub fn new(value: T) -> Self {
-        Stat { value }
-    }
-}
-impl<T: Copy + Default> Deref for Stat<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.value
-    }
-}
 
 pub trait ComputedStat {
     type Output: SpacetimeType;

@@ -9,13 +9,11 @@ mod debug_tools;
 mod camera;
 mod cursor;
 mod input;
-// From the project root `av`, run this command to generate bindings:
-// spacetime generate --lang rust -p server -o .\client\src\module_bindings
-mod actor;
+// mod actor;
 mod module_bindings;
-mod player;
+// mod player;
 mod server;
-mod world;
+// mod world;
 
 #[cfg(target_os = "macos")]
 use bevy::window::CompositeAlphaMode;
@@ -52,9 +50,9 @@ impl Plugin for AppPlugin {
 
         app.add_plugins((
             server::plugin,
-            world::plugin,
-            player::plugin,
-            actor::plugin,
+            // world::plugin,
+            // player::plugin,
+            // actor::plugin,
             camera::plugin,
             input::plugin,
             cursor::plugin,

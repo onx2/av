@@ -1,11 +1,16 @@
-use super::{ComputedStat, Stat};
+use super::ComputedStat;
 use crate::foo::{get_computed_stat_view, level_tbl__view, primary_stats_tbl__view};
 use shared::Owner;
-use spacetimedb::{LocalReadOnly, ViewContext};
+use spacetimedb::{LocalReadOnly, SpacetimeType, ViewContext};
 
-pub struct MovementSpeed;
+#[derive(SpacetimeType, Debug, Default)]
+pub struct MovementSpeed {
+    pub owner: Owner,
+    pub value: f32,
+}
+
 impl ComputedStat for MovementSpeed {
-    type Output = Stat<f32>;
+    type Output = MovementSpeed;
 
     fn compute(db: &LocalReadOnly, owner: Owner) -> Option<Self::Output> {
         let Some(primary_stats) = db.primary_stats_tbl().owner().find(owner) else {
@@ -30,11 +35,15 @@ impl ComputedStat for MovementSpeed {
         // Compute the speed from multipliers but cap at 10m/s
         let speed = base_speed * (1.0 + dex_bonus + level_bonus).min(10.0);
 
-        Some(Stat::new(speed))
+        Some(MovementSpeed {
+            owner,
+            value: speed,
+        })
     }
 }
 
+/// Finds the movement speed stat for all actors within the AOI.
 #[spacetimedb::view(name = movement_speed_view, public)]
-pub fn movement_speed_view(ctx: &ViewContext) -> Vec<<MovementSpeed as ComputedStat>::Output> {
+pub fn movement_speed_view(ctx: &ViewContext) -> Vec<MovementSpeed> {
     get_computed_stat_view::<MovementSpeed>(ctx)
 }
