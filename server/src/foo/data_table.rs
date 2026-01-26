@@ -1,4 +1,4 @@
-use shared::owner::Owner;
+use shared::Owner;
 use spacetimedb::ReducerContext;
 
 /// A trait for tables that hold ephemeral data that eventually gets persisted.
@@ -17,7 +17,7 @@ macro_rules! impl_data_table {
         impl DataTable<$data_ty> for $row_ty {
             fn insert(
                 ctx: &spacetimedb::ReducerContext,
-                owner: shared::owner::Owner,
+                owner: shared::Owner,
                 data: $data_ty,
             ) -> Self {
                 spacetimedb::Table::insert(ctx.db.$table_handle(), Self { owner, data })

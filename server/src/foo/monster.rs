@@ -1,4 +1,4 @@
-use shared::owner::{pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
+use shared::{pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
 use spacetimedb::table;
 
 /// TODO: Monsters should maybe be different, not DataOwner impl but some partial amount of data like stats?

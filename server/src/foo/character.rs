@@ -1,11 +1,10 @@
-use shared::owner::{pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
-use spacetimedb::{table, Identity, ReducerContext, Table};
-
 use super::{
     active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, primary_stats_tbl,
     transform_tbl, ActiveCharacter, DataTable, Experience, ExperienceData, Health, HealthData,
     Level, LevelData, Mana, ManaData, PrimaryStats, PrimaryStatsData, Transform, TransformData,
 };
+use shared::{pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
+use spacetimedb::{table, Identity, ReducerContext, Table};
 
 /// The persistence layer for a player's characters
 #[table(name=character_tbl)]
@@ -82,6 +81,7 @@ impl Character {
         ctx.db.health_tbl().owner().delete(owner);
         ctx.db.mana_tbl().owner().delete(owner);
     }
+
     pub fn enter_game(&self, ctx: &ReducerContext) {
         // Prevent multiple player characters from joining the game, only one character per player
         for character in ctx.db.character_tbl().identity().filter(ctx.sender) {
@@ -96,10 +96,9 @@ impl Character {
         }
 
         let owner = self.owner();
-        ctx.db.active_character_tbl().insert(ActiveCharacter {
-            identity: ctx.sender,
-            owner,
-        });
+        ctx.db
+            .active_character_tbl()
+            .insert(ActiveCharacter::new(ctx.sender, owner));
         Transform::insert(ctx, owner, self.transform);
         PrimaryStats::insert(ctx, owner, self.primary_stats);
         Health::insert(ctx, owner, self.health);

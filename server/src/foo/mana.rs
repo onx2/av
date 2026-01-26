@@ -1,4 +1,4 @@
-use shared::owner::Owner;
+use shared::Owner;
 use spacetimedb::{table, SpacetimeType};
 
 /// **Ephemeral**
@@ -19,5 +19,13 @@ crate::impl_data_table!(table_handle = mana_tbl, row = Mana, data = ManaData);
 impl ManaData {
     pub fn new(max: u16) -> Self {
         Self { current: max, max }
+    }
+
+    pub fn add(&mut self, amount: u16) {
+        self.current = self.current.saturating_add(amount).min(self.max);
+    }
+
+    pub fn sub(&mut self, amount: u16) {
+        self.current = self.current.saturating_sub(amount);
     }
 }

@@ -1,4 +1,4 @@
-use shared::owner::{pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
+use shared::{pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
 use spacetimedb::table;
 
 /// The persistence layer for the types of enemies that can be spawned into the world (Actor)

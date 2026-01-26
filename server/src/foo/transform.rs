@@ -1,5 +1,5 @@
 use super::{Quat, Vec3};
-use shared::owner::Owner;
+use shared::Owner;
 use spacetimedb::{table, SpacetimeType};
 
 /// Ephemeral

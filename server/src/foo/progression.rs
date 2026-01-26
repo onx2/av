@@ -26,7 +26,7 @@ use spacetimedb::{table, ReducerContext, Table};
 /// **Note**: This assumes the following constants:
 /// const BASE_COEFFICIENT: u32 = 50;
 /// const MAX_LEVEL: u32 = 50;
-#[table(name = progression_system_tbl)]
+#[table(name = progression_tbl)]
 pub struct Progression {
     /// The level associated with the total experience
     #[primary_key]
@@ -37,7 +37,7 @@ pub struct Progression {
 }
 
 impl Progression {
-    const BASE_COEFFICIENT: u32 = 50;
+    const BASE_COEFFICIENT: f32 = 200.0;
     const MAX_LEVEL: u8 = 50;
 
     pub fn new(level: u8, total_exp: u32) -> Self {
@@ -45,26 +45,24 @@ impl Progression {
     }
 
     pub fn regenerate(ctx: &ReducerContext) {
-        // Clear table logic...
-        ctx.db.progression_system_tbl().iter().for_each(|row| {
-            ctx.db.progression_system_tbl().delete(row);
+        ctx.db.progression_tbl().iter().for_each(|row| {
+            ctx.db.progression_tbl().delete(row);
         });
 
         let mut total_exp: u32 = 0;
         for level in 1..=Self::MAX_LEVEL {
-            // Determine the tier: 1-10 is Tier 1, 11-20 is Tier 2, etc.
-            // (level - 1) / 10 turns 0-9 into 0, 10-19 into 1...
-            let tier = (((level - 1) / 10) + 1) as u32;
+            let tier = ((level - 1) / 10) as i32;
 
-            // We increase the "weight" of each level based on the tier
-            // This creates a large jump at level 11, 21, 31, etc.
-            let tier_multiplier = tier * tier; // Squaring the tier makes jumps even more dramatic
+            // Each tier is roughly 2x harder than the previous one
+            let tier_multiplier = 2.0f32.powi(tier);
+            let level_sq = (level as u32).pow(2) as f32;
             let exp_for_this_level =
-                Self::BASE_COEFFICIENT * (level as u32).pow(2) * tier_multiplier;
+                (Self::BASE_COEFFICIENT as f32 * level_sq * tier_multiplier).round() as u32;
 
             total_exp += exp_for_this_level;
+
             ctx.db
-                .progression_system_tbl()
+                .progression_tbl()
                 .insert(Progression::new(level, total_exp));
         }
     }

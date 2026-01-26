@@ -1,4 +1,4 @@
-use shared::owner::Owner;
+use shared::Owner;
 use spacetimedb::{table, SpacetimeType};
 
 /// The amount of progression this person has accumulated

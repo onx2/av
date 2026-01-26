@@ -1,4 +1,4 @@
-use shared::owner::Owner;
+use shared::Owner;
 use spacetimedb::{table, Identity};
 
 /// Marker table for the active character for a given player, prevent
@@ -9,4 +9,9 @@ pub struct ActiveCharacter {
 
     #[unique]
     pub owner: Owner,
+}
+impl ActiveCharacter {
+    pub fn new(identity: Identity, owner: Owner) -> Self {
+        Self { identity, owner }
+    }
 }
