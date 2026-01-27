@@ -145,7 +145,6 @@ macro_rules! define_bitmask_flags {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::define_bitmask_flags;
 
     define_bitmask_flags!(TestFlagsU8, u8, {
         A,
