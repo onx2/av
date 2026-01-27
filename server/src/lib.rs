@@ -23,13 +23,16 @@
 
 pub mod foo;
 
+// Macro crate level re-exports
+pub use foo::DataTable;
+
 use spacetimedb::*;
 
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Database initializing...");
     foo::ProgressionSystem::regenerate(ctx);
-    foo::tags::regenerate(ctx);
-    foo::gameplay_flags::regenerate(ctx);
+    // for testing purposes -> Remove after
+    foo::status_flags::regenerate(ctx);
     Ok(())
 }

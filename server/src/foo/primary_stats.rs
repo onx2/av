@@ -1,3 +1,4 @@
+use crate::impl_data_table;
 use shared::Owner;
 use spacetimedb::{table, SpacetimeType};
 
@@ -19,7 +20,7 @@ pub struct PrimaryStatsData {
     pub intelligence: u8,
     pub piety: u8,
 }
-crate::impl_data_table!(
+impl_data_table!(
     table_handle = primary_stats_tbl,
     row = PrimaryStats,
     data = PrimaryStatsData

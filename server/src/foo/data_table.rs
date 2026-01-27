@@ -3,7 +3,8 @@ use spacetimedb::ReducerContext;
 
 /// A trait for tables that hold ephemeral data that eventually gets persisted.
 /// They are expected to have an [Owner] and data column of type [T]
-pub trait DataTable<T> {
+pub trait DataTable<T>: Sized {
+    fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self>;
     fn insert(ctx: &ReducerContext, owner: Owner, data: T) -> Self;
     fn delete(&self, ctx: &ReducerContext) -> bool;
     fn update(&self, ctx: &ReducerContext, data: T) -> Self;
@@ -41,8 +42,12 @@ pub trait DataTable<T> {
 #[macro_export]
 macro_rules! impl_data_table {
     (table_handle = $table_handle:ident, row = $row_ty:ty, data = $data_ty:ty) => {
-        use crate::foo::DataTable;
+        use $crate::DataTable;
         impl DataTable<$data_ty> for $row_ty {
+            fn find(ctx: &spacetimedb::ReducerContext, owner: shared::Owner) -> Option<Self> {
+                ctx.db.$table_handle().owner().find(owner)
+            }
+
             fn insert(
                 ctx: &spacetimedb::ReducerContext,
                 owner: shared::Owner,

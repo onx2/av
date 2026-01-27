@@ -47,7 +47,7 @@ pub fn foo(ctx: &ReducerContext) {
     }
 }
 
-pub fn regenerate(ctx: &ReducerContext) {
+pub fn tag_regenerate(ctx: &ReducerContext) {
     ctx.db.gameplay_tag_tbl().iter().for_each(|row| {
         ctx.db.gameplay_tag_tbl().delete(row);
     });

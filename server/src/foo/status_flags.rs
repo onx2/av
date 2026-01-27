@@ -1,6 +1,8 @@
+use crate::impl_data_table;
 use num_traits::Zero;
-use shared::bitmask_flags::{BitmaskFlags, FlagBitmask, FlagsContainer};
-use shared::{define_bitmask_flags, pack_owner, Owner, OwnerKind};
+use shared::{
+    define_bitmask_flags, pack_owner, BitmaskFlags, FlagBitmask, FlagsContainer, Owner, OwnerKind,
+};
 use spacetimedb::{reducer, table, ReducerContext, Table};
 
 /// SpacetimeDB table that stores bitmask-backed gameplay flags per owner.
@@ -8,15 +10,20 @@ use spacetimedb::{reducer, table, ReducerContext, Table};
 /// Storage is a primitive (`u64` via `shared::bitmask_flags::FlagsContainer`) so we avoid needing
 /// `SpacetimeType` derives for the shared helper types.
 #[table(name=gameplay_flags_tbl)]
-pub struct GameplayFlags {
+pub struct StatusFlags {
     #[primary_key]
     pub owner: Owner,
 
     /// Raw bitmask. Interpret and manipulate using `shared::bitmask_flags::BitmaskFlags`.
     pub data: FlagsContainer,
 }
+impl_data_table!(
+    table_handle = gameplay_flags_tbl,
+    row = StatusFlags,
+    data = FlagsContainer
+);
 
-impl GameplayFlags {
+impl StatusFlags {
     /// Adds a single flag.
     pub fn add_tag<U: FlagBitmask<Storage = FlagsContainer>>(&mut self, tag: U) {
         let mut tmp = BitmaskFlags::<FlagsContainer>::new(self.data);
@@ -88,9 +95,8 @@ pub fn foobar(ctx: &ReducerContext) {
     };
     log::info!("Tags data before: {:?}", tags.data);
 
-    tags.add_tag(UnitStatus::InCombat);
-    tags.add_tag(UnitStatus::IsFriendly);
-    tags.add_tag(UnitStatus::Stunned);
+    tags.add_tag(Status::InCombat);
+    tags.add_tag(Status::Stunned);
     let data = tags.data.clone();
     ctx.db.gameplay_flags_tbl().owner().update(tags);
     log::info!("Tags data after: {:?}", data);
@@ -101,14 +107,13 @@ pub fn regenerate(ctx: &ReducerContext) {
         ctx.db.gameplay_flags_tbl().delete(row);
     });
 
-    ctx.db.gameplay_flags_tbl().insert(GameplayFlags {
+    ctx.db.gameplay_flags_tbl().insert(StatusFlags {
         owner: pack_owner(1, OwnerKind::Character),
         data: FlagsContainer::zero(),
     });
 }
 
-define_bitmask_flags!(UnitStatus, u64, {
-    IsFriendly,
+define_bitmask_flags!(Status, u64, {
     InCombat,
     Stunned,
     Burning,
