@@ -1,8 +1,10 @@
+pub mod bitmask_flags;
 pub mod constants;
 pub mod owner;
 pub mod rapier;
 pub mod utils;
 
+pub use bitmask_flags::*;
 pub use constants::{
     CELL_SIZE, DIRECTIONAL_MOVEMENT_INTERVAL, MAX_INTENT_DISTANCE_SQ, MAX_INTENT_PATH_LEN,
     SMALLEST_MOVE_DISTANCE_SQ, SMALLEST_REQUEST_DISTANCE_SQ, WORLD_OFFSET, YAW_EPS,

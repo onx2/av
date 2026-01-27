@@ -29,5 +29,7 @@ use spacetimedb::*;
 pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Database initializing...");
     foo::ProgressionSystem::regenerate(ctx);
+    foo::tags::regenerate(ctx);
+    foo::gameplay_flags::regenerate(ctx);
     Ok(())
 }
