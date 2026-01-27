@@ -5,8 +5,13 @@ use spacetimedb::ReducerContext;
 /// They are expected to have an [Owner] and data column of type [T]
 pub trait DataTable<T>: Sized {
     fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self>;
+    /// Inserts a row
     fn insert(ctx: &ReducerContext, owner: Owner, data: T) -> Self;
+    /// Inserts or updates a row by the provided owner
+    fn upsert(ctx: &ReducerContext, owner: Owner, data: T) -> Self;
     fn delete(&self, ctx: &ReducerContext) -> bool;
+    fn delete_by_owner(ctx: &spacetimedb::ReducerContext, owner: shared::Owner) -> bool;
+    /// Updates a row by owner, panics if the row isn't found.
     fn update(&self, ctx: &ReducerContext, data: T) -> Self;
 }
 
@@ -56,8 +61,18 @@ macro_rules! impl_data_table {
                 spacetimedb::Table::insert(ctx.db.$table_handle(), Self { owner, data })
             }
 
+            fn upsert(ctx: &spacetimedb::ReducerContext, owner: Owner, data: $data_ty) -> Self {
+                // If the row doesn't exist, delete will return false, which we ignore.
+                let _ = ctx.db.$table_handle().owner().delete(owner);
+                spacetimedb::Table::insert(ctx.db.$table_handle(), Self { owner, data })
+            }
+
             fn delete(&self, ctx: &spacetimedb::ReducerContext) -> bool {
                 ctx.db.$table_handle().owner().delete(self.owner)
+            }
+
+            fn delete_by_owner(ctx: &spacetimedb::ReducerContext, owner: shared::Owner) -> bool {
+                ctx.db.$table_handle().owner().delete(owner)
             }
 
             fn update(&self, ctx: &spacetimedb::ReducerContext, data: $data_ty) -> Self {

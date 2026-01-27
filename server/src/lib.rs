@@ -2,7 +2,7 @@
 //     mod connection;
 //     pub mod enter_world;
 //     pub mod leave_world;
-//     pub(crate) mod movement_tick;
+// pub(crate) mod movement_tick;
 //     pub mod request_move;
 // }
 // pub mod schema;
@@ -32,7 +32,18 @@ use spacetimedb::*;
 pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Database initializing...");
     foo::ProgressionSystem::regenerate(ctx);
-    // for testing purposes -> Remove after
-    foo::status_flags::regenerate(ctx);
+    foo::init_process_move_intent(ctx);
     Ok(())
+}
+
+#[spacetimedb::reducer(client_connected)]
+pub fn client_connected(ctx: &ReducerContext) {
+    log::info!("Client connected: {:?}", ctx.sender);
+    // Create a new player if not found
+}
+
+#[spacetimedb::reducer(client_disconnected)]
+pub fn client_disconnected(ctx: &ReducerContext) {
+    log::info!("Client disconnected: {:?}", ctx.sender);
+    // Find player and active_character, leave_game if found.
 }

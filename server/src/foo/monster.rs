@@ -1,11 +1,10 @@
+use super::{
+    actor_tbl, monster_instance_tbl, Actor, DataTable, Health, HealthData, Mana, ManaData,
+    MonsterInstance, MovementState, MovementStateData, PrimaryStats, PrimaryStatsData, StatusFlags,
+    StatusFlagsData, Transform, TransformData,
+};
 use shared::{encode_cell_id, pack_owner, Owner, OwnerKind};
 use spacetimedb::{table, ReducerContext, Table};
-
-use crate::foo::{
-    actor_tbl, monster_instance_tbl, Actor, DataTable, Experience, ExperienceData, Health,
-    HealthData, Level, LevelData, Mana, ManaData, MonsterInstance, PrimaryStats, PrimaryStatsData,
-    Transform, TransformData,
-};
 
 /// Monster "definition" (type).
 ///
@@ -15,12 +14,19 @@ use crate::foo::{
 pub struct Monster {
     #[auto_inc]
     #[primary_key]
-    pub monster_id: u16,
+    pub id: u16,
 
     pub name: String,
 }
 
 impl Monster {
+    pub fn insert(name: impl Into<String>) -> Self {
+        Self {
+            id: 0,
+            name: name.into(),
+        }
+    }
+
     /// Spawn a new monster instance (an [`Actor`]) from this monster definition.
     ///
     /// This allocates a fresh `owner_id` via `monster_instance_tbl` so multiple monsters of the
@@ -29,7 +35,7 @@ impl Monster {
         // Allocate a new instance id (owner_id) that will become the Actor/Owner key.
         let instance = ctx.db.monster_instance_tbl().insert(MonsterInstance {
             owner_id: 0,
-            monster_id: self.monster_id,
+            monster_id: self.id,
         });
 
         let owner = pack_owner(instance.owner_id, OwnerKind::Monster);
@@ -43,13 +49,21 @@ impl Monster {
         ctx.db.actor_tbl().insert(Actor { owner, cell_id });
 
         // Ephemeral component rows keyed by Owner.
+        MovementState::insert(ctx, owner, MovementStateData::default());
         Transform::insert(ctx, owner, transform);
         PrimaryStats::insert(ctx, owner, PrimaryStatsData::default());
         Health::insert(ctx, owner, HealthData::new(100));
         Mana::insert(ctx, owner, ManaData::new(100));
-        Experience::insert(ctx, owner, ExperienceData::default());
-        Level::insert(ctx, owner, LevelData::default());
+        StatusFlags::insert(ctx, owner, StatusFlagsData::default());
 
         Ok(owner)
+    }
+
+    pub fn regenerate(ctx: &ReducerContext) {
+        ctx.db.monster_tbl().iter().for_each(|row| {
+            ctx.db.monster_tbl().delete(row);
+        });
+
+        Monster::insert("Troll");
     }
 }

@@ -1,4 +1,4 @@
-use crate::{
+use super::super::{
     schema::{actor, secondary_stats, transform_data, world_static},
     types::MoveIntent,
     utils::{get_fixed_delta_time, get_variable_delta_time},
@@ -42,6 +42,12 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         return Err("`movement_tick_reducer` may not be invoked by clients.".into());
     }
 
+    // let moving_actors = ctx.db.actor().should_move().filter(true);
+    // if moving_actors.len() == 0 {
+    //     timer.last_tick = ctx.timestamp;
+    //     ctx.db.movement_tick_timer().scheduled_id().update(timer);
+    //     return;
+    // }
     // Compute real elapsed time since last tick; fallback to scheduled fixed dt.
     let fixed_dt: f32 = get_fixed_delta_time(timer.scheduled_at);
     let real_dt: f32 = get_variable_delta_time(ctx.timestamp, timer.last_tick).unwrap_or(fixed_dt);

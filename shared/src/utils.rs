@@ -8,8 +8,7 @@ use rapier3d::prelude::{
 };
 use std::f32::consts::TAU;
 
-pub fn yaw_from_xz(xz: [f32; 2]) -> Option<f32> {
-    let xz: na::Vector2<f32> = xz.into();
+pub fn yaw_from_xz(xz: Vector2<f32>) -> Option<f32> {
     if xz.norm_squared() > YAW_EPS {
         return Some((-xz[0]).atan2(-xz[1]));
     }
@@ -27,6 +26,7 @@ pub fn get_desired_delta(
     current_planar: Vector2<f32>,
     target_planar: Vector2<f32>,
     movement_speed_mps: f32,
+    vertical_velocity: f32,
     grounded: bool,
     dt: f32,
 ) -> Vector3<f32> {
@@ -37,7 +37,7 @@ pub fn get_desired_delta(
     let dist_sq = displacement.norm_squared();
 
     let desired_planar = if dist_sq <= MM_SQ {
-        na::Vector2::new(0.0, 0.0)
+        Vector2::new(0.0, 0.0)
     } else {
         let dist = dist_sq.sqrt();
         displacement * (max_step.min(dist) / dist)
@@ -47,10 +47,11 @@ pub fn get_desired_delta(
         // No need for downward bias or gravity because snap to ground is active
         [desired_planar.x, 0.0, desired_planar.y].into()
     } else {
+        let dy = vertical_velocity * dt;
         // Air control reduction in planar and gravity.
         // Gravity is linear because I don't expect to have a need for "real" gravity...
         // in the world, it is only applied here to make sure we end up on the ground eventually.
-        [desired_planar.x * 0.35, -9.81 * dt, desired_planar.y * 0.35].into()
+        [desired_planar.x * 0.35, dy, desired_planar.y * 0.35].into()
     }
 }
 
