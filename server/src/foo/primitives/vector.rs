@@ -1,4 +1,4 @@
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Translation3, Vector2, Vector3};
 use spacetimedb::SpacetimeType;
 
 /// A 3-dimensional vector in a right-handed, Y-up coordinate system. This serves
@@ -69,6 +69,12 @@ impl From<Vec3> for Vector3<f32> {
     #[inline(always)]
     fn from(v: Vec3) -> Self {
         Vector3::new(v.x, v.y, v.z)
+    }
+}
+
+impl From<Vec3> for Translation3<f32> {
+    fn from(v: Vec3) -> Self {
+        Self::new(v.x, v.y, v.z)
     }
 }
 

@@ -1,4 +1,5 @@
 use super::{Quat, Vec3};
+use nalgebra::Isometry3;
 use shared::Owner;
 use spacetimedb::{table, SpacetimeType};
 
@@ -22,3 +23,9 @@ crate::impl_data_table!(
     row = Transform,
     data = TransformData
 );
+
+impl From<TransformData> for Isometry3<f32> {
+    fn from(v: TransformData) -> Self {
+        Self::from_parts(v.translation.into(), v.rotation.into())
+    }
+}
