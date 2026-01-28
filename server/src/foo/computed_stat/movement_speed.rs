@@ -22,7 +22,7 @@ impl ComputedStat for MovementSpeed {
 
         let base_speed = 4.0;
         // +2% per point of DEX
-        let dex_bonus = primary_stats.data.dexterity as f32 * 0.02;
+        let dex_bonus = primary_stats.data.ferocity as f32 * 0.02;
         // +1% per Level, at lvl 50 = 50% bonus so 6m/s total
         let level_bonus = level.data.level as f32 * 0.01;
 

@@ -40,7 +40,7 @@ impl SecondaryStatsData {
     /// and the multiplier will be computed based on that.
     ///
     /// TODO: implement gear
-    pub fn critical_hit_chance(level: u8, ferocity: u8, gear: f32) -> f32 {
+    pub fn compute_critical_hit_chance(level: u8, ferocity: u8, gear: f32) -> f32 {
         let base_speed = 5.0;
         let ferocity_bonus = ferocity as f32 * 0.075;
         let level_bonus = level as f32 * 0.01;
