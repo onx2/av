@@ -1,12 +1,12 @@
 use super::{
-    active_character_tbl, actor_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl,
-    movement_state_tbl, primary_stats_tbl, status_flags_tbl, transform_tbl, ActiveCharacter, Actor,
+    active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, movement_state_tbl,
+    primary_stats_tbl, status_flags_tbl, transform_tbl, ActiveCharacter, Capsule, ColliderData,
     DataTable, Experience, ExperienceData, Health, HealthData, Level, LevelData, Mana, ManaData,
-    MovementState, MovementStateData, PrimaryStats, PrimaryStatsData, StatusFlags, StatusFlagsData,
-    Transform, TransformData,
+    MovementState, PrimaryStats, PrimaryStatsData, StatusFlags, StatusFlagsData, Transform,
+    TransformData,
 };
 use shared::{encode_cell_id, pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
-use spacetimedb::{table, Identity, ReducerContext, Table};
+use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 
 /// The persistence layer for a player's characters
 #[table(name=character_tbl)]
@@ -28,6 +28,7 @@ pub struct Character {
     pub experience: ExperienceData,
     pub level: LevelData,
     pub status_flags: StatusFlagsData,
+    pub collider: ColliderData,
 }
 
 impl AsOwner for Character {
@@ -72,13 +73,19 @@ impl Character {
             health: HealthData::new(100),
             mana: ManaData::new(100),
             status_flags: StatusFlagsData::default(),
+            collider: ColliderData {
+                capsule: Capsule {
+                    radius: 0.3,
+                    half_height: 0.9,
+                },
+                is_sensor: false,
+            },
         });
 
         Ok(pack_owner(inserted.owner_id, OwnerKind::Character))
     }
 
     fn delete_orphaned_rows(ctx: &ReducerContext, owner: Owner) {
-        ctx.db.actor_tbl().owner().delete(owner);
         ctx.db.active_character_tbl().owner().delete(owner);
         ctx.db.transform_tbl().owner().delete(owner);
         ctx.db.primary_stats_tbl().owner().delete(owner);
@@ -104,8 +111,13 @@ impl Character {
         ctx.db
             .active_character_tbl()
             .insert(ActiveCharacter::new(ctx.sender, owner));
-        ctx.db.actor_tbl().insert(Actor { owner, cell_id });
-        MovementState::insert(ctx, owner, MovementStateData::default());
+        ctx.db.movement_state_tbl().insert(MovementState {
+            owner,
+            grounded: false,
+            vertical_velocity: 0.0,
+            cell_id,
+            collider: self.collider,
+        });
         Transform::insert(ctx, owner, self.transform);
         PrimaryStats::insert(ctx, owner, self.primary_stats);
         Health::insert(ctx, owner, self.health);
@@ -115,3 +127,30 @@ impl Character {
         StatusFlags::insert(ctx, owner, self.status_flags);
     }
 }
+
+#[reducer]
+pub fn create_character(
+    ctx: &ReducerContext,
+    name: String,
+    primary_stats: PrimaryStatsData,
+) -> Result<(), String> {
+    Character::create(ctx, name, primary_stats)
+        .map(|_| ())
+        .map_err(|e| e.into())
+}
+
+#[reducer]
+pub fn enter_game(ctx: &ReducerContext, character_id: OwnerId) -> Result<(), String> {
+    let Some(character) = ctx.db.character_tbl().owner_id().find(character_id) else {
+        return Err("Character not found".into());
+    };
+    if character.identity != ctx.sender {
+        return Err("Unauthorized".into());
+    }
+    Ok(character.enter_game(ctx))
+}
+
+// #[reducer]
+// pub fn delete_character(ctx: &ReducerContext, character_id: CharacterId) {
+//     Character::delete(ctx, character_id).map(||());
+// }

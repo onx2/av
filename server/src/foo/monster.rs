@@ -1,7 +1,6 @@
 use super::{
-    actor_tbl, monster_instance_tbl, Actor, DataTable, Health, HealthData, Mana, ManaData,
-    MonsterInstance, MovementState, MovementStateData, PrimaryStats, PrimaryStatsData, StatusFlags,
-    StatusFlagsData, Transform, TransformData,
+    monster_instance_tbl, DataTable, Health, HealthData, Mana, ManaData, MonsterInstance,
+    PrimaryStats, PrimaryStatsData, StatusFlags, StatusFlagsData, Transform, TransformData,
 };
 use shared::{encode_cell_id, pack_owner, Owner, OwnerKind};
 use spacetimedb::{table, ReducerContext, Table};
@@ -43,13 +42,13 @@ impl Monster {
         // Spawn at origin by default for now; call sites can update transform after spawn
         // (or you can extend this API to accept a transform).
         let transform: TransformData = Default::default();
-        let cell_id = encode_cell_id(transform.translation.x, transform.translation.z);
 
-        // Actor row marks this instance as "in the world".
-        ctx.db.actor_tbl().insert(Actor { owner, cell_id });
+        // TODO: MovementState -> insert
+        // let cell_id = encode_cell_id(transform.translation.x, transform.translation.z);
+        // ctx.db.movement_state_tbl().insert(Actor { owner, cell_id });
 
         // Ephemeral component rows keyed by Owner.
-        MovementState::insert(ctx, owner, MovementStateData::default());
+        // MovementState::insert(ctx, owner, MovementStateData::default());
         Transform::insert(ctx, owner, transform);
         PrimaryStats::insert(ctx, owner, PrimaryStatsData::default());
         Health::insert(ctx, owner, HealthData::new(100));

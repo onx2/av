@@ -1,6 +1,6 @@
 use super::{
-    actor_tbl, move_intent_tbl, ComputedStat, DataTable, MoveIntentData, MovementSpeed,
-    MovementState, Transform,
+    move_intent_tbl, movement_state_tbl, ComputedStat, DataTable, MoveIntentData, MovementSpeed,
+    MovementState, Transform, Vec2,
 };
 use nalgebra::{UnitQuaternion, Vector, Vector2, Vector3};
 use rapier3d::{
@@ -9,9 +9,10 @@ use rapier3d::{
 };
 use shared::{
     constants::GRAVITY, encode_cell_id, get_desired_delta, is_at_target_planar,
-    utils::build_static_query_world, yaw_from_xz, ColliderShapeDef, WorldStaticDef,
+    utils::build_static_query_world, yaw_from_xz, ColliderShapeDef, Owner, WorldStaticDef,
 };
 use spacetimedb::{reducer, ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
+use std::collections::HashMap;
 
 pub fn delta_time(now: Timestamp, last: Timestamp) -> Option<f32> {
     now.time_duration_since(last)
@@ -50,7 +51,7 @@ fn reschedule(ctx: &ReducerContext, timer: ProcessMoveIntentTimer) {
         .delete(timer.scheduled_id);
     ctx.db.movement_tick_timer().insert(ProcessMoveIntentTimer {
         scheduled_id: 0,
-        scheduled_at: ScheduleAt::Time(ctx.timestamp + TimeDuration::from_micros(50_000)),
+        scheduled_at: ScheduleAt::Time(ctx.timestamp + TimeDuration::from_micros(100_000)),
         last_tick: ctx.timestamp,
     });
 }
@@ -67,6 +68,8 @@ fn process_move_intent_reducer(
         return Err("Failed to calculate delta time".into());
     };
 
+    // No need to fall faster than this + capping reduces potential row writes too.
+    let terminal_velocity = GRAVITY * 5.0;
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
             include_dynamic_bodies: false,
@@ -74,6 +77,7 @@ fn process_move_intent_reducer(
         }),
         ..KinematicCharacterController::default()
     };
+    // TODO: Actually build world
     let query_world = build_static_query_world(
         [WorldStaticDef {
             id: 1,
@@ -86,11 +90,14 @@ fn process_move_intent_reducer(
         dt,
     );
     let query_pipeline = query_world.as_query_pipeline(QueryFilter::only_fixed());
-
+    let mut target_xz_cache: HashMap<Owner, Vec2> = HashMap::new();
     let view_db = ctx.as_read_only().db;
     for mut move_intent in ctx.db.move_intent_tbl().iter() {
         let owner = move_intent.owner;
-        let Some(target_xz) = move_intent.data.target_position(&view_db) else {
+        let Some(target_xz) = move_intent
+            .data
+            .target_position_with_cache(&view_db, &mut target_xz_cache)
+        else {
             move_intent.delete(ctx);
             continue;
         };
@@ -102,17 +109,16 @@ fn process_move_intent_reducer(
             move_intent.delete(ctx);
             continue;
         };
-        let Some(mut actor) = ctx.db.actor_tbl().owner().find(owner) else {
-            move_intent.delete(ctx);
-            continue;
-        };
 
         let target_xz: Vector2<f32> = target_xz.into();
         let current_xz: Vector2<f32> = owner_transform.data.translation.xz().into();
 
-        if !movement_state.data.grounded {
-            movement_state.data.vertical_velocity += GRAVITY * dt;
+        let mut movement_state_dirty = false;
+        if !movement_state.grounded && movement_state.vertical_velocity < terminal_velocity {
+            movement_state.vertical_velocity += GRAVITY * dt;
+            movement_state_dirty = true;
         }
+
         let speed = MovementSpeed::compute(&view_db, owner)
             .map(|ms| ms.value)
             .unwrap_or(0.0);
@@ -127,14 +133,17 @@ fn process_move_intent_reducer(
         let correction = kcc.move_shape(
             dt,
             &query_pipeline,
-            &Capsule::new_y(0.85, 0.3),
+            &Capsule::new_y(
+                movement_state.collider.capsule.half_height,
+                movement_state.collider.capsule.radius,
+            ),
             &owner_transform.data.into(),
             get_desired_delta(
                 current_xz,
                 target_xz,
                 speed,
-                movement_state.data.vertical_velocity,
-                movement_state.data.grounded,
+                movement_state.vertical_velocity,
+                movement_state.grounded,
                 dt,
             ),
             |_| {},
@@ -142,40 +151,37 @@ fn process_move_intent_reducer(
         owner_transform.data.translation.x += correction.translation.x;
         owner_transform.data.translation.y += correction.translation.y;
         owner_transform.data.translation.z += correction.translation.z;
+        owner_transform.update(ctx, owner_transform.data);
 
         let new_cell_id = encode_cell_id(
             owner_transform.data.translation.x,
             owner_transform.data.translation.z,
         );
-        if actor.cell_id != new_cell_id {
-            actor.cell_id = new_cell_id;
-            ctx.db.actor_tbl().owner().update(actor);
+        if movement_state.cell_id != new_cell_id {
+            movement_state.cell_id = new_cell_id;
+            movement_state_dirty = true;
         }
-        owner_transform.update(ctx, owner_transform.data);
-
         // Update the MovementState when it has changed
-        if !movement_state.data.grounded || correction.grounded != movement_state.data.grounded {
-            movement_state.data.grounded = correction.grounded;
-            movement_state.update(ctx, movement_state.data);
+        if !movement_state.grounded || correction.grounded != movement_state.grounded {
+            movement_state.grounded = correction.grounded;
+            movement_state_dirty = true;
+        }
+        if movement_state_dirty {
+            ctx.db.movement_state_tbl().owner().update(movement_state);
         }
 
-        // Should we finish the movement intent?
         if is_at_target_planar(owner_transform.data.translation.xz().into(), target_xz) {
-            match &mut move_intent.data {
-                MoveIntentData::Point(_) => {
+            if let MoveIntentData::Point(_) = move_intent.data {
+                move_intent.delete(ctx);
+            } else if let MoveIntentData::Path(ref mut path) = move_intent.data {
+                if !path.is_empty() {
+                    path.remove(0);
+                }
+                if path.is_empty() {
                     move_intent.delete(ctx);
+                } else {
+                    ctx.db.move_intent_tbl().owner().update(move_intent);
                 }
-                MoveIntentData::Path(path) => {
-                    if !path.is_empty() {
-                        path.remove(0);
-                    }
-                    if path.is_empty() {
-                        move_intent.delete(ctx);
-                    } else {
-                        ctx.db.move_intent_tbl().owner().update(move_intent);
-                    }
-                }
-                _ => {}
             }
         }
     }

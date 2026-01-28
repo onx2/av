@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{foo::transform_tbl__view, impl_data_table};
 
 use super::Vec2;
@@ -40,6 +42,28 @@ impl MoveIntentData {
                 .owner()
                 .find(owner)
                 .map(|t| t.data.translation.xz()),
+        }
+    }
+
+    /// Gets the next target position for the given MoveIntent, preferring the
+    /// cached position of the target actor when possible. Avoid additional index seeks, when
+    /// there is an actor multiple others are trying to follow.
+    pub fn target_position_with_cache(
+        &self,
+        db: &LocalReadOnly,
+        cache: &mut HashMap<Owner, Vec2>,
+    ) -> Option<Vec2> {
+        match &self {
+            MoveIntentData::Point(point) => Some(*point),
+            MoveIntentData::Path(path) => path.first().copied(),
+            MoveIntentData::Actor(owner) => match cache.get(owner) {
+                Some(pos) => Some(*pos),
+                None => db.transform_tbl().owner().find(owner).map(|t| {
+                    let xz = t.data.translation.xz();
+                    cache.insert(*owner, xz);
+                    xz
+                }),
+            },
         }
     }
 }

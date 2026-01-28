@@ -1,7 +1,13 @@
+// ------------------------------------------------------------------
+// TODO: THIS IS HANDY FOR SPECIFYING THE FORMULA FOR A GIVEN STAT
+// BUT IT IS NOT OPTIMIZED FOR PERFORMANCE OR COST. IDEALLY THESE
+// STATS HAVE A SHARED FUNCTION TO COMPUTE THEM AND WHEN ONE OF THE
+// INPUT VALUES CHANGES, THE STAT IS RECOMPUTED INLINE.
+// ------------------------------------------------------------------
 mod critical_hit_chance;
 mod movement_speed;
 
-use crate::foo::{active_character_tbl__view, actor_tbl__view};
+use crate::foo::{active_character_tbl__view, movement_state_tbl__view};
 pub use critical_hit_chance::*;
 pub use movement_speed::*;
 use shared::{utils::get_aoi_block, Owner};
@@ -20,7 +26,7 @@ pub trait ComputedStat {
 ///     get_computed_stat_view::<CriticalHitChance>(ctx)
 /// }
 /// ```
-pub fn get_computed_stat_view<S>(ctx: &ViewContext) -> Vec<S::Output>
+pub fn get_computed_stat_aoi_view<S>(ctx: &ViewContext) -> Vec<S::Output>
 where
     S: ComputedStat,
     S::Output: Default,
@@ -28,13 +34,19 @@ where
     let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
         return vec![];
     };
-    let Some(actor) = ctx.db.actor_tbl().owner().find(&active_character.owner) else {
+    let Some(cell_id) = ctx
+        .db
+        .movement_state_tbl()
+        .owner()
+        .find(&active_character.owner)
+        .map(|row| row.cell_id)
+    else {
         return vec![];
     };
 
-    get_aoi_block(actor.cell_id)
+    get_aoi_block(cell_id)
         .into_iter()
-        .flat_map(|cell_id| ctx.db.actor_tbl().cell_id().filter(cell_id))
-        .map(|a| S::compute(ctx.db(), a.owner).unwrap_or_default())
+        .flat_map(|cell_id| ctx.db.movement_state_tbl().cell_id().filter(cell_id))
+        .map(|ms| S::compute(ctx.db(), ms.owner).unwrap_or_default())
         .collect()
 }

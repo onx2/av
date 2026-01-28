@@ -1,5 +1,5 @@
-use super::ComputedStat;
-use crate::foo::{get_computed_stat_view, level_tbl__view, primary_stats_tbl__view};
+use super::{get_computed_stat_aoi_view, ComputedStat};
+use crate::foo::{level_tbl__view, primary_stats_tbl__view};
 use shared::Owner;
 use spacetimedb::{LocalReadOnly, SpacetimeType, ViewContext};
 
@@ -45,5 +45,5 @@ impl ComputedStat for MovementSpeed {
 /// Finds the movement speed stat for all actors within the AOI.
 #[spacetimedb::view(name = movement_speed_view, public)]
 pub fn movement_speed_view(ctx: &ViewContext) -> Vec<MovementSpeed> {
-    get_computed_stat_view::<MovementSpeed>(ctx)
+    get_computed_stat_aoi_view::<MovementSpeed>(ctx)
 }

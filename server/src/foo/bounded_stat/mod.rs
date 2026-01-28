@@ -1,3 +1,7 @@
+// ------------------------------------------------------------------
+// TODO: MAX HEALTH/MANA MAY BE COMPUTED STATS BECAUSE THEY ARE BASED
+// ON LEVEL AND PRIMARY STATS LIKE FORTITUDE/PIETY...
+// ------------------------------------------------------------------
 pub mod health;
 pub mod mana;
 
