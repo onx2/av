@@ -1,3 +1,5 @@
+use nalgebra::Vector2;
+
 /// A 3D vector in world space (meters).
 ///
 /// Semantics:
@@ -25,6 +27,9 @@ impl DbVec3 {
 
     pub const fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
+    }
+    pub fn vec2_xz(self) -> Vector2<f32> {
+        Vector2::new(self.x, self.z)
     }
 }
 

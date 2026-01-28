@@ -17,6 +17,9 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntent) -> Result<(), Stri
     let Some(source_actor) = ctx.db.actor().id().find(source_actor_id) else {
         return Err("Actor not found".into());
     };
+    if !source_actor.grounded {
+        return Err("Actor is not grounded".into());
+    }
     let Some(transform_data) = ctx
         .db
         .transform_data()
