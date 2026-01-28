@@ -19,6 +19,9 @@ pub struct PrimaryStatsData {
     pub fortitude: u8,
     pub intelligence: u8,
     pub piety: u8,
+    // The points that are currently available for the owner to place into primary stats.
+    // This value is 1 per level, 3 per 10 levels...
+    // pub available_points: u8,
 }
 impl_data_table!(
     table_handle = primary_stats_tbl,
