@@ -32,7 +32,6 @@ impl Health {
     pub fn set_max(mut self, ctx: &ReducerContext, value: u16) {
         self.data.max = value;
         self.clamp();
-
         ctx.db.health_tbl().owner().update(self);
     }
 }
@@ -56,7 +55,6 @@ impl HealthData {
         // Clamped to max values for computation
         let fortitude = (fortitude as u16).min(60);
         let level = (level as u16).min(50);
-
         let growth = level.pow(2) * 5; // 50 * 50 * 5 = 12500
         let bonus = fortitude * level * 9; // 60 * 50 * 9 = 27000
         base.saturating_add(growth).saturating_add(bonus)

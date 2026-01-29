@@ -21,6 +21,9 @@ pub struct Character {
     #[unique]
     pub name: String,
 
+    #[index(btree)]
+    pub deleted: bool,
+
     pub transform: TransformData,
     pub primary_stats: PrimaryStatsData,
     pub health: HealthData,
@@ -44,11 +47,7 @@ impl AsOwner for Character {
 }
 
 impl Character {
-    pub fn create(
-        ctx: &ReducerContext,
-        name: impl Into<String>,
-        primary_stats: PrimaryStatsData,
-    ) -> Result<Owner, &'static str> {
+    pub fn create(ctx: &ReducerContext, name: impl Into<String>) -> Result<Owner, &'static str> {
         let name = name.into();
         let length = name.chars().count();
         if length < 3 || length > 64 {
@@ -58,16 +57,13 @@ impl Character {
             return Err("Name must be alphanumeric");
         }
 
-        if !primary_stats.validate() {
-            return Err("Primary stats are not valid");
-        }
-
         let inserted = ctx.db.character_tbl().insert(Character {
             owner_id: 0,
             identity: ctx.sender,
             name,
             transform: TransformData::default(),
-            primary_stats,
+            primary_stats: PrimaryStatsData::default(),
+            deleted: false,
             experience: ExperienceData::default(),
             level: LevelData::default(),
             health: HealthData::new(100),
@@ -129,12 +125,8 @@ impl Character {
 }
 
 #[reducer]
-pub fn create_character(
-    ctx: &ReducerContext,
-    name: String,
-    primary_stats: PrimaryStatsData,
-) -> Result<(), String> {
-    Character::create(ctx, name, primary_stats)
+pub fn create_character(ctx: &ReducerContext, name: String) -> Result<(), String> {
+    Character::create(ctx, name)
         .map(|_| ())
         .map_err(|e| e.into())
 }

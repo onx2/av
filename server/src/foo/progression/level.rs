@@ -31,6 +31,11 @@ impl Level {
         ctx.db.level_tbl().insert(Self { owner, data });
     }
     pub fn update(&self, ctx: &ReducerContext, data: LevelData) {
+        if data.level == self.data.level {
+            log::warn!("Unable to change level to the same value");
+            return;
+        }
+
         let res = ctx.db.level_tbl().owner().update(Self {
             owner: self.owner,
             data,
