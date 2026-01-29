@@ -85,7 +85,7 @@ impl Default for PrimaryStatsData {
 impl PrimaryStatsData {
     const CREATION_POINTS: u8 = 15;
     const MIN_STAT: u8 = 10;
-    const MAX_STAT: u8 = 100;
+    const MAX_STAT: u8 = 60;
 
     pub fn validate(&self) -> bool {
         let stats = [self.ferocity, self.fortitude, self.intellect, self.acuity];

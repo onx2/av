@@ -8,8 +8,10 @@ use rapier3d::{
     prelude::{Capsule, QueryFilter},
 };
 use shared::{
-    constants::GRAVITY, encode_cell_id, get_desired_delta, is_at_target_planar,
-    utils::build_static_query_world, yaw_from_xz, ColliderShapeDef, Owner, WorldStaticDef,
+    constants::{GRAVITY, TERMINAL_VELOCITY},
+    encode_cell_id, get_desired_delta, is_at_target_planar,
+    utils::build_static_query_world,
+    yaw_from_xz, ColliderShapeDef, Owner, WorldStaticDef,
 };
 use spacetimedb::{reducer, ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
 use std::collections::HashMap;
@@ -68,8 +70,6 @@ fn process_move_intent_reducer(
         return Err("Failed to calculate delta time".into());
     };
 
-    // No need to fall faster than this + capping reduces potential row writes too.
-    let terminal_velocity = GRAVITY * 5.0;
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
             include_dynamic_bodies: false,
@@ -115,7 +115,8 @@ fn process_move_intent_reducer(
         let current_xz: Vector2<f32> = owner_transform.data.translation.xz().into();
 
         let mut movement_state_dirty = false;
-        if !movement_state.grounded && movement_state.vertical_velocity < terminal_velocity {
+        // Capping vertical velocity reduces writes to DB. No need to fall faster than terminal velocity.
+        if !movement_state.grounded && movement_state.vertical_velocity < TERMINAL_VELOCITY {
             movement_state.vertical_velocity += GRAVITY * dt;
             movement_state_dirty = true;
         }

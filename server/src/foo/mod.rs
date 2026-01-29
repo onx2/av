@@ -1,6 +1,5 @@
 pub mod active_character;
 pub mod character;
-pub mod computed_stat;
 pub mod monster;
 pub mod monster_instance;
 pub mod move_intent;
@@ -18,7 +17,6 @@ pub mod transform;
 
 pub use active_character::*;
 pub use character::*;
-pub use computed_stat::*;
 pub use monster::*;
 pub use monster_instance::*;
 pub use move_intent::*;

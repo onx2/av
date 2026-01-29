@@ -28,3 +28,4 @@ pub const CELL_SIZE: f32 = 10.0;
 pub const WORLD_OFFSET: f32 = 32768.0;
 
 pub const GRAVITY: f32 = -9.81;
+pub const TERMINAL_VELOCITY: f32 = GRAVITY * 4.0;

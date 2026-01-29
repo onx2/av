@@ -25,11 +25,9 @@ impl AsOwner for MonsterInstance {
     fn owner(&self) -> Owner {
         pack_owner(self.owner_id, OwnerKind::Monster)
     }
-
     fn owner_id(&self) -> OwnerId {
         self.owner_id
     }
-
     fn owner_kind(&self) -> OwnerKind {
         OwnerKind::Monster
     }
