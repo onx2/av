@@ -18,9 +18,6 @@ pub const MAX_INTENT_PATH_LEN: usize = 20;
 /// Minimum planar motion required to update yaw (meters per tick).
 pub const YAW_EPS: f32 = 1.0e-6;
 
-/// The full range of a u16 as f32 for wrapping
-pub const YAW_U16_WRAP: f32 = 65536.0;
-
 /// Size of one grid cell in world units (meters).
 /// All cells are square
 pub const CELL_SIZE: f32 = 10.0;

@@ -1,5 +1,5 @@
 use shared::Owner;
-use spacetimedb::{table, LocalReadOnly, ReducerContext, SpacetimeType};
+use spacetimedb::{table, LocalReadOnly, ReducerContext, SpacetimeType, Table};
 
 /// **Ephemeral**
 #[table(name=health_tbl)]
@@ -9,13 +9,14 @@ pub struct Health {
 
     pub data: HealthData,
 }
-crate::impl_data_table!(table_handle = health_tbl, row = Health, data = HealthData);
 
 impl Health {
     fn clamp(&mut self) {
-        if self.data.current > self.data.max {
-            self.data.current = self.data.max;
-        }
+        self.data.current = self.data.current.min(self.data.max);
+    }
+
+    pub fn insert(ctx: &ReducerContext, owner: Owner, data: HealthData) {
+        ctx.db.health_tbl().insert(Self { owner, data });
     }
 
     pub fn find(db: &LocalReadOnly, owner: Owner) -> Option<Self> {

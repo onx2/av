@@ -26,6 +26,7 @@ impl MovementState {
         ctx.db.movement_state_tbl().owner().find(owner)
     }
 }
+
 #[derive(SpacetimeType, Debug, Copy, Clone)]
 pub struct ColliderData {
     /// Capsule shape of the collider for the owner, restricting this to capsules to simplify and

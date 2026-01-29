@@ -1,12 +1,10 @@
-use crate::{WorldStaticDef, collider_from_def};
-
 use super::constants::*;
+use crate::{WorldStaticDef, collider_from_def};
 use nalgebra::{self as na, Isometry, Translation3, Vector2, Vector3};
 use rapier3d::prelude::{
     BroadPhaseBvh, ColliderSet, IntegrationParameters, NarrowPhase, QueryFilter, QueryPipeline,
     RigidBodySet,
 };
-use std::f32::consts::TAU;
 
 pub fn yaw_from_xz(xz: Vector2<f32>) -> Option<f32> {
     if xz.norm_squared() > YAW_EPS {
@@ -55,52 +53,11 @@ pub fn get_desired_delta(
     }
 }
 
-/// Quantize yaw (radians) into a 2 bytes.
-///
-/// Convention:
-/// - input: yaw in radians (any range; e.g. [-π, π] or [0, 2π))
-/// - output: `u8` in 0..=255 representing [0, 2π) in 256 uniform steps
-pub fn yaw_to_u16(yaw_radians: f32) -> u16 {
-    // 65536.0 / 2π
-    const SCALE: f32 = 65536.0 / TAU;
-
-    // We use rem_euclid to ensure the angle is in the [0, TAU) range
-    // before scaling. This handles negative radians correctly.
-    let normalized_yaw = yaw_radians.rem_euclid(TAU);
-
-    // Multiply by scale and truncate.
-    // Since normalized_yaw < TAU, (yaw * SCALE) will be < 65536.0
-    (normalized_yaw * SCALE) as u32 as u16
-}
-
-/// Dequantize `u16` yaw back into radians in [0, 2π).
-pub fn yaw_from_u16(code: u16) -> f32 {
-    // 2π / 65536.0
-    const INV_SCALE: f32 = TAU / 65536.0;
-
-    (code as f32) * INV_SCALE
-}
-
-pub trait UtilMath {
-    fn sq(self) -> Self;
-}
-
-impl<T> UtilMath for T
-where
-    T: std::ops::Mul<Output = T> + Copy,
-{
-    fn sq(self) -> Self {
-        self * self
-    }
-}
-
-pub fn to_planar(vec: &na::Vector3<f32>) -> na::Vector2<f32> {
-    na::Vector2::new(vec.x, vec.z)
-}
-
 /// Planar (XZ) distance squared between two world positions (meters^2).
 pub fn planar_distance_sq(a: &na::Vector3<f32>, b: &na::Vector3<f32>) -> f32 {
-    (b.x - a.x).sq() + (b.z - a.z).sq()
+    let x = b.x - a.x;
+    let z = b.z - a.z;
+    x * x + z * z
 }
 
 /// Are two positions within a planar movement range (meters)?

@@ -1,7 +1,7 @@
 use super::{
     active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, movement_state_tbl,
     primary_stats_tbl, status_flags_tbl, transform_tbl, ActiveCharacter, Capsule, ColliderData,
-    DataTable, Experience, ExperienceData, Health, HealthData, Level, LevelData, Mana, ManaData,
+    Experience, ExperienceData, Health, HealthData, Level, LevelData, Mana, ManaData,
     MovementState, PrimaryStats, PrimaryStatsData, StatusFlags, StatusFlagsData, Transform,
     TransformData,
 };

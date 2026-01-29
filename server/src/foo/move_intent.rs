@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-
-use crate::{foo::transform_tbl__view, impl_data_table};
-
 use super::Vec2;
+use crate::foo::transform_tbl__view;
 use shared::Owner;
 use spacetimedb::*;
+use std::collections::HashMap;
 
 // Ephemeral movement requests, existence filtering can be used in movement tick
 // We iterate over this table and attempt to move any Owner for the move intent, removing
@@ -16,11 +14,22 @@ pub struct MoveIntent {
 
     pub data: MoveIntentData,
 }
-impl_data_table!(
-    table_handle = move_intent_tbl,
-    row = MoveIntent,
-    data = MoveIntentData
-);
+impl MoveIntent {
+    pub fn upsert(ctx: &spacetimedb::ReducerContext, owner: Owner, data: MoveIntentData) -> Self {
+        // If the row doesn't exist, delete will return false, which we ignore.
+        let _ = ctx.db.move_intent_tbl().owner().delete(owner);
+        ctx.db.move_intent_tbl().insert(Self { owner, data })
+    }
+    pub fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self> {
+        ctx.db.move_intent_tbl().owner().find(owner)
+    }
+    pub fn delete(&self, ctx: &ReducerContext) {
+        ctx.db.move_intent_tbl().owner().delete(self.owner);
+    }
+    pub fn insert(ctx: &ReducerContext, owner: Owner, data: MoveIntentData) {
+        ctx.db.move_intent_tbl().insert(Self { owner, data });
+    }
+}
 /// Represents the 2-dimensional movement intent of an Actor in the world
 #[derive(SpacetimeType, Debug, Clone, PartialEq)]
 pub enum MoveIntentData {

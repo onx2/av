@@ -1,6 +1,4 @@
-use super::{
-    active_character_tbl, move_intent_tbl, transform_tbl, DataTable, MoveIntent, MoveIntentData,
-};
+use super::{active_character_tbl, move_intent_tbl, transform_tbl, MoveIntent, MoveIntentData};
 use nalgebra as na;
 use shared::utils::{is_move_too_close, is_move_too_far};
 use spacetimedb::{reducer, ReducerContext};

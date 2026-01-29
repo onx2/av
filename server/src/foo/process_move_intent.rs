@@ -1,6 +1,6 @@
 use super::{
-    move_intent_tbl, movement_state_tbl, ComputedStat, DataTable, MoveIntentData, MovementSpeed,
-    MovementState, Transform, Vec2,
+    move_intent_tbl, movement_state_tbl, MoveIntentData, MovementState, SecondaryStats, Transform,
+    Vec2,
 };
 use nalgebra::{UnitQuaternion, Vector, Vector2, Vector3};
 use rapier3d::{
@@ -101,6 +101,7 @@ fn process_move_intent_reducer(
             move_intent.delete(ctx);
             continue;
         };
+
         let Some(mut owner_transform) = Transform::find(ctx, owner) else {
             move_intent.delete(ctx);
             continue;
@@ -119,12 +120,16 @@ fn process_move_intent_reducer(
             movement_state_dirty = true;
         }
 
-        let speed = MovementSpeed::compute(&view_db, owner)
-            .map(|ms| ms.value)
-            .unwrap_or(0.0);
+        let Some(speed) = SecondaryStats::find(ctx, owner).map(|ms| ms.data.movement_speed) else {
+            log::error!("Failed to find secondary stats for entity {}", owner);
+            move_intent.delete(ctx);
+            continue;
+        };
+
         let direction = (target_xz - current_xz)
             .try_normalize(0.0)
             .unwrap_or_default();
+
         if let Some(yaw) = yaw_from_xz(direction) {
             owner_transform.data.rotation =
                 UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw).into();

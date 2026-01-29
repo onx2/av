@@ -1,5 +1,7 @@
-use shared::Owner;
-use spacetimedb::{table, SpacetimeType};
+use shared::{utils::get_aoi_block, Owner};
+use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
+
+use crate::foo::{active_character_tbl__view, movement_state_tbl__view};
 
 #[table(name=secondary_stats_tbl)]
 pub struct SecondaryStats {
@@ -8,6 +10,16 @@ pub struct SecondaryStats {
 
     pub data: SecondaryStatsData,
 }
+
+impl SecondaryStats {
+    pub fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self> {
+        ctx.db.secondary_stats_tbl().owner().find(owner)
+    }
+    pub fn insert(ctx: &ReducerContext, owner: Owner, data: SecondaryStatsData) {
+        ctx.db.secondary_stats_tbl().insert(Self { owner, data });
+    }
+}
+
 #[derive(SpacetimeType, Debug, PartialEq, Clone, Copy)]
 pub struct SecondaryStatsData {
     pub movement_speed: f32,
@@ -48,4 +60,42 @@ impl SecondaryStatsData {
         // Max critical hit chance of 50% seems reasonable for now... tbd
         (base_speed * (1. + ferocity_bonus + level_bonus) * gear_multiplier).min(50.0)
     }
+}
+
+#[derive(SpacetimeType, Debug)]
+pub struct SecondaryStatsView {
+    pub owner: Owner,
+    pub data: SecondaryStatsData,
+}
+/// Finds the secondary stats for all actors within the AOI.
+/// Primary key of `Owner`
+#[spacetimedb::view(name = secondary_stats_view, public)]
+pub fn secondary_stats_view(ctx: &ViewContext) -> Vec<SecondaryStatsView> {
+    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
+        return vec![];
+    };
+    let Some(cell_id) = ctx
+        .db
+        .movement_state_tbl()
+        .owner()
+        .find(&active_character.owner)
+        .map(|row| row.cell_id)
+    else {
+        return vec![];
+    };
+
+    get_aoi_block(cell_id)
+        .into_iter()
+        .flat_map(|cell_id| ctx.db.movement_state_tbl().cell_id().filter(cell_id))
+        .filter_map(|ms| {
+            ctx.db
+                .secondary_stats_tbl()
+                .owner()
+                .find(ms.owner)
+                .map(|row| SecondaryStatsView {
+                    owner: ms.owner,
+                    data: row.data,
+                })
+        })
+        .collect()
 }

@@ -1,7 +1,6 @@
-use crate::impl_data_table;
 use num_traits::Zero;
 use shared::{define_bitmask_flags, BitmaskFlags, FlagBitmask, FlagsContainer, Owner};
-use spacetimedb::table;
+use spacetimedb::{table, ReducerContext, Table};
 
 /// SpacetimeDB table that stores bitmask-backed status flags per owner.
 ///
@@ -19,13 +18,11 @@ pub struct StatusFlags {
 }
 pub type StatusFlagsData = FlagsContainer;
 
-impl_data_table!(
-    table_handle = status_flags_tbl,
-    row = StatusFlags,
-    data = StatusFlagsData
-);
-
 impl StatusFlags {
+    pub fn insert(ctx: &ReducerContext, owner: Owner, data: StatusFlagsData) {
+        ctx.db.status_flags_tbl().insert(Self { owner, data });
+    }
+
     /// Adds a single flag.
     pub fn add_tag<U: FlagBitmask<Storage = StatusFlagsData>>(&mut self, tag: U) {
         let mut tmp = BitmaskFlags::<StatusFlagsData>::new(self.data);

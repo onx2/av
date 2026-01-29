@@ -1,6 +1,7 @@
 use super::{
-    monster_instance_tbl, DataTable, Health, HealthData, Mana, ManaData, MonsterInstance,
-    PrimaryStats, PrimaryStatsData, StatusFlags, StatusFlagsData, Transform, TransformData,
+    monster_instance_tbl, movement_state_tbl, Capsule, ColliderData, Health, HealthData, Mana,
+    ManaData, MonsterInstance, MovementState, PrimaryStats, PrimaryStatsData, StatusFlags,
+    StatusFlagsData, Transform, TransformData,
 };
 use shared::{encode_cell_id, pack_owner, Owner, OwnerKind};
 use spacetimedb::{table, ReducerContext, Table};
@@ -16,13 +17,16 @@ pub struct Monster {
     pub id: u16,
 
     pub name: String,
+
+    pub collider: ColliderData,
 }
 
 impl Monster {
-    pub fn insert(name: impl Into<String>) -> Self {
+    pub fn insert(name: impl Into<String>, collider: ColliderData) -> Self {
         Self {
             id: 0,
             name: name.into(),
+            collider,
         }
     }
 
@@ -38,17 +42,19 @@ impl Monster {
         });
 
         let owner = pack_owner(instance.owner_id, OwnerKind::Monster);
-
         // Spawn at origin by default for now; call sites can update transform after spawn
         // (or you can extend this API to accept a transform).
         let transform: TransformData = Default::default();
 
-        // TODO: MovementState -> insert
-        // let cell_id = encode_cell_id(transform.translation.x, transform.translation.z);
-        // ctx.db.movement_state_tbl().insert(Actor { owner, cell_id });
-
+        let cell_id = encode_cell_id(transform.translation.x, transform.translation.z);
         // Ephemeral component rows keyed by Owner.
-        // MovementState::insert(ctx, owner, MovementStateData::default());
+        ctx.db.movement_state_tbl().insert(MovementState {
+            owner,
+            grounded: false,
+            vertical_velocity: 0.0,
+            cell_id,
+            collider: self.collider,
+        });
         Transform::insert(ctx, owner, transform);
         PrimaryStats::insert(ctx, owner, PrimaryStatsData::default());
         Health::insert(ctx, owner, HealthData::new(100));
@@ -63,6 +69,15 @@ impl Monster {
             ctx.db.monster_tbl().delete(row);
         });
 
-        Monster::insert("Troll");
+        Monster::insert(
+            "Troll",
+            ColliderData {
+                capsule: Capsule {
+                    radius: 0.3,
+                    half_height: 0.9,
+                },
+                is_sensor: false,
+            },
+        );
     }
 }
