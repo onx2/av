@@ -14,11 +14,13 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
         return Err("Unable to find transform for the active character".into());
     };
 
-    let current: na::Vector3<f32> = transform_data.data.translation.into();
-    let target: na::Vector3<f32> = intent
-        .target_position(&ctx.as_read_only().db)
-        .map(|t| t.extend(current.y).into())
-        .unwrap_or(current);
+    let current: na::Vector2<f32> = transform_data.data.translation.xz().into();
+    let Some(target) = intent.target_position(&ctx.as_read_only().db).map(|t| {
+        let t: na::Vector2<f32> = t.into();
+        t
+    }) else {
+        return Err("Unable to find target position".into());
+    };
 
     // Basic validation, are we currently too close or too far from the next target position in the intent we want to go?
     if is_move_too_close(&current, &target) {

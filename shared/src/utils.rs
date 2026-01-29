@@ -54,19 +54,19 @@ pub fn get_desired_delta(
 }
 
 /// Planar (XZ) distance squared between two world positions (meters^2).
-pub fn planar_distance_sq(a: &na::Vector3<f32>, b: &na::Vector3<f32>) -> f32 {
+pub fn planar_distance_sq(a: &na::Vector2<f32>, b: &na::Vector2<f32>) -> f32 {
     let x = b.x - a.x;
-    let z = b.z - a.z;
+    let z = b.y - a.y;
     x * x + z * z
 }
 
 /// Are two positions within a planar movement range (meters)?
-pub fn is_move_too_far(a: &na::Vector3<f32>, b: &na::Vector3<f32>) -> bool {
+pub fn is_move_too_far(a: &na::Vector2<f32>, b: &na::Vector2<f32>) -> bool {
     planar_distance_sq(a, b) > MAX_INTENT_DISTANCE_SQ
 }
 
 /// Are two positions within a planar acceptance radius (meters)?
-pub fn is_move_too_close(a: &na::Vector3<f32>, b: &na::Vector3<f32>) -> bool {
+pub fn is_move_too_close(a: &na::Vector2<f32>, b: &na::Vector2<f32>) -> bool {
     planar_distance_sq(a, b) <= SMALLEST_REQUEST_DISTANCE_SQ
 }
 
@@ -92,11 +92,9 @@ pub fn encode_cell_id(x: f32, z: f32) -> u32 {
 ///
 /// Returns [x, z] in world units.
 pub fn decode_cell_id(id: u32) -> [f32; 2] {
-    let grid_x = (id >> 16) as u16;
-    let grid_z = (id & 0xFFFF) as u16;
     [
-        f32::from(grid_x) * CELL_SIZE - WORLD_OFFSET,
-        f32::from(grid_z) * CELL_SIZE - WORLD_OFFSET,
+        f32::from((id >> 16) as u16) * CELL_SIZE - WORLD_OFFSET,
+        f32::from((id & 0xFFFF) as u16) * CELL_SIZE - WORLD_OFFSET,
     ]
 }
 

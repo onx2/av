@@ -82,7 +82,8 @@ impl StatusFlags {
 }
 
 define_bitmask_flags!(Status, u64, {
-    Grounded,
+    Stunned,
+    Invulnerable,
 });
 
 // Whether the owner is in contact with the ground.
