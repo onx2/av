@@ -1,4 +1,4 @@
-use crate::foo::{secondary_stats_tbl, Level, SecondaryStatsData};
+use crate::{secondary_stats_tbl, Level, SecondaryStatsData};
 use shared::Owner;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table};
 

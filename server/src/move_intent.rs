@@ -1,5 +1,5 @@
 use super::Vec2;
-use crate::foo::transform_tbl__view;
+use crate::transform_tbl__view;
 use shared::Owner;
 use spacetimedb::*;
 use std::collections::HashMap;

@@ -1,6 +1,4 @@
-use crate::foo::{
-    health_tbl, primary_stats_tbl, secondary_stats_tbl, HealthData, SecondaryStatsData,
-};
+use crate::{health_tbl, primary_stats_tbl, secondary_stats_tbl, HealthData, SecondaryStatsData};
 use shared::Owner;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table};
 

@@ -1,7 +1,6 @@
+use crate::{active_character_tbl__view, movement_state_tbl__view};
 use shared::{utils::get_aoi_block, Owner};
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
-
-use crate::foo::{active_character_tbl__view, movement_state_tbl__view};
 
 #[table(name=secondary_stats_tbl)]
 pub struct SecondaryStats {

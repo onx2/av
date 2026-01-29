@@ -1,4 +1,4 @@
-use crate::foo::{level_tbl, EXPERIENCE_PER_LEVEL};
+use crate::{level_tbl, EXPERIENCE_PER_LEVEL};
 use shared::Owner;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table};
 
