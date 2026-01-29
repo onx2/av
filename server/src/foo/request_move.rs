@@ -26,6 +26,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
     if is_move_too_close(&current, &target) {
         return Err("Distance from current position too close".into());
     }
+    // TODO: validate each point to see if they are too far.
     if is_move_too_far(&current, &target) {
         return Err("Distance from current position too far".into());
     }
