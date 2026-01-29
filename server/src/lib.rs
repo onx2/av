@@ -14,6 +14,7 @@ pub mod stat;
 pub mod status_flags;
 pub mod tags;
 pub mod transform;
+pub mod world_static;
 
 pub use active_character::*;
 pub use character::*;
@@ -29,6 +30,7 @@ pub use progression::*;
 pub use stat::*;
 pub use status_flags::*;
 pub use transform::*;
+pub use world_static::*;
 
 use spacetimedb::*;
 
