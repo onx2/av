@@ -47,3 +47,50 @@ pub fn cancel_move(ctx: &ReducerContext) -> Result<(), String> {
         .delete(active_character.owner);
     Ok(())
 }
+
+// match (&source_actor.move_intent, &intent) {
+//     // 1. Idling Check
+//     (MoveIntent::None, MoveIntent::None) => {
+//         return Err("Already idling".into());
+//     }
+
+//     // 2. History Check: Is the new point too close to the old intent point?
+//     (MoveIntent::Point(old), MoveIntent::Point(new))
+//         if is_move_too_close(&old.into(), &new.into()) =>
+//     {
+//         return Err("Distance from last point too close".into());
+//     }
+
+//     // 3. Path Validation: Complexity check
+//     (_, MoveIntent::Path(p)) if p.len() > MAX_INTENT_PATH_LEN => {
+//         return Err("Path is too complex".into());
+//     }
+
+//     // 4. Path Validation: Range check (are any points too far?)
+//     (_, MoveIntent::Path(p)) if p.iter().any(|x| is_move_too_far(&current, &x.into())) => {
+//         return Err("Distance from current position too far".into());
+//     }
+
+//     // 5. Point Validation: Minimum movement check (from current position)
+//     (_, MoveIntent::Point(p)) if is_move_too_close(&current, &p.into()) => {
+//         return Err("Distance from current position too close".into());
+//     }
+
+//     _ => {
+//         // Movement state now lives directly on `Actor`.
+//         //
+//         // Keep `should_move` consistent with the movement tick behavior:
+//         // - should_move if we have a non-idle intent, OR if we're airborne (gravity needs processing).
+//         let should_move = intent != MoveIntent::None || !source_actor.grounded;
+
+//         if source_actor.move_intent != intent || source_actor.should_move != should_move {
+//             ctx.db.actor().id().update(Actor {
+//                 move_intent: intent,
+//                 should_move,
+//                 ..source_actor
+//             });
+//         }
+
+//         Ok(())
+//     }
+// }
