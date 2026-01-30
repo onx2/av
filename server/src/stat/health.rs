@@ -8,6 +8,10 @@ pub struct Health {
     #[primary_key]
     pub owner: Owner,
 
+    /// Indexed lookup for "is current health at max?"
+    #[index(btree)]
+    pub is_full: bool,
+
     pub data: HealthData,
 }
 
@@ -17,7 +21,12 @@ impl Health {
     }
 
     pub fn insert(ctx: &ReducerContext, owner: Owner, data: HealthData) {
-        ctx.db.health_tbl().insert(Self { owner, data });
+        let current = data.current.min(data.max);
+        ctx.db.health_tbl().insert(Self {
+            owner,
+            is_full: current == data.max,
+            data: HealthData { current, ..data },
+        });
     }
 
     pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
@@ -25,14 +34,41 @@ impl Health {
     }
 
     pub fn set_current(mut self, ctx: &ReducerContext, value: u16) {
+        if value == self.data.current {
+            return;
+        }
         self.data.current = value;
         self.clamp();
+        self.is_full = self.data.current == self.data.max;
+        ctx.db.health_tbl().owner().update(self);
+    }
+
+    pub fn add(mut self, ctx: &ReducerContext, amount: u16) {
+        if amount == 0 {
+            return;
+        }
+        self.data.current = self.data.current.saturating_add(amount);
+        self.clamp();
+        self.is_full = self.data.current == self.data.max;
+        ctx.db.health_tbl().owner().update(self);
+    }
+
+    pub fn sub(mut self, ctx: &ReducerContext, amount: u16) {
+        if amount == 0 {
+            return;
+        }
+        self.data.current = self.data.current.saturating_sub(amount);
+        self.is_full = self.data.current == self.data.max;
         ctx.db.health_tbl().owner().update(self);
     }
 
     pub fn set_max(mut self, ctx: &ReducerContext, value: u16) {
+        if value == self.data.max {
+            return;
+        }
         self.data.max = value;
         self.clamp();
+        self.is_full = self.data.current == self.data.max;
         ctx.db.health_tbl().owner().update(self);
     }
 }
@@ -67,6 +103,7 @@ pub struct HealthRow {
     pub owner: Owner,
     pub data: HealthData,
 }
+
 /// Finds the health for all things within the AOI.
 /// Primary key of `Owner`
 #[spacetimedb::view(name = health_view, public)]

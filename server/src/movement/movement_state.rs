@@ -1,4 +1,4 @@
-use super::Capsule;
+use crate::Capsule;
 use shared::Owner;
 use spacetimedb::{table, ReducerContext, ViewContext};
 

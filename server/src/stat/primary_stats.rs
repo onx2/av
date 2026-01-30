@@ -1,6 +1,6 @@
-use crate::{secondary_stats_tbl, Level, SecondaryStatsData};
+use crate::{active_character_tbl__view, secondary_stats_tbl, Level, SecondaryStatsData};
 use shared::Owner;
-use spacetimedb::{table, ReducerContext, SpacetimeType, Table};
+use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// Ephemeral
 ///
@@ -14,7 +14,7 @@ pub struct PrimaryStats {
 }
 
 impl PrimaryStats {
-    pub fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self> {
+    pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
         ctx.db.primary_stats_tbl().owner().find(owner)
     }
     pub fn insert(ctx: &ReducerContext, owner: Owner, data: PrimaryStatsData) {
@@ -106,4 +106,16 @@ impl PrimaryStatsData {
 
         total == max_total
     }
+}
+
+/// Finds the primary stats for this actor.
+///
+/// Primary key of `Owner`
+#[spacetimedb::view(name = primary_stats_view, public)]
+pub fn primary_stats_view(ctx: &ViewContext) -> Option<PrimaryStatsData> {
+    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
+        return None;
+    };
+
+    PrimaryStats::find(ctx, active_character.owner).map(|ps| ps.data)
 }

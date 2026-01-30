@@ -2,14 +2,11 @@ pub mod active_character;
 pub mod character;
 pub mod monster;
 pub mod monster_instance;
-pub mod move_intent;
-pub mod movement_state;
+pub mod movement;
 pub mod npc;
 pub mod player;
 pub mod primitives;
-pub mod process_move_intent;
 pub mod progression;
-pub mod request_move;
 pub mod stat;
 pub mod status_flags;
 pub mod tags;
@@ -21,12 +18,10 @@ pub use active_character::*;
 pub use character::*;
 pub use monster::*;
 pub use monster_instance::*;
-pub use move_intent::*;
-pub use movement_state::*;
+pub use movement::*;
 pub use npc::*;
 pub use player::*;
 pub use primitives::*;
-pub use process_move_intent::*;
 pub use progression::*;
 pub use stat::*;
 pub use status_flags::*;
@@ -40,6 +35,7 @@ use spacetimedb::*;
 pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Database initializing...");
     init_process_move_intent(ctx);
+    init_health_and_mana_regen(ctx);
     Ok(())
 }
 

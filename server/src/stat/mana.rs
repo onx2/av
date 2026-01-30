@@ -8,16 +8,21 @@ pub struct Mana {
     #[primary_key]
     pub owner: Owner,
 
+    /// Indexed lookup for "is current mana at max?"
+    #[index(btree)]
+    pub is_full: bool,
+
     pub data: ManaData,
 }
 
 impl Mana {
-    fn clamp(&mut self) {
-        self.data.current = self.data.current.min(self.data.max);
-    }
-
     pub fn insert(ctx: &ReducerContext, owner: Owner, data: ManaData) {
-        ctx.db.mana_tbl().insert(Self { owner, data });
+        let current = data.current.min(data.max);
+        ctx.db.mana_tbl().insert(Self {
+            owner,
+            is_full: current == data.max,
+            data: ManaData { current, ..data },
+        });
     }
 
     pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
@@ -25,15 +30,41 @@ impl Mana {
     }
 
     pub fn set_current(mut self, ctx: &ReducerContext, value: u16) {
-        self.data.current = value;
-        self.clamp();
+        if value == self.data.current {
+            return;
+        }
+
+        self.data.current = value.min(self.data.max);
+        self.is_full = self.data.current == self.data.max;
+        ctx.db.mana_tbl().owner().update(self);
+    }
+
+    pub fn add(mut self, ctx: &ReducerContext, amount: u16) {
+        if amount == 0 || self.is_full {
+            return;
+        }
+
+        self.data.current = self.data.current.saturating_add(amount).min(self.data.max);
+        self.is_full = self.data.current == self.data.max;
+        ctx.db.mana_tbl().owner().update(self);
+    }
+
+    pub fn sub(mut self, ctx: &ReducerContext, amount: u16) {
+        if amount == 0 || self.data.current == 0 {
+            return;
+        }
+        self.data.current = self.data.current.saturating_sub(amount);
+        self.is_full = self.data.current == self.data.max;
         ctx.db.mana_tbl().owner().update(self);
     }
 
     pub fn set_max(mut self, ctx: &ReducerContext, value: u16) {
+        if value == self.data.max {
+            return;
+        }
         self.data.max = value;
-        self.clamp();
-
+        self.data.current = self.data.current.min(value);
+        self.is_full = self.data.current == self.data.max;
         ctx.db.mana_tbl().owner().update(self);
     }
 }
@@ -69,7 +100,7 @@ pub struct ManaRow {
     pub owner: Owner,
     pub data: ManaData,
 }
-/// Finds the health for all things within the AOI.
+/// Finds the mana for all things within the AOI.
 /// Primary key of `Owner`
 #[spacetimedb::view(name = mana_view, public)]
 pub fn mana_view(ctx: &ViewContext) -> Vec<ManaRow> {

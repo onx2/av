@@ -1,4 +1,4 @@
-use super::{
+use crate::{
     move_intent_tbl, movement_state_tbl, MoveIntentData, MovementState, SecondaryStats, Transform,
     Vec2,
 };
