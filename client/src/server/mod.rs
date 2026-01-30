@@ -1,12 +1,10 @@
-// pub mod reducers;
-// pub mod types;
+pub mod reducers;
+pub mod types;
 
-use crate::module_bindings::{
-    CriticalChanceViewTableAccess, DbConnection, MovementSpeedViewTableAccess, RemoteTables,
-};
+use crate::module_bindings::{DbConnection, RemoteTables, SecondaryStatsViewTableAccess};
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadStdbConnectedMessage, StdbConnection, StdbPlugin};
-// use reducers::*;
+use reducers::*;
 
 pub type SpacetimeDB<'a> = Res<'a, StdbConnection<DbConnection>>;
 
@@ -30,7 +28,7 @@ pub(super) fn plugin(app: &mut App) {
             // --------------------------------
             // Register all reducers
             // --------------------------------
-            // .add_reducer::<RequestMove>()
+            .add_reducer::<RequestMove>()
             // .add_reducer::<EnterWorld>()
             // .add_reducer::<LeaveWorld>()
             // --------------------------------
@@ -38,8 +36,7 @@ pub(super) fn plugin(app: &mut App) {
             // --------------------------------
             // .add_table_without_pk(RemoteTables::critical_chance_view)
             // .add_table_without_pk(RemoteTables::movement_speed_view)
-            .add_view_with_pk(RemoteTables::critical_chance_view, |r| r.owner)
-            .add_view_with_pk(RemoteTables::movement_speed_view, |r| r.owner)
+            .add_view_with_pk(RemoteTables::secondary_stats_view, |r| r.owner)
             // .add_table(RemoteTables::player)
             // .add_table(RemoteTables::world_static)
             // .add_view_with_pk(RemoteTables::aoi_secondary_stats, |s| s.id)
@@ -55,8 +52,7 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
         println!("SpacetimeDB module connected: {:?}", message.identity);
 
         stdb.subscription_builder().subscribe(vec![
-            "select * from critical_chance_view",
-            "select * from movement_speed_view",
+            "select * from secondary_stats_view",
             // "SELECT * FROM player",
             // "SELECT * FROM world_static",
             // "SELECT * FROM aoi_secondary_stats",

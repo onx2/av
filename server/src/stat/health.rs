@@ -1,5 +1,6 @@
+use crate::{get_view_aoi_block, MovementState};
 use shared::Owner;
-use spacetimedb::{table, LocalReadOnly, ReducerContext, SpacetimeType, Table};
+use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// **Ephemeral**
 #[table(name=health_tbl)]
@@ -19,8 +20,8 @@ impl Health {
         ctx.db.health_tbl().insert(Self { owner, data });
     }
 
-    pub fn find(db: &LocalReadOnly, owner: Owner) -> Option<Self> {
-        db.health_tbl().owner().find(owner)
+    pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
+        ctx.db.health_tbl().owner().find(owner)
     }
 
     pub fn set_current(mut self, ctx: &ReducerContext, value: u16) {
@@ -59,4 +60,28 @@ impl HealthData {
         let bonus = fortitude * level * 9; // 60 * 50 * 9 = 27000
         base.saturating_add(growth).saturating_add(bonus)
     }
+}
+
+#[derive(SpacetimeType, Debug)]
+pub struct HealthRow {
+    pub owner: Owner,
+    pub data: HealthData,
+}
+/// Finds the health for all things within the AOI.
+/// Primary key of `Owner`
+#[spacetimedb::view(name = health_view, public)]
+pub fn health_view(ctx: &ViewContext) -> Vec<HealthRow> {
+    let Some(cell_block) = get_view_aoi_block(ctx) else {
+        return vec![];
+    };
+
+    cell_block
+        .flat_map(|cell_id| MovementState::by_cell_id(ctx, cell_id))
+        .filter_map(|ms| {
+            Health::find(ctx, ms.owner).map(|row| HealthRow {
+                owner: ms.owner,
+                data: row.data,
+            })
+        })
+        .collect()
 }

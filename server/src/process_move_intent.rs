@@ -121,7 +121,9 @@ fn process_move_intent_reducer(
             movement_state_dirty = true;
         }
 
-        let Some(speed) = SecondaryStats::find(ctx, owner).map(|ms| ms.data.movement_speed) else {
+        let Some(speed) = SecondaryStats::find(&ctx.as_read_only(), owner)
+            .map(|secondary_stats| secondary_stats.data.movement_speed)
+        else {
             log::error!("Failed to find secondary stats for entity {}", owner);
             move_intent.delete(ctx);
             continue;
@@ -140,8 +142,8 @@ fn process_move_intent_reducer(
             dt,
             &query_pipeline,
             &Capsule::new_y(
-                movement_state.collider.capsule.half_height,
-                movement_state.collider.capsule.radius,
+                movement_state.capsule.half_height,
+                movement_state.capsule.radius,
             ),
             &owner_transform.data.into(),
             get_desired_delta(

@@ -1,7 +1,7 @@
 use super::{
-    monster_instance_tbl, movement_state_tbl, Capsule, ColliderData, Health, HealthData, Mana,
-    ManaData, MonsterInstance, MovementState, PrimaryStats, PrimaryStatsData, StatusFlags,
-    StatusFlagsData, Transform, TransformData,
+    monster_instance_tbl, movement_state_tbl, Capsule, Health, HealthData, Mana, ManaData,
+    MonsterInstance, MovementState, PrimaryStats, PrimaryStatsData, StatusFlags, StatusFlagsData,
+    Transform, TransformData,
 };
 use shared::{encode_cell_id, pack_owner, Owner, OwnerKind};
 use spacetimedb::{table, ReducerContext, Table};
@@ -18,15 +18,15 @@ pub struct Monster {
 
     pub name: String,
 
-    pub collider: ColliderData,
+    pub capsule: Capsule,
 }
 
 impl Monster {
-    pub fn insert(name: impl Into<String>, collider: ColliderData) -> Self {
+    pub fn insert(name: impl Into<String>, capsule: Capsule) -> Self {
         Self {
             id: 0,
             name: name.into(),
-            collider,
+            capsule,
         }
     }
 
@@ -53,7 +53,7 @@ impl Monster {
             grounded: false,
             vertical_velocity: 0.0,
             cell_id,
-            collider: self.collider,
+            capsule: self.capsule,
         });
         Transform::insert(ctx, owner, transform);
         PrimaryStats::insert(ctx, owner, PrimaryStatsData::default());
@@ -71,12 +71,9 @@ impl Monster {
 
         Monster::insert(
             "Troll",
-            ColliderData {
-                capsule: Capsule {
-                    radius: 0.3,
-                    half_height: 0.9,
-                },
-                is_sensor: false,
+            Capsule {
+                radius: 0.3,
+                half_height: 0.9,
             },
         );
     }

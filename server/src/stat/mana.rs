@@ -1,5 +1,6 @@
+use crate::{get_view_aoi_block, MovementState};
 use shared::Owner;
-use spacetimedb::{table, LocalReadOnly, ReducerContext, SpacetimeType, Table};
+use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// **Ephemeral**
 #[table(name=mana_tbl)]
@@ -19,8 +20,8 @@ impl Mana {
         ctx.db.mana_tbl().insert(Self { owner, data });
     }
 
-    pub fn find(db: &LocalReadOnly, owner: Owner) -> Option<Self> {
-        db.mana_tbl().owner().find(owner)
+    pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
+        ctx.db.mana_tbl().owner().find(owner)
     }
 
     pub fn set_current(mut self, ctx: &ReducerContext, value: u16) {
@@ -61,4 +62,28 @@ impl ManaData {
         let bonus = intelligence * level * 9; // 60 * 50 * 9 = 27000
         base.saturating_add(growth).saturating_add(bonus)
     }
+}
+
+#[derive(SpacetimeType, Debug)]
+pub struct ManaRow {
+    pub owner: Owner,
+    pub data: ManaData,
+}
+/// Finds the health for all things within the AOI.
+/// Primary key of `Owner`
+#[spacetimedb::view(name = mana_view, public)]
+pub fn mana_view(ctx: &ViewContext) -> Vec<ManaRow> {
+    let Some(cell_block) = get_view_aoi_block(ctx) else {
+        return vec![];
+    };
+
+    cell_block
+        .flat_map(|cell_id| MovementState::by_cell_id(ctx, cell_id))
+        .filter_map(|ms| {
+            Mana::find(ctx, ms.owner).map(|row| ManaRow {
+                owner: ms.owner,
+                data: row.data,
+            })
+        })
+        .collect()
 }

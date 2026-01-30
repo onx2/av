@@ -2,7 +2,7 @@ use super::Vec3;
 use rapier3d::prelude::{SharedShape, Vector};
 use spacetimedb::SpacetimeType;
 
-/// Capsule dimensions for collider definitions.
+/// Y-aligned capsule collider definition
 ///
 /// Semantics:
 /// - `radius`: radius of spherical caps and cylinder.

@@ -1,9 +1,8 @@
 use super::{
     active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, movement_state_tbl,
-    primary_stats_tbl, status_flags_tbl, transform_tbl, ActiveCharacter, Capsule, ColliderData,
-    Experience, ExperienceData, Health, HealthData, Level, LevelData, Mana, ManaData,
-    MovementState, PrimaryStats, PrimaryStatsData, StatusFlags, StatusFlagsData, Transform,
-    TransformData,
+    primary_stats_tbl, status_flags_tbl, transform_tbl, ActiveCharacter, Capsule, Experience,
+    ExperienceData, Health, HealthData, Level, LevelData, Mana, ManaData, MovementState,
+    PrimaryStats, PrimaryStatsData, StatusFlags, StatusFlagsData, Transform, TransformData,
 };
 use shared::{encode_cell_id, pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
@@ -31,7 +30,7 @@ pub struct Character {
     pub experience: ExperienceData,
     pub level: LevelData,
     pub status_flags: StatusFlagsData,
-    pub collider: ColliderData,
+    pub capsule: Capsule,
 }
 
 impl AsOwner for Character {
@@ -69,12 +68,9 @@ impl Character {
             health: HealthData::new(100),
             mana: ManaData::new(100),
             status_flags: StatusFlagsData::default(),
-            collider: ColliderData {
-                capsule: Capsule {
-                    radius: 0.3,
-                    half_height: 0.9,
-                },
-                is_sensor: false,
+            capsule: Capsule {
+                radius: 0.3,
+                half_height: 0.9,
             },
         });
 
@@ -112,7 +108,7 @@ impl Character {
             grounded: false,
             vertical_velocity: 0.0,
             cell_id,
-            collider: self.collider,
+            capsule: self.capsule,
         });
         Transform::insert(ctx, owner, self.transform);
         PrimaryStats::insert(ctx, owner, self.primary_stats);

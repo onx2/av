@@ -100,6 +100,9 @@ pub fn decode_cell_id(id: u32) -> [f32; 2] {
 
 /// Returns the 9 cell IDs forming a 3x3 Area of Interest (AOI) block around the given center cell.
 ///
+/// **NOTE** Its expected to have a buffer of 1 cell around the world so we don't need to worry about the
+/// saturating add/sub duplicating values for center and edge.
+///
 /// Layout (top-down view, +Z = North):
 ///
 /// [0] North-West | [1] North     | [2] North-East
@@ -109,33 +112,32 @@ pub fn decode_cell_id(id: u32) -> [f32; 2] {
 /// [6] South-West | [7] South     | [8] South-East
 ///
 /// Index 4 is always the input `id`. Neighbors use saturating arithmetic to clamp at u16 bounds (0..65535).
+///
+/// **Performance**: O(1)
 pub fn get_aoi_block(cell_id: u32) -> [u32; 9] {
     // Cell ID format: [x: u16 (bits 31-16)] [z: u16 (bits 15-0)]
     let x = (cell_id >> 16) as u16; // Extract grid X from low 16 bits after right shift
     let z = (cell_id & 0xFFFF) as u16; // Extract grid Z from low 16 bits after bitwise AND
 
-    // Neighbor coordinates (clamp to valid range)
-    let xw = x.saturating_sub(1); // West
-    let xe = x.saturating_add(1); // East
-    let zn = z.saturating_add(1); // North
-    let zs = z.saturating_sub(1); // South
+    // Neighbor coordinates (wrap to valid range and avoid branching, saves a few cycles)
+    // It is expected we never hit the edge of the grid
+    let x_west = x.wrapping_sub(1); // West (X-1)
+    let x_east = x.wrapping_add(1); // East (X+1)
+    let z_north = z.wrapping_add(1); // North (Z-1)
+    let z_south = z.wrapping_sub(1); // South (Z+1)
 
-    // Pre-shift X values to high 16 bits
-    let x_shifted = u32::from(x) << 16;
-    let xw_shifted = u32::from(xw) << 16;
-    let xe_shifted = u32::from(xe) << 16;
-
+    // Pre-shift X values to high 16 bits to pack
     // Reconstruct neighbor IDs via OR (low 16 bits = Z, high already shifted)
     [
-        xw_shifted | u32::from(zn), // NW
-        x_shifted | u32::from(zn),  // N
-        xe_shifted | u32::from(zn), // NE
-        xw_shifted | u32::from(z),  // W
-        cell_id,                    // Center
-        xe_shifted | u32::from(z),  // E
-        xw_shifted | u32::from(zs), // SW
-        x_shifted | u32::from(zs),  // S
-        xe_shifted | u32::from(zs), // SE
+        (u32::from(x_west) << 16) | u32::from(z_north), // NW
+        (u32::from(x) << 16) | u32::from(z_north),      // N
+        (u32::from(x_east) << 16) | u32::from(z_north), // NE
+        (u32::from(x_west) << 16) | u32::from(z),       // W
+        cell_id,                                        // Center
+        (u32::from(x_east) << 16) | u32::from(z),       // E
+        (u32::from(x_west) << 16) | u32::from(z_south), // SW
+        (u32::from(x) << 16) | u32::from(z_south),      // S
+        (u32::from(x_east) << 16) | u32::from(z_south), // SE
     ]
 }
 

@@ -1,5 +1,5 @@
-use crate::{active_character_tbl__view, movement_state_tbl__view};
-use shared::{utils::get_aoi_block, Owner};
+use crate::{get_view_aoi_block, MovementState};
+use shared::Owner;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 #[table(name=secondary_stats_tbl)]
@@ -11,7 +11,7 @@ pub struct SecondaryStats {
 }
 
 impl SecondaryStats {
-    pub fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self> {
+    pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
         ctx.db.secondary_stats_tbl().owner().find(owner)
     }
     pub fn insert(ctx: &ReducerContext, owner: Owner, data: SecondaryStatsData) {
@@ -62,39 +62,25 @@ impl SecondaryStatsData {
 }
 
 #[derive(SpacetimeType, Debug)]
-pub struct SecondaryStatsView {
+pub struct SecondaryStatsRow {
     pub owner: Owner,
     pub data: SecondaryStatsData,
 }
 /// Finds the secondary stats for all actors within the AOI.
 /// Primary key of `Owner`
 #[spacetimedb::view(name = secondary_stats_view, public)]
-pub fn secondary_stats_view(ctx: &ViewContext) -> Vec<SecondaryStatsView> {
-    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
-        return vec![];
-    };
-    let Some(cell_id) = ctx
-        .db
-        .movement_state_tbl()
-        .owner()
-        .find(&active_character.owner)
-        .map(|row| row.cell_id)
-    else {
+pub fn secondary_stats_view(ctx: &ViewContext) -> Vec<SecondaryStatsRow> {
+    let Some(cell_block) = get_view_aoi_block(ctx) else {
         return vec![];
     };
 
-    get_aoi_block(cell_id)
-        .into_iter()
-        .flat_map(|cell_id| ctx.db.movement_state_tbl().cell_id().filter(cell_id))
+    cell_block
+        .flat_map(|cell_id| MovementState::by_cell_id(ctx, cell_id))
         .filter_map(|ms| {
-            ctx.db
-                .secondary_stats_tbl()
-                .owner()
-                .find(ms.owner)
-                .map(|row| SecondaryStatsView {
-                    owner: ms.owner,
-                    data: row.data,
-                })
+            SecondaryStats::find(ctx, ms.owner).map(|row| SecondaryStatsRow {
+                owner: ms.owner,
+                data: row.data,
+            })
         })
         .collect()
 }
