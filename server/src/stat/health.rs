@@ -33,16 +33,7 @@ impl Health {
         ctx.db.health_tbl().owner().find(owner)
     }
 
-    pub fn set_current(mut self, ctx: &ReducerContext, value: u16) {
-        if value == self.data.current {
-            return;
-        }
-        self.data.current = value;
-        self.clamp();
-        self.is_full = self.data.current == self.data.max;
-        ctx.db.health_tbl().owner().update(self);
-    }
-
+    /// Adds to the current value, clamping and computing is_full
     pub fn add(mut self, ctx: &ReducerContext, amount: u16) {
         if amount == 0 {
             return;
@@ -53,6 +44,7 @@ impl Health {
         ctx.db.health_tbl().owner().update(self);
     }
 
+    /// Subtracts from the current value, clamping and computing is_full
     pub fn sub(mut self, ctx: &ReducerContext, amount: u16) {
         if amount == 0 {
             return;
@@ -62,6 +54,18 @@ impl Health {
         ctx.db.health_tbl().owner().update(self);
     }
 
+    /// Sets the current value, clamping to max and computing is_full
+    pub fn set_current(mut self, ctx: &ReducerContext, value: u16) {
+        if value == self.data.current {
+            return;
+        }
+        self.data.current = value;
+        self.clamp();
+        self.is_full = self.data.current == self.data.max;
+        ctx.db.health_tbl().owner().update(self);
+    }
+
+    /// Sets the max value, clamping current and computing is_full
     pub fn set_max(mut self, ctx: &ReducerContext, value: u16) {
         if value == self.data.max {
             return;

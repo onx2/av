@@ -65,6 +65,7 @@ fn regen_reducer(ctx: &ReducerContext, _timer: RegenTimer) -> Result<(), String>
     const BASE_REGEN_RATE: f32 = 0.01;
     let dt_secs: f32 = DT_MILLIS as f32 / 1000.0;
 
+    // Computes the delta change, though this is essentially moot since we regen at 1second right now
     let compute_delta = |max: u16, rate: f32| ((max as f32) * rate * dt_secs).min(10.0) as u16;
 
     let mut regen_cache: HashMap<Owner, RegenStatsData> = HashMap::new();
