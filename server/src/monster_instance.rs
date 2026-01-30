@@ -32,33 +32,3 @@ impl AsOwner for MonsterInstance {
         OwnerKind::Monster
     }
 }
-
-// #[derive(SpacetimeType, Debug)]
-// pub struct ActiveCharacterRow {
-//     pub owner: Owner,
-// }
-// /// Finds the active character for this player
-// /// Primary key of `Owner`
-// #[spacetimedb::view(name = active_character_view, public)]
-// pub fn active_character_view(ctx: &ViewContext) -> Option<ActiveCharacterRow> {
-//     ctx.db
-//         .active_character_tbl()
-//         .identity()
-//         .find(ctx.sender)
-//         .map(|ac| ActiveCharacterRow { owner: ac.owner })
-// let Some(cell_id) = ctx
-//     .db
-//     .movement_state_tbl()
-//     .owner()
-//     .find(&active_character.owner)
-//     .map(|row| row.cell_id)
-// else {
-//     return vec![];
-// };
-
-// get_aoi_block(cell_id)
-//     .into_iter()
-//     .flat_map(|cell_id| ctx.db.movement_state_tbl().cell_id().filter(cell_id))
-//     .filter_map(|ms| ActiveCharacterView { owner: ms.owner })
-//     .collect()
-// }
