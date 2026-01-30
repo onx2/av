@@ -1,15 +1,12 @@
-use crate::{WorldStaticDef, collider_from_def};
-
 use super::constants::*;
-use nalgebra::{self as na, Isometry, Translation3};
+use crate::{WorldStaticDef, collider_from_def};
+use nalgebra::{self as na, Isometry, Translation3, Vector2, Vector3};
 use rapier3d::prelude::{
     BroadPhaseBvh, ColliderSet, IntegrationParameters, NarrowPhase, QueryFilter, QueryPipeline,
     RigidBodySet,
 };
-use std::f32::consts::TAU;
 
-pub fn yaw_from_xz(xz: [f32; 2]) -> Option<f32> {
-    let xz: na::Vector2<f32> = xz.into();
+pub fn yaw_from_xz(xz: Vector2<f32>) -> Option<f32> {
     if xz.norm_squared() > YAW_EPS {
         return Some((-xz[0]).atan2(-xz[1]));
     }
@@ -18,94 +15,58 @@ pub fn yaw_from_xz(xz: [f32; 2]) -> Option<f32> {
 }
 
 /// Returns true if two world positions are within the planar (XZ) acceptance radius.
-pub fn is_at_target_planar(current: [f32; 2], target: [f32; 2]) -> bool {
+pub fn is_at_target_planar(current: Vector2<f32>, target: Vector2<f32>) -> bool {
     const CM_SQ: f32 = 1.0e-4;
-    let dx = target[0] - current[0];
-    let dz = target[1] - current[1];
-    (dx * dx) + (dz * dz) <= CM_SQ
+    (target - current).norm_squared() <= CM_SQ
 }
 
 pub fn get_desired_delta(
-    current_planar: [f32; 2],
-    target_planar: [f32; 2],
+    current_planar: Vector2<f32>,
+    target_planar: Vector2<f32>,
     movement_speed_mps: f32,
+    vertical_velocity: f32,
     grounded: bool,
     dt: f32,
-) -> [f32; 3] {
+) -> Vector3<f32> {
     const MM_SQ: f32 = 1.0e-6;
-    // Planar displacement (XZ)
-    let current_planar = na::Vector2::new(current_planar[0], current_planar[1]);
-    let target_planar = na::Vector2::new(target_planar[0], target_planar[1]);
 
     let max_step = movement_speed_mps * dt;
     let displacement = target_planar - current_planar;
     let dist_sq = displacement.norm_squared();
 
     let desired_planar = if dist_sq <= MM_SQ {
-        na::Vector2::new(0.0, 0.0)
+        Vector2::new(0.0, 0.0)
     } else {
         let dist = dist_sq.sqrt();
         displacement * (max_step.min(dist) / dist)
     };
 
     if grounded {
-        [desired_planar.x, 0.0, desired_planar.y]
+        // No need for downward bias or gravity because snap to ground is active
+        [desired_planar.x, 0.0, desired_planar.y].into()
     } else {
+        let dy = vertical_velocity * dt;
         // Air control reduction in planar and gravity.
         // Gravity is linear because I don't expect to have a need for "real" gravity...
         // in the world, it is only applied here to make sure we end up on the ground eventually.
-        [desired_planar.x * 0.35, -9.81 * dt, desired_planar.y * 0.35]
+        [desired_planar.x * 0.35, dy, desired_planar.y * 0.35].into()
     }
-}
-
-/// Quantize yaw (radians) into a single byte.
-///
-/// Convention:
-/// - input: yaw in radians (any range; e.g. [-π, π] or [0, 2π))
-/// - output: `u8` in 0..=255 representing [0, 2π) in 256 uniform steps
-pub fn yaw_to_u8(yaw_radians: f32) -> u8 {
-    const SCALE: f32 = 256.0 / TAU;
-
-    // 1. Multiply to get range approx [-128.0, 128.0]
-    // 2. Cast to i32 to handle the negative sign
-    // 3. Cast to u8 to truncate to the 0..255 range
-    (yaw_radians * SCALE) as i32 as u8
-}
-
-/// Dequantize `u8` yaw back into radians in [0, 2π).
-pub fn yaw_from_u8(code: u8) -> f32 {
-    (code as f32) * (TAU / 256.0)
-}
-
-pub trait UtilMath {
-    fn sq(self) -> Self;
-}
-
-impl<T> UtilMath for T
-where
-    T: std::ops::Mul<Output = T> + Copy,
-{
-    fn sq(self) -> Self {
-        self * self
-    }
-}
-
-pub fn to_planar(vec: &na::Vector3<f32>) -> na::Vector2<f32> {
-    na::Vector2::new(vec.x, vec.z)
 }
 
 /// Planar (XZ) distance squared between two world positions (meters^2).
-pub fn planar_distance_sq(a: &na::Vector3<f32>, b: &na::Vector3<f32>) -> f32 {
-    (b.x - a.x).sq() + (b.z - a.z).sq()
+pub fn planar_distance_sq(a: &na::Vector2<f32>, b: &na::Vector2<f32>) -> f32 {
+    let x = b.x - a.x;
+    let z = b.y - a.y;
+    x * x + z * z
 }
 
 /// Are two positions within a planar movement range (meters)?
-pub fn is_move_too_far(a: &na::Vector3<f32>, b: &na::Vector3<f32>) -> bool {
+pub fn is_move_too_far(a: &na::Vector2<f32>, b: &na::Vector2<f32>) -> bool {
     planar_distance_sq(a, b) > MAX_INTENT_DISTANCE_SQ
 }
 
 /// Are two positions within a planar acceptance radius (meters)?
-pub fn is_move_too_close(a: &na::Vector3<f32>, b: &na::Vector3<f32>) -> bool {
+pub fn is_move_too_close(a: &na::Vector2<f32>, b: &na::Vector2<f32>) -> bool {
     planar_distance_sq(a, b) <= SMALLEST_REQUEST_DISTANCE_SQ
 }
 
@@ -131,15 +92,16 @@ pub fn encode_cell_id(x: f32, z: f32) -> u32 {
 ///
 /// Returns [x, z] in world units.
 pub fn decode_cell_id(id: u32) -> [f32; 2] {
-    let grid_x = (id >> 16) as u16;
-    let grid_z = (id & 0xFFFF) as u16;
     [
-        f32::from(grid_x) * CELL_SIZE - WORLD_OFFSET,
-        f32::from(grid_z) * CELL_SIZE - WORLD_OFFSET,
+        f32::from((id >> 16) as u16) * CELL_SIZE - WORLD_OFFSET,
+        f32::from((id & 0xFFFF) as u16) * CELL_SIZE - WORLD_OFFSET,
     ]
 }
 
 /// Returns the 9 cell IDs forming a 3x3 Area of Interest (AOI) block around the given center cell.
+///
+/// **NOTE** Its expected to have a buffer of 1 cell around the world so we don't need to worry about the
+/// saturating add/sub duplicating values for center and edge.
 ///
 /// Layout (top-down view, +Z = North):
 ///
@@ -150,33 +112,32 @@ pub fn decode_cell_id(id: u32) -> [f32; 2] {
 /// [6] South-West | [7] South     | [8] South-East
 ///
 /// Index 4 is always the input `id`. Neighbors use saturating arithmetic to clamp at u16 bounds (0..65535).
+///
+/// **Performance**: O(1)
 pub fn get_aoi_block(cell_id: u32) -> [u32; 9] {
     // Cell ID format: [x: u16 (bits 31-16)] [z: u16 (bits 15-0)]
     let x = (cell_id >> 16) as u16; // Extract grid X from low 16 bits after right shift
     let z = (cell_id & 0xFFFF) as u16; // Extract grid Z from low 16 bits after bitwise AND
 
-    // Neighbor coordinates (clamp to valid range)
-    let xw = x.saturating_sub(1); // West
-    let xe = x.saturating_add(1); // East
-    let zn = z.saturating_add(1); // North
-    let zs = z.saturating_sub(1); // South
+    // Neighbor coordinates (wrap to valid range and avoid branching, saves a few cycles)
+    // It is expected we never hit the edge of the grid
+    let x_west = x.wrapping_sub(1); // West (X-1)
+    let x_east = x.wrapping_add(1); // East (X+1)
+    let z_north = z.wrapping_add(1); // North (Z-1)
+    let z_south = z.wrapping_sub(1); // South (Z+1)
 
-    // Pre-shift X values to high 16 bits
-    let x_shifted = u32::from(x) << 16;
-    let xw_shifted = u32::from(xw) << 16;
-    let xe_shifted = u32::from(xe) << 16;
-
+    // Pre-shift X values to high 16 bits to pack
     // Reconstruct neighbor IDs via OR (low 16 bits = Z, high already shifted)
     [
-        xw_shifted | u32::from(zn), // NW
-        x_shifted | u32::from(zn),  // N
-        xe_shifted | u32::from(zn), // NE
-        xw_shifted | u32::from(z),  // W
-        cell_id,                    // Center
-        xe_shifted | u32::from(z),  // E
-        xw_shifted | u32::from(zs), // SW
-        x_shifted | u32::from(zs),  // S
-        xe_shifted | u32::from(zs), // SE
+        (u32::from(x_west) << 16) | u32::from(z_north), // NW
+        (u32::from(x) << 16) | u32::from(z_north),      // N
+        (u32::from(x_east) << 16) | u32::from(z_north), // NE
+        (u32::from(x_west) << 16) | u32::from(z),       // W
+        cell_id,                                        // Center
+        (u32::from(x_east) << 16) | u32::from(z),       // E
+        (u32::from(x_west) << 16) | u32::from(z_south), // SW
+        (u32::from(x) << 16) | u32::from(z_south),      // S
+        (u32::from(x_east) << 16) | u32::from(z_south), // SE
     ]
 }
 

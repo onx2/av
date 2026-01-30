@@ -1,10 +1,7 @@
 pub mod reducers;
 pub mod types;
 
-use crate::module_bindings::{
-    AoiActorTableAccess, AoiSecondaryStatsTableAccess, AoiTransformDataTableAccess, DbConnection,
-    PlayerTableAccess, RemoteTables, WorldStaticTableAccess,
-};
+use crate::module_bindings::{DbConnection, RemoteTables, SecondaryStatsViewTableAccess};
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadStdbConnectedMessage, StdbConnection, StdbPlugin};
 use reducers::*;
@@ -32,16 +29,19 @@ pub(super) fn plugin(app: &mut App) {
             // Register all reducers
             // --------------------------------
             .add_reducer::<RequestMove>()
-            .add_reducer::<EnterWorld>()
-            .add_reducer::<LeaveWorld>()
+            // .add_reducer::<EnterWorld>()
+            // .add_reducer::<LeaveWorld>()
             // --------------------------------
             // Register all tables
             // --------------------------------
-            .add_table(RemoteTables::player)
-            .add_view_with_pk(RemoteTables::aoi_secondary_stats, |s| s.id)
-            .add_view_with_pk(RemoteTables::aoi_actor, |a| a.id)
-            .add_view_with_pk(RemoteTables::aoi_transform_data, |t| t.id)
-            .add_table(RemoteTables::world_static)
+            // .add_table_without_pk(RemoteTables::critical_chance_view)
+            // .add_table_without_pk(RemoteTables::movement_speed_view)
+            .add_view_with_pk(RemoteTables::secondary_stats_view, |r| r.owner)
+            // .add_table(RemoteTables::player)
+            // .add_table(RemoteTables::world_static)
+            // .add_view_with_pk(RemoteTables::aoi_secondary_stats, |s| s.id)
+            // .add_view_with_pk(RemoteTables::aoi_actor, |a| a.id)
+            // .add_view_with_pk(RemoteTables::aoi_transform_data, |t| t.id)
             .with_run_fn(DbConnection::run_threaded),
     );
     app.add_systems(Update, on_connect);
@@ -52,11 +52,12 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
         println!("SpacetimeDB module connected: {:?}", message.identity);
 
         stdb.subscription_builder().subscribe(vec![
-            "SELECT * FROM player",
-            "SELECT * FROM world_static",
-            "SELECT * FROM aoi_secondary_stats",
-            "SELECT * FROM aoi_actor",
-            "SELECT * FROM aoi_transform_data",
+            "select * from secondary_stats_view",
+            // "SELECT * FROM player",
+            // "SELECT * FROM world_static",
+            // "SELECT * FROM aoi_secondary_stats",
+            // "SELECT * FROM aoi_actor",
+            // "SELECT * FROM aoi_transform_data",
         ]);
     }
 }

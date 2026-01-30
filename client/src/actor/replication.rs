@@ -8,7 +8,7 @@ use crate::{
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage, ReadUpdateMessage};
-use shared::utils::yaw_from_u8;
+use shared::utils::yaw_from_u16;
 use spacetimedb_sdk::Table;
 
 pub(super) fn on_actor_deleted(
@@ -61,7 +61,7 @@ pub(super) fn on_actor_inserted(
         };
 
         let translation: Vec3 = transform_data.translation.into();
-        let rotation = Quat::from_rotation_y(yaw_from_u8(transform_data.yaw));
+        let rotation = Quat::from_rotation_y(yaw_from_u16(transform_data.yaw));
 
         let mut entity_commands = commands.spawn((
             Mesh3d(meshes.add(Mesh::from(Capsule3d {
@@ -144,7 +144,7 @@ pub(super) fn sync_transform(
             transform_data.translation
         );
         network_transform.translation = transform_data.translation.into();
-        network_transform.rotation = Quat::from_rotation_y(yaw_from_u8(transform_data.yaw));
+        network_transform.rotation = Quat::from_rotation_y(yaw_from_u16(transform_data.yaw));
     }
 }
 
