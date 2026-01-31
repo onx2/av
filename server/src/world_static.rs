@@ -95,7 +95,8 @@ pub fn row_to_def(row: WorldStatic) -> WorldStaticDef {
     }
 }
 
-pub fn recreate_static_world(ctx: &ReducerContext) {
+/// Deletes all static world entries and re-inserts them to build the world
+pub fn regenerate_static_world(ctx: &ReducerContext) {
     for row in ctx.db.world_static_tbl().iter() {
         ctx.db.world_static_tbl().delete(row);
     }

@@ -1,20 +1,20 @@
 use crate::{
-    move_intent_tbl, movement_state_tbl, MoveIntentData, MovementState, SecondaryStats, Transform,
-    Vec2,
+    move_intent_tbl, movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData,
+    MovementState, SecondaryStats, Transform, Vec2,
 };
-use nalgebra::{UnitQuaternion, Vector, Vector2, Vector3};
+use nalgebra::{UnitQuaternion, Vector2, Vector3};
 use rapier3d::{
     control::{CharacterAutostep, KinematicCharacterController},
+    parry::utils::hashmap::HashMap,
     prelude::{Capsule, QueryFilter},
 };
 use shared::{
     constants::{GRAVITY, TERMINAL_VELOCITY},
     encode_cell_id, get_desired_delta, is_at_target_planar,
     utils::build_static_query_world,
-    yaw_from_xz, ColliderShapeDef, Owner, WorldStaticDef,
+    yaw_from_xz, Owner,
 };
 use spacetimedb::{reducer, ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
-use std::collections::HashMap;
 
 pub fn delta_time(now: Timestamp, last: Timestamp) -> Option<f32> {
     now.time_duration_since(last)
@@ -77,26 +77,23 @@ fn process_move_intent_reducer(
         }),
         ..KinematicCharacterController::default()
     };
-    // TODO: Actually build world
-    let query_world = build_static_query_world(
-        [WorldStaticDef {
-            id: 1,
-            translation: Vector::default(),
-            rotation: UnitQuaternion::default(),
-            shape: ColliderShapeDef::Plane {
-                offset_along_normal: 0.0,
-            },
-        }],
-        dt,
-    );
+
+    // Build the rapier physics world
+    let world_defs = ctx.db.world_static_tbl().iter().map(row_to_def);
+    let query_world = build_static_query_world(world_defs, dt);
     let query_pipeline = query_world.as_query_pipeline(QueryFilter::only_fixed());
-    let mut target_xz_cache: HashMap<Owner, Vec2> = HashMap::new();
-    let view_db = ctx.as_read_only().db;
+
+    // Initialize a actor location cache. Rapier exposes a much faster HashMap, 10x fewer CPU instructions.
+    let moving_count = ctx.db.move_intent_tbl().count() as usize;
+    let mut target_xz_cache: HashMap<Owner, Vec2> =
+        HashMap::with_capacity_and_hasher(moving_count, Default::default());
+    let view_ctx = ctx.as_read_only();
+
     for mut move_intent in ctx.db.move_intent_tbl().iter() {
         let owner = move_intent.owner;
         let Some(target_xz) = move_intent
             .data
-            .target_position_with_cache(&view_db, &mut target_xz_cache)
+            .target_position_with_cache(&view_ctx.db, &mut target_xz_cache)
         else {
             move_intent.delete(ctx);
             continue;
@@ -121,7 +118,7 @@ fn process_move_intent_reducer(
             movement_state_dirty = true;
         }
 
-        let Some(speed) = SecondaryStats::find(&ctx.as_read_only(), owner)
+        let Some(speed) = SecondaryStats::find(&view_ctx, owner)
             .map(|secondary_stats| secondary_stats.data.movement_speed)
         else {
             log::error!("Failed to find secondary stats for entity {}", owner);

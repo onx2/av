@@ -1,6 +1,6 @@
 use super::constants::*;
 use crate::{WorldStaticDef, collider_from_def};
-use nalgebra::{self as na, Isometry, Translation3, Vector2, Vector3};
+use nalgebra::{Isometry, Translation3, Vector2, Vector3};
 use rapier3d::prelude::{
     BroadPhaseBvh, ColliderSet, IntegrationParameters, NarrowPhase, QueryFilter, QueryPipeline,
     RigidBodySet,
@@ -54,19 +54,19 @@ pub fn get_desired_delta(
 }
 
 /// Planar (XZ) distance squared between two world positions (meters^2).
-pub fn planar_distance_sq(a: &na::Vector2<f32>, b: &na::Vector2<f32>) -> f32 {
+pub fn planar_distance_sq(a: Vector2<f32>, b: Vector2<f32>) -> f32 {
     let x = b.x - a.x;
     let z = b.y - a.y;
     x * x + z * z
 }
 
 /// Are two positions within a planar movement range (meters)?
-pub fn is_move_too_far(a: &na::Vector2<f32>, b: &na::Vector2<f32>) -> bool {
+pub fn is_move_too_far(a: Vector2<f32>, b: Vector2<f32>) -> bool {
     planar_distance_sq(a, b) > MAX_INTENT_DISTANCE_SQ
 }
 
 /// Are two positions within a planar acceptance radius (meters)?
-pub fn is_move_too_close(a: &na::Vector2<f32>, b: &na::Vector2<f32>) -> bool {
+pub fn is_move_too_close(a: Vector2<f32>, b: Vector2<f32>) -> bool {
     planar_distance_sq(a, b) <= SMALLEST_REQUEST_DISTANCE_SQ
 }
 

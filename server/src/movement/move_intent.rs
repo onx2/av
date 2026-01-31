@@ -1,7 +1,7 @@
 use crate::{transform_tbl__view, Vec2};
+use rapier3d::parry::utils::hashmap::HashMap;
 use shared::Owner;
 use spacetimedb::*;
-use std::collections::HashMap;
 
 // Ephemeral movement requests, existence filtering can be used in movement tick
 // We iterate over this table and attempt to move any Owner for the move intent, removing

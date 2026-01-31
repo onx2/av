@@ -84,17 +84,17 @@ impl ManaData {
         Self { current: max, max }
     }
 
-    /// Formula to compute the maximum mana based on level and intelligence.
+    /// Formula to compute the maximum mana based on level and intellect.
     /// TBD on if this should exist in the shared crate
-    pub fn compute_max(level: u8, intelligence: u8) -> u16 {
+    pub fn compute_max(level: u8, intellect: u8) -> u16 {
         let base: u16 = 200;
 
         // Clamped to max values for computation
-        let intelligence = (intelligence as u16).min(60);
+        let intellect = (intellect as u16).min(60);
         let level = (level as u16).min(50);
 
         let growth = level.pow(2) * 5; // 50 * 50 * 5 = 12500
-        let bonus = intelligence * level * 9; // 60 * 50 * 9 = 27000
+        let bonus = intellect * level * 9; // 60 * 50 * 9 = 27000
         base.saturating_add(growth).saturating_add(bonus)
     }
 }

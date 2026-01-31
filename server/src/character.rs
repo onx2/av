@@ -1,8 +1,8 @@
 use super::{
     active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, movement_state_tbl,
-    primary_stats_tbl, status_flags_tbl, transform_tbl, ActiveCharacter, Capsule, Experience,
-    ExperienceData, Health, HealthData, Level, LevelData, Mana, ManaData, MovementState,
-    PrimaryStats, PrimaryStatsData, Transform, TransformData,
+    primary_stats_tbl, transform_tbl, ActiveCharacter, Capsule, Experience, ExperienceData, Health,
+    HealthData, Level, LevelData, Mana, ManaData, MovementState, PrimaryStats, PrimaryStatsData,
+    Transform, TransformData,
 };
 use shared::{encode_cell_id, pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
@@ -23,13 +23,14 @@ pub struct Character {
     #[index(btree)]
     pub deleted: bool,
 
+    pub capsule: Capsule,
+
     pub transform: TransformData,
     pub primary_stats: PrimaryStatsData,
     pub health: HealthData,
     pub mana: ManaData,
     pub experience: ExperienceData,
     pub level: LevelData,
-    pub capsule: Capsule,
 }
 
 impl AsOwner for Character {
@@ -55,17 +56,25 @@ impl Character {
             return Err("Name must be alphanumeric");
         }
 
+        let level_data = LevelData::default();
+        let primary_stats = PrimaryStatsData::default();
         let inserted = ctx.db.character_tbl().insert(Character {
             owner_id: 0,
             identity: ctx.sender,
             name,
             transform: TransformData::default(),
-            primary_stats: PrimaryStatsData::default(),
+            primary_stats,
             deleted: false,
             experience: ExperienceData::default(),
-            level: LevelData::default(),
-            health: HealthData::new(100),
-            mana: ManaData::new(100),
+            level: level_data,
+            health: HealthData::new(HealthData::compute_max(
+                level_data.level,
+                primary_stats.fortitude,
+            )),
+            mana: ManaData::new(ManaData::compute_max(
+                level_data.level,
+                primary_stats.intellect,
+            )),
             capsule: Capsule {
                 radius: 0.3,
                 half_height: 0.9,
@@ -73,6 +82,10 @@ impl Character {
         });
 
         Ok(pack_owner(inserted.owner_id, OwnerKind::Character))
+    }
+
+    pub fn delete(&self, _ctx: &ReducerContext) -> bool {
+        todo!("delete character todo")
     }
 
     fn delete_orphaned_rows(ctx: &ReducerContext, owner: Owner) {
@@ -83,9 +96,9 @@ impl Character {
         ctx.db.mana_tbl().owner().delete(owner);
         ctx.db.experience_tbl().owner().delete(owner);
         ctx.db.level_tbl().owner().delete(owner);
-        ctx.db.status_flags_tbl().owner().delete(owner);
         ctx.db.movement_state_tbl().owner().delete(owner);
     }
+
     pub fn leave_game(&self, ctx: &ReducerContext) {
         Self::delete_orphaned_rows(ctx, self.owner());
     }

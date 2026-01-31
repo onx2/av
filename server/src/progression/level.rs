@@ -29,7 +29,7 @@ impl Level {
         ctx.db.level_tbl().insert(Self { owner, data });
     }
 
-    pub(super) fn update(&self, ctx: &ReducerContext, new_level: u8) {
+    pub fn update(&self, ctx: &ReducerContext, new_level: u8) {
         if new_level == self.data.level {
             log::warn!("Unable to change level to the same value");
             return;
@@ -39,7 +39,6 @@ impl Level {
             owner: self.owner,
             data: LevelData { level: new_level },
         });
-        let level = res.data.level;
         let Some(primary_stats_data) = ctx
             .db
             .primary_stats_tbl()
@@ -58,17 +57,17 @@ impl Level {
         if let Some(health) = ctx.db.health_tbl().owner().find(self.owner) {
             health.set_max(
                 ctx,
-                HealthData::compute_max(level, primary_stats_data.fortitude),
+                HealthData::compute_max(res.data.level, primary_stats_data.fortitude),
             );
         }
 
         // Update seconday stats when we change level
         if let Some(mut secondary_stats) = ctx.db.secondary_stats_tbl().owner().find(self.owner) {
             secondary_stats.data.movement_speed =
-                SecondaryStatsData::compute_movement_speed(level, 0., 0., 0.);
+                SecondaryStatsData::compute_movement_speed(res.data.level, 0., 0., 0.);
             secondary_stats.data.critical_hit_chance =
                 SecondaryStatsData::compute_critical_hit_chance(
-                    level,
+                    res.data.level,
                     primary_stats_data.ferocity,
                     0.,
                 );
