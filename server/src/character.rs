@@ -2,7 +2,7 @@ use super::{
     active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, movement_state_tbl,
     primary_stats_tbl, status_flags_tbl, transform_tbl, ActiveCharacter, Capsule, Experience,
     ExperienceData, Health, HealthData, Level, LevelData, Mana, ManaData, MovementState,
-    PrimaryStats, PrimaryStatsData, StatusFlags, StatusFlagsData, Transform, TransformData,
+    PrimaryStats, PrimaryStatsData, Transform, TransformData,
 };
 use shared::{encode_cell_id, pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
@@ -29,7 +29,6 @@ pub struct Character {
     pub mana: ManaData,
     pub experience: ExperienceData,
     pub level: LevelData,
-    pub status_flags: StatusFlagsData,
     pub capsule: Capsule,
 }
 
@@ -67,7 +66,6 @@ impl Character {
             level: LevelData::default(),
             health: HealthData::new(100),
             mana: ManaData::new(100),
-            status_flags: StatusFlagsData::default(),
             capsule: Capsule {
                 radius: 0.3,
                 half_height: 0.9,
@@ -116,7 +114,6 @@ impl Character {
         Mana::insert(ctx, owner, self.mana);
         Experience::insert(ctx, owner, self.experience);
         Level::insert(ctx, owner, self.level);
-        StatusFlags::insert(ctx, owner, self.status_flags);
     }
 }
 

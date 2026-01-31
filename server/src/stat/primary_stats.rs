@@ -1,6 +1,9 @@
-use crate::{active_character_tbl__view, secondary_stats_tbl, Level, SecondaryStatsData};
+use crate::{
+    active_character_tbl, active_character_tbl__view, secondary_stats_tbl, Level,
+    SecondaryStatsData,
+};
 use shared::Owner;
-use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
+use spacetimedb::{reducer, table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// Ephemeral
 ///
@@ -20,6 +23,7 @@ impl PrimaryStats {
     pub fn insert(ctx: &ReducerContext, owner: Owner, data: PrimaryStatsData) {
         ctx.db.primary_stats_tbl().insert(Self { owner, data });
     }
+
     pub fn update(&self, ctx: &ReducerContext, data: PrimaryStatsData) {
         let original_ferocity = self.data.ferocity;
         let primary_stats = ctx.db.primary_stats_tbl().owner().update(Self {
@@ -118,4 +122,73 @@ pub fn primary_stats_view(ctx: &ViewContext) -> Option<PrimaryStatsData> {
     };
 
     PrimaryStats::find(ctx, active_character.owner).map(|ps| ps.data)
+}
+
+#[derive(SpacetimeType)]
+pub struct PlacePointsInput {
+    pub new_ferocity: u8,
+    pub new_fortitude: u8,
+    pub new_intellect: u8,
+    pub new_acuity: u8,
+}
+
+#[reducer]
+pub fn place_point(ctx: &ReducerContext, input: PlacePointsInput) -> Result<(), String> {
+    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
+        return Err("No active character found".to_string());
+    };
+    let Some(ps) = ctx
+        .db
+        .primary_stats_tbl()
+        .owner()
+        .find(active_character.owner)
+    else {
+        return Err("No primary stats found".to_string());
+    };
+
+    // Each stat can only increase (never decrease).
+    if input.new_ferocity < ps.data.ferocity
+        || input.new_fortitude < ps.data.fortitude
+        || input.new_intellect < ps.data.intellect
+        || input.new_acuity < ps.data.acuity
+    {
+        return Err("Primary stats cannot be decreased".to_string());
+    }
+
+    // Prevent going over max
+    if input.new_ferocity > PrimaryStatsData::MAX_STAT
+        || input.new_fortitude > PrimaryStatsData::MAX_STAT
+        || input.new_intellect > PrimaryStatsData::MAX_STAT
+        || input.new_acuity > PrimaryStatsData::MAX_STAT
+    {
+        return Err("Primary stat exceeds maximum".to_string());
+    }
+
+    let current_total = ps.data.acuity as u16
+        + ps.data.ferocity as u16
+        + ps.data.fortitude as u16
+        + ps.data.intellect as u16;
+    let sent_total = input.new_acuity as u16
+        + input.new_ferocity as u16
+        + input.new_fortitude as u16
+        + input.new_intellect as u16;
+
+    let spent = (sent_total - current_total) as u8;
+    if spent > ps.data.available_points {
+        return Err("Not enough available points".to_string());
+    }
+
+    // Apply update and decrement remaining points by the amount spent.
+    ps.update(
+        ctx,
+        PrimaryStatsData {
+            ferocity: input.new_ferocity,
+            fortitude: input.new_fortitude,
+            intellect: input.new_intellect,
+            acuity: input.new_acuity,
+            available_points: (ps.data.available_points - spent) as u8,
+        },
+    );
+
+    Ok(())
 }

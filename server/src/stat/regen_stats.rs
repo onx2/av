@@ -32,9 +32,12 @@ pub struct RegenStatsData {
 }
 
 impl RegenStatsData {
-    pub fn compute_regen_rate(base_rate: f32, bonus: f32) -> f32 {
+    /// Base regen rate: fraction-of-max per second (1%).
+    const BASE_REGEN_RATE: f32 = 0.01;
+
+    pub fn compute_regen_rate(bonus: f32) -> f32 {
         // If you ever want debuffs to reduce regen, remove `.max(0.0)` and clamp lower elsewhere.
-        base_rate * (1.0 + bonus.max(0.0))
+        Self::BASE_REGEN_RATE * (1.0 + bonus.max(0.0))
     }
 }
 
@@ -61,8 +64,6 @@ pub fn init_health_and_mana_regen(ctx: &ReducerContext) {
 
 #[reducer]
 fn regen_reducer(ctx: &ReducerContext, _timer: RegenTimer) -> Result<(), String> {
-    /// Base regen rate: fraction-of-max per second (1%).
-    const BASE_REGEN_RATE: f32 = 0.01;
     let dt_secs: f32 = DT_MILLIS as f32 / 1000.0;
 
     // Computes the delta change, though this is essentially moot since we regen at 1second right now
@@ -76,7 +77,7 @@ fn regen_reducer(ctx: &ReducerContext, _timer: RegenTimer) -> Result<(), String>
         regen_cache.insert(health_row.owner, row.data);
 
         let max = health_row.data.max;
-        let rate = RegenStatsData::compute_regen_rate(BASE_REGEN_RATE, row.data.health_regen_bonus);
+        let rate = RegenStatsData::compute_regen_rate(row.data.health_regen_bonus);
         health_row.add(ctx, compute_delta(max, rate));
     }
     for mana_row in ctx.db.mana_tbl().is_full().filter(false) {
@@ -90,7 +91,7 @@ fn regen_reducer(ctx: &ReducerContext, _timer: RegenTimer) -> Result<(), String>
         };
 
         let max = mana_row.data.max;
-        let rate = RegenStatsData::compute_regen_rate(BASE_REGEN_RATE, stats.health_regen_bonus);
+        let rate = RegenStatsData::compute_regen_rate(stats.health_regen_bonus);
         mana_row.add(ctx, compute_delta(max, rate));
     }
     Ok(())

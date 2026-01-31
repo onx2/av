@@ -12,18 +12,15 @@ pub struct Experience {
 }
 impl Experience {
     fn update(mut self, ctx: &ReducerContext, new_exp: u32) {
-        let Some(mut level_row) = ctx.db.level_tbl().owner().find(self.owner) else {
+        let Some(level_row) = ctx.db.level_tbl().owner().find(self.owner) else {
             return;
         };
-
         let new_level = Experience::level_from_xp(new_exp);
-
         self.data.experience = new_exp;
         ctx.db.experience_tbl().owner().update(self);
 
         if new_level > level_row.data.level {
-            level_row.data.level = new_level;
-            ctx.db.level_tbl().owner().update(level_row);
+            level_row.update(ctx, new_level);
         }
     }
 

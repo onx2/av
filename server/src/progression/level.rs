@@ -28,15 +28,16 @@ impl Level {
     pub fn insert(ctx: &ReducerContext, owner: Owner, data: LevelData) {
         ctx.db.level_tbl().insert(Self { owner, data });
     }
-    pub fn update(&self, ctx: &ReducerContext, data: LevelData) {
-        if data.level == self.data.level {
+
+    pub fn update(&self, ctx: &ReducerContext, new_level: u8) {
+        if new_level == self.data.level {
             log::warn!("Unable to change level to the same value");
             return;
         }
 
         let res = ctx.db.level_tbl().owner().update(Self {
             owner: self.owner,
-            data,
+            data: LevelData { level: new_level },
         });
         let level = res.data.level;
         let Some(primary_stats_data) = ctx
