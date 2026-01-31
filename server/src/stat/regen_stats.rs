@@ -34,17 +34,17 @@ pub struct RegenStatsData {
 impl RegenStatsData {
     /// Base regen rate: fraction-of-max per second (1%).
     const BASE_REGEN_RATE: f32 = 0.01;
+    /// Maximum regen rate: 10%.
+    const MAX_REGEN: f32 = 0.1;
 
     pub fn compute_regen_rate(bonus: f32) -> f32 {
-        // If you ever want debuffs to reduce regen, remove `.max(0.0)` and clamp lower elsewhere.
-        Self::BASE_REGEN_RATE * (1.0 + bonus.max(0.0))
+        // Right now this doesn't consider debuffing regne rate... not sure if this should be added to the game but
+        // for now its probalby fine to make it always positive regen. For "decay" like fx another fn can be used.
+        Self::BASE_REGEN_RATE * (1.0 + bonus.max(0.0)).min(Self::MAX_REGEN)
     }
 }
 
-#[spacetimedb::table(
-    name = regen_tick_timer,
-    scheduled(regen_reducer)
-)]
+#[spacetimedb::table(name = regen_tick_timer, scheduled(regen_reducer))]
 pub struct RegenTimer {
     #[primary_key]
     #[auto_inc]
@@ -70,8 +70,9 @@ fn regen_reducer(ctx: &ReducerContext, _timer: RegenTimer) -> Result<(), String>
     let compute_delta = |max: u16, rate: f32| ((max as f32) * rate * dt_secs).min(10.0) as u16;
 
     let mut regen_cache: HashMap<Owner, RegenStatsData> = HashMap::new();
+    let view_ctx = ctx.as_read_only();
     for health_row in ctx.db.health_tbl().is_full().filter(false) {
-        let Some(row) = ctx.db.regen_stats_tbl().owner().find(&health_row.owner) else {
+        let Some(row) = RegenStats::find(&view_ctx, health_row.owner) else {
             continue;
         };
         regen_cache.insert(health_row.owner, row.data);
@@ -80,18 +81,19 @@ fn regen_reducer(ctx: &ReducerContext, _timer: RegenTimer) -> Result<(), String>
         let rate = RegenStatsData::compute_regen_rate(row.data.health_regen_bonus);
         health_row.add(ctx, compute_delta(max, rate));
     }
+
     for mana_row in ctx.db.mana_tbl().is_full().filter(false) {
         // Try to get regen info from in-memory cache instead of a DB index seek
         let stats: RegenStatsData = if let Some(v) = regen_cache.get(&mana_row.owner) {
             *v
-        } else if let Some(row) = ctx.db.regen_stats_tbl().owner().find(&mana_row.owner) {
+        } else if let Some(row) = RegenStats::find(&view_ctx, mana_row.owner) {
             row.data
         } else {
             continue;
         };
 
         let max = mana_row.data.max;
-        let rate = RegenStatsData::compute_regen_rate(stats.health_regen_bonus);
+        let rate = RegenStatsData::compute_regen_rate(stats.mana_regen_bonus);
         mana_row.add(ctx, compute_delta(max, rate));
     }
     Ok(())

@@ -29,7 +29,7 @@ impl Level {
         ctx.db.level_tbl().insert(Self { owner, data });
     }
 
-    pub fn update(&self, ctx: &ReducerContext, new_level: u8) {
+    pub(super) fn update(&self, ctx: &ReducerContext, new_level: u8) {
         if new_level == self.data.level {
             log::warn!("Unable to change level to the same value");
             return;

@@ -133,7 +133,7 @@ pub struct PlacePointsInput {
 }
 
 #[reducer]
-pub fn place_point(ctx: &ReducerContext, input: PlacePointsInput) -> Result<(), String> {
+pub fn place_points(ctx: &ReducerContext, input: PlacePointsInput) -> Result<(), String> {
     let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
         return Err("No active character found".to_string());
     };

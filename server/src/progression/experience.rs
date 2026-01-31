@@ -11,6 +11,16 @@ pub struct Experience {
     pub data: ExperienceData,
 }
 impl Experience {
+    pub fn add_exp(self, ctx: &ReducerContext, amount: u32) {
+        let new_exp = self.data.experience.saturating_add(amount);
+        self.update(ctx, new_exp);
+    }
+
+    pub fn sub_exp(self, ctx: &ReducerContext, amount: u32) {
+        let new_exp = self.data.experience.saturating_sub(amount);
+        self.update(ctx, new_exp);
+    }
+
     fn update(mut self, ctx: &ReducerContext, new_exp: u32) {
         let Some(level_row) = ctx.db.level_tbl().owner().find(self.owner) else {
             return;
@@ -38,16 +48,6 @@ impl Experience {
 
     pub fn delete(self, ctx: &ReducerContext) {
         ctx.db.experience_tbl().delete(self);
-    }
-
-    pub fn add_exp(self, ctx: &ReducerContext, amount: u32) {
-        let new_exp = self.data.experience.saturating_add(amount);
-        self.update(ctx, new_exp);
-    }
-
-    pub fn sub_exp(self, ctx: &ReducerContext, amount: u32) {
-        let new_exp = self.data.experience.saturating_sub(amount);
-        self.update(ctx, new_exp);
     }
 }
 #[derive(SpacetimeType, Debug, Default, Clone, Copy, PartialEq, Eq)]
