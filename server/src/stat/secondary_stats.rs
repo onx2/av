@@ -23,6 +23,8 @@ impl SecondaryStats {
 pub struct SecondaryStatsData {
     pub movement_speed: f32,
     pub critical_hit_chance: f32,
+    // armor
+    // attack_speed
 }
 
 impl SecondaryStatsData {
