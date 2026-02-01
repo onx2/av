@@ -2,7 +2,9 @@ pub mod reducers;
 pub mod types;
 
 use crate::module_bindings::{
-    DbConnection, RemoteTables, SecondaryStatsViewTableAccess, WorldStaticTblTableAccess,
+    ActiveCharacterViewTableAccess, DbConnection, HealthViewTableAccess, ManaViewTableAccess,
+    PrimaryStatsViewTableAccess, RemoteTables, SecondaryStatsViewTableAccess,
+    WorldStaticTblTableAccess,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadStdbConnectedMessage, StdbConnection, StdbPlugin};
@@ -32,14 +34,14 @@ pub(super) fn plugin(app: &mut App) {
             // --------------------------------
             .add_reducer::<RequestMove>()
             .add_reducer::<EnterGame>()
-            // .add_reducer::<LeaveWorld>()
             // --------------------------------
             // Register all tables
             // --------------------------------
-            // .add_table_without_pk(RemoteTables::critical_chance_view)
-            // .add_table_without_pk(RemoteTables::movement_speed_view)
+            .add_table_without_pk(RemoteTables::primary_stats_view)
             .add_view_with_pk(RemoteTables::secondary_stats_view, |r| r.owner)
-            // .add_table(RemoteTables::player)
+            .add_view_with_pk(RemoteTables::health_view, |r| r.owner)
+            .add_view_with_pk(RemoteTables::mana_view, |r| r.owner)
+            .add_view_with_pk(RemoteTables::active_character_view, |r| r.owner)
             .add_table(RemoteTables::world_static_tbl)
             .with_run_fn(DbConnection::run_threaded),
     );
@@ -51,12 +53,12 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
         println!("SpacetimeDB module connected: {:?}", message.identity);
 
         stdb.subscription_builder().subscribe(vec![
-            "select * from secondary_stats_view",
-            // "SELECT * FROM player",
+            "SELECT * FROM primary_stats_view",
+            "SELECT * FROM secondary_stats_view",
+            "SELECT * FROM health_view",
+            "SELECT * FROM mana_view",
             "SELECT * FROM world_static_tbl",
-            // "SELECT * FROM aoi_secondary_stats",
-            // "SELECT * FROM aoi_actor",
-            // "SELECT * FROM aoi_transform_data",
+            "SELECT * FROM active_character_view",
         ]);
     }
 }
