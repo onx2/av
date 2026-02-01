@@ -105,9 +105,7 @@ impl Character {
 
     pub fn enter_game(&self, ctx: &ReducerContext) {
         // Prevent multiple player characters from joining the game, only one character per player
-        for character in ctx.db.character_tbl().identity().filter(ctx.sender) {
-            Self::delete_orphaned_rows(ctx, character.owner());
-        }
+        self.leave_game(ctx);
 
         let owner = self.owner();
         let cell_id = encode_cell_id(self.transform.translation.x, self.transform.translation.z);
