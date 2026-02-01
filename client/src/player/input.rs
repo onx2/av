@@ -1,45 +1,48 @@
 use crate::{
-    actor::{LocalActor, MovementData},
+    // actor::{LocalActor, MovementData},
     cursor::{CurrentCursor, set_cursor_to_ability, set_cursor_to_combat, set_cursor_to_default},
     input::InputAction,
-    module_bindings::{MoveIntent, enter_world, request_move},
+    module_bindings::{MoveIntentData, enter_game, request_move},
     server::SpacetimeDB,
 };
 use bevy::{picking::pointer::PointerInteraction, prelude::*};
 use leafwing_input_manager::prelude::ActionState;
 
-pub(super) fn handle_lmb_movement(
-    mut local_actor_q: Single<&mut MovementData, With<LocalActor>>,
-    actions: Res<ActionState<InputAction>>,
-    interactions: Query<&PointerInteraction>,
-    stdb: SpacetimeDB,
-) {
-    let pressed = actions.pressed(&InputAction::LeftClick);
-    let just_released = actions.just_released(&InputAction::LeftClick);
-    if !pressed && !just_released {
-        return;
-    }
-    let Ok(interaction) = interactions.single() else {
-        return;
-    };
-    let Some((_entity, hit)) = interaction.get_nearest_hit() else {
-        return;
-    };
-    let Some(pos) = hit.position else {
-        return;
-    };
+// pub(super) fn handle_lmb_movement(
+//     mut local_actor_q: Single<&mut MovementData, With<LocalActor>>,
+//     actions: Res<ActionState<InputAction>>,
+//     interactions: Query<&PointerInteraction>,
+//     stdb: SpacetimeDB,
+// ) {
+//     let pressed = actions.pressed(&InputAction::LeftClick);
+//     let just_released = actions.just_released(&InputAction::LeftClick);
+//     if !pressed && !just_released {
+//         return;
+//     }
+//     let Ok(interaction) = interactions.single() else {
+//         return;
+//     };
+//     let Some((_entity, hit)) = interaction.get_nearest_hit() else {
+//         return;
+//     };
+//     let Some(pos) = hit.position else {
+//         return;
+//     };
 
-    // TODO: just_released should request path move, for now everything is point
-    if pressed || just_released {
-        match stdb.reducers().request_move(MoveIntent::Point(pos.into())) {
-            Ok(_) => {
-                local_actor_q.move_intent = MoveIntent::Point(pos.into());
-            }
-            Err(e) => println!("Error: {e}"),
-        }
-        return;
-    }
-}
+//     // TODO: just_released should request path move, for now everything is point
+//     if pressed || just_released {
+//         match stdb
+//             .reducers()
+//             .request_move(MoveIntentData::Point(pos.into()))
+//         {
+//             Ok(_) => {
+//                 local_actor_q.move_intent = MoveIntentData::Point(pos.into());
+//             }
+//             Err(e) => println!("Error: {e}"),
+//         }
+//         return;
+//     }
+// }
 
 pub(super) fn handle_enter_world(
     current_cursor: ResMut<CurrentCursor>,
@@ -47,7 +50,7 @@ pub(super) fn handle_enter_world(
     stdb: SpacetimeDB,
 ) {
     if keys.just_pressed(KeyCode::Space) {
-        match stdb.reducers().enter_world() {
+        match stdb.reducers().enter_game(1) {
             Ok(_) => println!("Called enter world without immediate failure"),
             Err(err) => println!("Immediate failure when calling enter world: {err}"),
         }

@@ -2,9 +2,10 @@
 
 use crate::module_bindings::{
     DbConnection, MoveIntentData, Reducer, RemoteModule, RemoteReducers,
-    request_move_reducer::request_move,
+    enter_game_reducer::enter_game, request_move_reducer::request_move,
 };
 use bevy_spacetimedb::RegisterReducerMessage;
+use shared::OwnerId;
 use spacetimedb_sdk::ReducerEvent;
 
 #[derive(Debug, RegisterReducerMessage)]
@@ -13,10 +14,11 @@ pub struct RequestMove {
     pub intent: MoveIntentData,
 }
 
-// #[derive(Debug, RegisterReducerMessage)]
-// pub struct EnterWorld {
-//     pub event: ReducerEvent<Reducer>,
-// }
+#[derive(Debug, RegisterReducerMessage)]
+pub struct EnterGame {
+    pub event: ReducerEvent<Reducer>,
+    pub character_id: OwnerId,
+}
 
 // #[derive(Debug, RegisterReducerMessage)]
 // pub struct LeaveWorld {

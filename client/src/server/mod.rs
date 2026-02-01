@@ -1,7 +1,9 @@
 pub mod reducers;
 pub mod types;
 
-use crate::module_bindings::{DbConnection, RemoteTables, SecondaryStatsViewTableAccess};
+use crate::module_bindings::{
+    DbConnection, RemoteTables, SecondaryStatsViewTableAccess, WorldStaticTblTableAccess,
+};
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadStdbConnectedMessage, StdbConnection, StdbPlugin};
 use reducers::*;
@@ -29,7 +31,7 @@ pub(super) fn plugin(app: &mut App) {
             // Register all reducers
             // --------------------------------
             .add_reducer::<RequestMove>()
-            // .add_reducer::<EnterWorld>()
+            .add_reducer::<EnterGame>()
             // .add_reducer::<LeaveWorld>()
             // --------------------------------
             // Register all tables
@@ -38,10 +40,7 @@ pub(super) fn plugin(app: &mut App) {
             // .add_table_without_pk(RemoteTables::movement_speed_view)
             .add_view_with_pk(RemoteTables::secondary_stats_view, |r| r.owner)
             // .add_table(RemoteTables::player)
-            // .add_table(RemoteTables::world_static)
-            // .add_view_with_pk(RemoteTables::aoi_secondary_stats, |s| s.id)
-            // .add_view_with_pk(RemoteTables::aoi_actor, |a| a.id)
-            // .add_view_with_pk(RemoteTables::aoi_transform_data, |t| t.id)
+            .add_table(RemoteTables::world_static_tbl)
             .with_run_fn(DbConnection::run_threaded),
     );
     app.add_systems(Update, on_connect);
@@ -54,7 +53,7 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
         stdb.subscription_builder().subscribe(vec![
             "select * from secondary_stats_view",
             // "SELECT * FROM player",
-            // "SELECT * FROM world_static",
+            "SELECT * FROM world_static_tbl",
             // "SELECT * FROM aoi_secondary_stats",
             // "SELECT * FROM aoi_actor",
             // "SELECT * FROM aoi_transform_data",
