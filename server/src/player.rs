@@ -42,7 +42,7 @@ impl PlayerRow {
         ctx.db.player_tbl().identity().update(player);
 
         let Some(active_char) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
-            log::error!("Disconnect: Unable to find active char: {:?}", ctx.sender);
+            log::info!("Disconnect: Unable to find active char: {:?}", ctx.sender);
             return;
         };
         let owner_id = unpack_owner_id(active_char.owner);

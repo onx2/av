@@ -2,7 +2,7 @@ use crate::{
     // actor::{LocalActor, MovementData},
     cursor::{CurrentCursor, set_cursor_to_ability, set_cursor_to_combat, set_cursor_to_default},
     input::InputAction,
-    module_bindings::{MoveIntentData, enter_game, request_move},
+    module_bindings::{MoveIntentData, create_character, enter_game, request_move},
     owner::LocalOwner,
     server::SpacetimeDB,
 };
@@ -53,6 +53,7 @@ pub(super) fn handle_enter_world(
     stdb: SpacetimeDB,
 ) {
     if keys.just_pressed(KeyCode::Space) {
+        let foo = stdb.reducers().create_character("Jeff".into());
         match stdb.reducers().enter_game(1) {
             Ok(_) => println!("Called enter world without immediate failure"),
             Err(err) => println!("Immediate failure when calling enter world: {err}"),

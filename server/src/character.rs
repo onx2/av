@@ -1,3 +1,5 @@
+use crate::{SecondaryStatsData, SecondaryStatsRow};
+
 use super::{
     active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, movement_state_tbl,
     primary_stats_tbl, transform_tbl, ActiveCharacterRow, Capsule, ExperienceData, ExperienceRow,
@@ -27,6 +29,7 @@ pub struct CharacterRow {
 
     pub transform: TransformData,
     pub primary_stats: PrimaryStatsData,
+    pub secondary_stats: SecondaryStatsData,
     pub health: HealthData,
     pub mana: ManaData,
     pub experience: ExperienceData,
@@ -64,6 +67,19 @@ impl CharacterRow {
             name,
             transform: TransformData::default(),
             primary_stats,
+            secondary_stats: SecondaryStatsData {
+                movement_speed: SecondaryStatsData::compute_movement_speed(
+                    level_data.level,
+                    0.0,
+                    0.0,
+                    0.0,
+                ),
+                critical_hit_chance: SecondaryStatsData::compute_critical_hit_chance(
+                    level_data.level,
+                    primary_stats.ferocity,
+                    0.0,
+                ),
+            },
             deleted: false,
             experience: ExperienceData::default(),
             level: level_data,
@@ -123,6 +139,7 @@ impl CharacterRow {
         });
         TransformRow::insert(ctx, owner, self.transform);
         PrimaryStatsRow::insert(ctx, owner, self.primary_stats);
+        SecondaryStatsRow::insert(ctx, owner, self.secondary_stats);
         HealthRow::insert(ctx, owner, self.health);
         ManaRow::insert(ctx, owner, self.mana);
         ExperienceRow::insert(ctx, owner, self.experience);

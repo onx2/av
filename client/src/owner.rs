@@ -30,6 +30,7 @@ fn on_active_character_inserted(
     stdb: SpacetimeDB,
 ) {
     for msg in msgs.read() {
+        println!("on_active_character_inserted");
         if oe_mapping.0.contains_key(&msg.row.owner) {
             continue;
         }

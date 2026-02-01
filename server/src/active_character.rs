@@ -1,7 +1,6 @@
+use crate::{get_view_aoi_block, MovementStateRow};
 use shared::Owner;
 use spacetimedb::{table, Identity, ViewContext};
-
-use crate::{get_view_aoi_block, MovementStateRow};
 
 /// Marker table for the active character for a given player
 #[table(name=active_character_tbl)]
@@ -25,6 +24,7 @@ pub fn active_character_view(ctx: &ViewContext) -> Vec<ActiveCharacterRow> {
     let Some(cell_block) = get_view_aoi_block(ctx) else {
         return vec![];
     };
+    log::info!("active_character_view called");
 
     cell_block
         .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))

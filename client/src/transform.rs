@@ -22,6 +22,7 @@ fn on_transform_inserted(
     oe_mapping: Res<OwnerEntityMapping>,
 ) {
     for msg in msgs.read() {
+        println!("on_transform_inserted");
         let transform_data = msg.row.clone();
         let Some(bevy_entity) = oe_mapping.0.get(&transform_data.owner) else {
             continue;
@@ -50,6 +51,7 @@ fn on_transform_updated(
 ) {
     // TODO: This should either update a custom component then we can interpolate between the old and new values.
     for msg in msgs.read() {
+        println!("on_transform_updated");
         let transform_data = msg.new.clone();
         let Some(bevy_entity) = oe_mapping.0.get(&transform_data.owner) else {
             continue;
