@@ -1,4 +1,4 @@
-use crate::{active_character_tbl, move_intent_tbl, transform_tbl, MoveIntent, MoveIntentData};
+use crate::{active_character_tbl, move_intent_tbl, transform_tbl, MoveIntentData, MoveIntentRow};
 use nalgebra::Vector2;
 use shared::utils::{is_move_too_close, is_move_too_far};
 use spacetimedb::{reducer, ReducerContext};
@@ -17,7 +17,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
     let current: Vector2<f32> = transform_data.data.translation.xz().into();
 
     // Should we ignore this request based on our current intent?
-    if let Some(current_intent) = MoveIntent::find(ctx, active_character.owner) {
+    if let Some(current_intent) = MoveIntentRow::find(ctx, active_character.owner) {
         // Rate limit move requests to 20/sec
         if let Some(dur) = ctx.timestamp.duration_since(current_intent.sent_at) {
             if dur.as_millis() < 50 {
@@ -63,7 +63,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
         }
     }
 
-    MoveIntent::upsert(ctx, active_character.owner, intent);
+    MoveIntentRow::upsert(ctx, active_character.owner, intent);
     Ok(())
 }
 

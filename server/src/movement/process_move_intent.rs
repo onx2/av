@@ -1,6 +1,6 @@
 use crate::{
     move_intent_tbl, movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData,
-    MovementState, SecondaryStats, Transform, Vec2,
+    MovementStateRow, SecondaryStatsRow, TransformRow, Vec2,
 };
 use nalgebra::{UnitQuaternion, Vector2, Vector3};
 use rapier3d::{
@@ -99,11 +99,11 @@ fn process_move_intent_reducer(
             continue;
         };
 
-        let Some(mut owner_transform) = Transform::find(ctx, owner) else {
+        let Some(mut owner_transform) = TransformRow::find(ctx, owner) else {
             move_intent.delete(ctx);
             continue;
         };
-        let Some(mut movement_state) = MovementState::find(ctx, owner) else {
+        let Some(mut movement_state) = MovementStateRow::find(ctx, owner) else {
             move_intent.delete(ctx);
             continue;
         };
@@ -118,7 +118,7 @@ fn process_move_intent_reducer(
             movement_state_dirty = true;
         }
 
-        let Some(speed) = SecondaryStats::find(&view_ctx, owner)
+        let Some(speed) = SecondaryStatsRow::find(&view_ctx, owner)
             .map(|secondary_stats| secondary_stats.data.movement_speed)
         else {
             log::error!("Failed to find secondary stats for entity {}", owner);

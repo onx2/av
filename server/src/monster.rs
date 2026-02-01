@@ -1,7 +1,7 @@
 use super::{
-    monster_instance_tbl, movement_state_tbl, Capsule, Health, HealthData, Mana, ManaData,
-    MonsterInstance, MovementState, PrimaryStats, PrimaryStatsData, StatusFlags, StatusFlagsData,
-    Transform, TransformData,
+    monster_instance_tbl, movement_state_tbl, Capsule, HealthData, HealthRow, ManaData, ManaRow,
+    MonsterInstanceRow, MovementStateRow, PrimaryStatsData, PrimaryStatsRow, StatusFlags,
+    StatusFlagsData, TransformData, TransformRow,
 };
 use shared::{encode_cell_id, pack_owner, Owner, OwnerKind};
 use spacetimedb::{table, ReducerContext, Table};
@@ -11,7 +11,7 @@ use spacetimedb::{table, ReducerContext, Table};
 /// One row per monster kind/type you can spawn (e.g. Troll, Black Spider, Bug).
 /// This is NOT a spawned world instance.
 #[table(name=monster_tbl)]
-pub struct Monster {
+pub struct MonsterRow {
     #[auto_inc]
     #[primary_key]
     pub id: u16,
@@ -21,7 +21,7 @@ pub struct Monster {
     pub capsule: Capsule,
 }
 
-impl Monster {
+impl MonsterRow {
     pub fn insert(name: impl Into<String>, capsule: Capsule) -> Self {
         Self {
             id: 0,
@@ -36,7 +36,7 @@ impl Monster {
     /// same type can exist at once.
     pub fn spawn_instance(&self, ctx: &ReducerContext) -> Result<Owner, String> {
         // Allocate a new instance id (owner_id) that will become the Actor/Owner key.
-        let instance = ctx.db.monster_instance_tbl().insert(MonsterInstance {
+        let instance = ctx.db.monster_instance_tbl().insert(MonsterInstanceRow {
             owner_id: 0,
             monster_id: self.id,
         });
@@ -48,17 +48,17 @@ impl Monster {
 
         let cell_id = encode_cell_id(transform.translation.x, transform.translation.z);
         // Ephemeral component rows keyed by Owner.
-        ctx.db.movement_state_tbl().insert(MovementState {
+        ctx.db.movement_state_tbl().insert(MovementStateRow {
             owner,
             grounded: false,
             vertical_velocity: 0.0,
             cell_id,
             capsule: self.capsule,
         });
-        Transform::insert(ctx, owner, transform);
-        PrimaryStats::insert(ctx, owner, PrimaryStatsData::default());
-        Health::insert(ctx, owner, HealthData::new(100));
-        Mana::insert(ctx, owner, ManaData::new(100));
+        TransformRow::insert(ctx, owner, transform);
+        PrimaryStatsRow::insert(ctx, owner, PrimaryStatsData::default());
+        HealthRow::insert(ctx, owner, HealthData::new(100));
+        ManaRow::insert(ctx, owner, ManaData::new(100));
         StatusFlags::insert(ctx, owner, StatusFlagsData::default());
 
         Ok(owner)
@@ -69,7 +69,7 @@ impl Monster {
             ctx.db.monster_tbl().delete(row);
         });
 
-        Monster::insert(
+        MonsterRow::insert(
             "Troll",
             Capsule {
                 radius: 0.3,

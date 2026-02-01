@@ -1,15 +1,15 @@
 use super::{
     active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, movement_state_tbl,
-    primary_stats_tbl, transform_tbl, ActiveCharacter, Capsule, Experience, ExperienceData, Health,
-    HealthData, Level, LevelData, Mana, ManaData, MovementState, PrimaryStats, PrimaryStatsData,
-    Transform, TransformData,
+    primary_stats_tbl, transform_tbl, ActiveCharacterRow, Capsule, ExperienceData, ExperienceRow,
+    HealthData, HealthRow, LevelData, LevelRow, ManaData, ManaRow, MovementStateRow,
+    PrimaryStatsData, PrimaryStatsRow, TransformData, TransformRow,
 };
 use shared::{encode_cell_id, pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 
 /// The persistence layer for a player's characters
 #[table(name=character_tbl)]
-pub struct Character {
+pub struct CharacterRow {
     #[auto_inc]
     #[primary_key]
     pub owner_id: OwnerId,
@@ -33,7 +33,7 @@ pub struct Character {
     pub level: LevelData,
 }
 
-impl AsOwner for Character {
+impl AsOwner for CharacterRow {
     fn owner(&self) -> Owner {
         pack_owner(self.owner_id, OwnerKind::Character)
     }
@@ -45,7 +45,7 @@ impl AsOwner for Character {
     }
 }
 
-impl Character {
+impl CharacterRow {
     pub fn create(ctx: &ReducerContext, name: impl Into<String>) -> Result<Owner, &'static str> {
         let name = name.into();
         let length = name.chars().count();
@@ -58,7 +58,7 @@ impl Character {
 
         let level_data = LevelData::default();
         let primary_stats = PrimaryStatsData::default();
-        let inserted = ctx.db.character_tbl().insert(Character {
+        let inserted = ctx.db.character_tbl().insert(CharacterRow {
             owner_id: 0,
             identity: ctx.sender,
             name,
@@ -111,26 +111,26 @@ impl Character {
         let cell_id = encode_cell_id(self.transform.translation.x, self.transform.translation.z);
         ctx.db
             .active_character_tbl()
-            .insert(ActiveCharacter::new(ctx.sender, owner));
-        ctx.db.movement_state_tbl().insert(MovementState {
+            .insert(ActiveCharacterRow::new(ctx.sender, owner));
+        ctx.db.movement_state_tbl().insert(MovementStateRow {
             owner,
             grounded: false,
             vertical_velocity: 0.0,
             cell_id,
             capsule: self.capsule,
         });
-        Transform::insert(ctx, owner, self.transform);
-        PrimaryStats::insert(ctx, owner, self.primary_stats);
-        Health::insert(ctx, owner, self.health);
-        Mana::insert(ctx, owner, self.mana);
-        Experience::insert(ctx, owner, self.experience);
-        Level::insert(ctx, owner, self.level);
+        TransformRow::insert(ctx, owner, self.transform);
+        PrimaryStatsRow::insert(ctx, owner, self.primary_stats);
+        HealthRow::insert(ctx, owner, self.health);
+        ManaRow::insert(ctx, owner, self.mana);
+        ExperienceRow::insert(ctx, owner, self.experience);
+        LevelRow::insert(ctx, owner, self.level);
     }
 }
 
 #[reducer]
 pub fn create_character(ctx: &ReducerContext, name: String) -> Result<(), String> {
-    Character::create(ctx, name)
+    CharacterRow::create(ctx, name)
         .map(|_| ())
         .map_err(|e| e.into())
 }

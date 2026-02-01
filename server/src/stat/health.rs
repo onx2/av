@@ -1,10 +1,10 @@
-use crate::{get_view_aoi_block, MovementState};
+use crate::{get_view_aoi_block, MovementStateRow};
 use shared::Owner;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// **Ephemeral**
 #[table(name=health_tbl)]
-pub struct Health {
+pub struct HealthRow {
     #[primary_key]
     pub owner: Owner,
 
@@ -15,7 +15,7 @@ pub struct Health {
     pub data: HealthData,
 }
 
-impl Health {
+impl HealthRow {
     fn clamp(&mut self) {
         self.data.current = self.data.current.min(self.data.max);
     }
@@ -102,12 +102,6 @@ impl HealthData {
     }
 }
 
-#[derive(SpacetimeType, Debug)]
-pub struct HealthRow {
-    pub owner: Owner,
-    pub data: HealthData,
-}
-
 /// Finds the health for all things within the AOI.
 /// Primary key of `Owner`
 #[spacetimedb::view(name = health_view, public)]
@@ -117,11 +111,12 @@ pub fn health_view(ctx: &ViewContext) -> Vec<HealthRow> {
     };
 
     cell_block
-        .flat_map(|cell_id| MovementState::by_cell_id(ctx, cell_id))
+        .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
         .filter_map(|ms| {
-            Health::find(ctx, ms.owner).map(|row| HealthRow {
+            HealthRow::find(ctx, ms.owner).map(|row| HealthRow {
                 owner: ms.owner,
                 data: row.data,
+                is_full: row.is_full,
             })
         })
         .collect()

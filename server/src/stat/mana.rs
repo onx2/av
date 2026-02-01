@@ -1,10 +1,10 @@
-use crate::{get_view_aoi_block, MovementState};
+use crate::{get_view_aoi_block, MovementStateRow};
 use shared::Owner;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// **Ephemeral**
 #[table(name=mana_tbl)]
-pub struct Mana {
+pub struct ManaRow {
     #[primary_key]
     pub owner: Owner,
 
@@ -15,7 +15,7 @@ pub struct Mana {
     pub data: ManaData,
 }
 
-impl Mana {
+impl ManaRow {
     pub fn insert(ctx: &ReducerContext, owner: Owner, data: ManaData) {
         let current = data.current.min(data.max);
         ctx.db.mana_tbl().insert(Self {
@@ -99,11 +99,6 @@ impl ManaData {
     }
 }
 
-#[derive(SpacetimeType, Debug)]
-pub struct ManaRow {
-    pub owner: Owner,
-    pub data: ManaData,
-}
 /// Finds the mana for all things within the AOI.
 /// Primary key of `Owner`
 #[spacetimedb::view(name = mana_view, public)]
@@ -113,11 +108,12 @@ pub fn mana_view(ctx: &ViewContext) -> Vec<ManaRow> {
     };
 
     cell_block
-        .flat_map(|cell_id| MovementState::by_cell_id(ctx, cell_id))
+        .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
         .filter_map(|ms| {
-            Mana::find(ctx, ms.owner).map(|row| ManaRow {
+            ManaRow::find(ctx, ms.owner).map(|row| ManaRow {
                 owner: ms.owner,
                 data: row.data,
+                is_full: row.is_full,
             })
         })
         .collect()

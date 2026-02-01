@@ -4,7 +4,7 @@ use spacetimedb::{table, ReducerContext, SpacetimeType, Table};
 
 /// The amount of progression this person has accumulated
 #[table(name = level_tbl)]
-pub struct Level {
+pub struct LevelRow {
     #[primary_key]
     pub owner: Owner,
 
@@ -21,7 +21,7 @@ impl Default for LevelData {
     }
 }
 
-impl Level {
+impl LevelRow {
     pub fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self> {
         ctx.db.level_tbl().owner().find(owner)
     }

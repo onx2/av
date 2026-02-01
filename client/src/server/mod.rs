@@ -4,7 +4,7 @@ pub mod types;
 use crate::module_bindings::{
     ActiveCharacterViewTableAccess, DbConnection, HealthViewTableAccess, ManaViewTableAccess,
     PrimaryStatsViewTableAccess, RemoteTables, SecondaryStatsViewTableAccess,
-    WorldStaticTblTableAccess,
+    TransformViewTableAccess, WorldStaticTblTableAccess,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadStdbConnectedMessage, StdbConnection, StdbPlugin};
@@ -34,15 +34,17 @@ pub(super) fn plugin(app: &mut App) {
             // --------------------------------
             .add_reducer::<RequestMove>()
             .add_reducer::<EnterGame>()
+            .add_reducer::<CreateCharacter>()
             // --------------------------------
             // Register all tables
             // --------------------------------
+            .add_table(RemoteTables::world_static_tbl)
             .add_table_without_pk(RemoteTables::primary_stats_view)
             .add_view_with_pk(RemoteTables::secondary_stats_view, |r| r.owner)
             .add_view_with_pk(RemoteTables::health_view, |r| r.owner)
             .add_view_with_pk(RemoteTables::mana_view, |r| r.owner)
             .add_view_with_pk(RemoteTables::active_character_view, |r| r.owner)
-            .add_table(RemoteTables::world_static_tbl)
+            .add_view_with_pk(RemoteTables::transform_view, |r| r.owner)
             .with_run_fn(DbConnection::run_threaded),
     );
     app.add_systems(Update, on_connect);
@@ -59,6 +61,7 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
             "SELECT * FROM mana_view",
             "SELECT * FROM world_static_tbl",
             "SELECT * FROM active_character_view",
+            "SELECT * FROM transform_view",
         ]);
     }
 }
@@ -80,20 +83,30 @@ fn read_token_from_cli_env() -> Option<String> {
         if let Some(key) = pending_key.take() {
             if key == "token" {
                 return Some(arg);
-            } else if key == "token-file" {
+            }
+
+            if key == "token-file" {
                 return std::fs::read_to_string(arg)
                     .ok()
                     .map(|s| s.trim().to_string());
             }
-        } else if arg == "--token" || arg == "-t" {
+        }
+
+        if arg == "--token" || arg == "-t" {
             pending_key = Some("token");
             continue;
-        } else if let Some(val) = arg.strip_prefix("--token=") {
+        }
+
+        if let Some(val) = arg.strip_prefix("--token=") {
             return Some(val.to_string());
-        } else if arg == "--token-file" {
+        }
+
+        if arg == "--token-file" {
             pending_key = Some("token-file");
             continue;
-        } else if let Some(path) = arg.strip_prefix("--token-file=") {
+        }
+
+        if let Some(path) = arg.strip_prefix("--token-file=") {
             return std::fs::read_to_string(path)
                 .ok()
                 .map(|s| s.trim().to_string());

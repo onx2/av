@@ -7,7 +7,7 @@ use spacetimedb::*;
 // We iterate over this table and attempt to move any Owner for the move intent, removing
 // the row when we've reached the end of the intent.
 #[table(name=move_intent_tbl)]
-pub struct MoveIntent {
+pub struct MoveIntentRow {
     #[primary_key]
     pub owner: Owner,
 
@@ -15,7 +15,7 @@ pub struct MoveIntent {
 
     pub sent_at: Timestamp,
 }
-impl MoveIntent {
+impl MoveIntentRow {
     pub fn upsert(ctx: &spacetimedb::ReducerContext, owner: Owner, data: MoveIntentData) -> Self {
         // If the row doesn't exist, delete will return false, which we ignore.
         let _ = ctx.db.move_intent_tbl().owner().delete(owner);

@@ -10,6 +10,7 @@ mod camera;
 mod cursor;
 mod input;
 mod module_bindings;
+mod owner;
 mod player;
 mod server;
 mod world;
@@ -54,6 +55,7 @@ impl Plugin for AppPlugin {
             camera::plugin,
             input::plugin,
             cursor::plugin,
+            owner::plugin,
         ));
 
         #[cfg(feature = "dev_native")]

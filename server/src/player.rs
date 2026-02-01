@@ -4,7 +4,7 @@ use spacetimedb::{table, Identity, ReducerContext, Table, Timestamp};
 
 /// Main persistence table a person's "account"
 #[table(name=player_tbl)]
-pub struct Player {
+pub struct PlayerRow {
     #[primary_key]
     pub identity: Identity,
 
@@ -17,14 +17,14 @@ pub struct Player {
     pub banned: bool,
 }
 
-impl Player {
+impl PlayerRow {
     pub fn connect(ctx: &ReducerContext) {
         if let Some(mut player) = ctx.db.player_tbl().identity().find(ctx.sender) {
             player.online = true;
             player.last_login_at = ctx.timestamp;
             ctx.db.player_tbl().identity().update(player);
         } else {
-            ctx.db.player_tbl().insert(Player {
+            ctx.db.player_tbl().insert(PlayerRow {
                 identity: ctx.sender,
                 last_login_at: ctx.timestamp,
                 online: true,

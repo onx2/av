@@ -5,7 +5,7 @@ use spacetimedb::table;
 ///
 /// **Possible source of `owner` found in other tables.**
 #[table(name=npc_tbl)]
-pub struct Npc {
+pub struct NpcRow {
     #[auto_inc]
     #[primary_key]
     pub owner_id: OwnerId,
@@ -13,7 +13,7 @@ pub struct Npc {
     pub name: String,
 }
 
-impl AsOwner for Npc {
+impl AsOwner for NpcRow {
     fn owner(&self) -> Owner {
         pack_owner(self.owner_id, OwnerKind::Npc)
     }

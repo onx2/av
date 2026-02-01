@@ -4,13 +4,13 @@ use spacetimedb::{table, ReducerContext, SpacetimeType, Table};
 
 /// The amount of experience this person has accumulated
 #[table(name = experience_tbl)]
-pub struct Experience {
+pub struct ExperienceRow {
     #[primary_key]
     pub owner: Owner,
 
     pub data: ExperienceData,
 }
-impl Experience {
+impl ExperienceRow {
     pub fn add_exp(self, ctx: &ReducerContext, amount: u32) {
         let new_exp = self.data.experience.saturating_add(amount);
         self.update(ctx, new_exp);
@@ -25,7 +25,7 @@ impl Experience {
         let Some(level_row) = ctx.db.level_tbl().owner().find(self.owner) else {
             return;
         };
-        let new_level = Experience::level_from_xp(new_exp);
+        let new_level = ExperienceRow::level_from_xp(new_exp);
         self.data.experience = new_exp;
         ctx.db.experience_tbl().owner().update(self);
 

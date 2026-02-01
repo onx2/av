@@ -5,14 +5,14 @@ use std::{collections::HashMap, time::Duration};
 use crate::{health_tbl, mana_tbl};
 
 #[table(name=regen_stats_tbl)]
-pub struct RegenStats {
+pub struct RegenStatsRow {
     #[primary_key]
     pub owner: Owner,
 
     pub data: RegenStatsData,
 }
 
-impl RegenStats {
+impl RegenStatsRow {
     pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
         ctx.db.regen_stats_tbl().owner().find(owner)
     }
@@ -72,7 +72,7 @@ fn regen_reducer(ctx: &ReducerContext, _timer: RegenTimer) -> Result<(), String>
     let mut regen_cache: HashMap<Owner, RegenStatsData> = HashMap::new();
     let view_ctx = ctx.as_read_only();
     for health_row in ctx.db.health_tbl().is_full().filter(false) {
-        let Some(row) = RegenStats::find(&view_ctx, health_row.owner) else {
+        let Some(row) = RegenStatsRow::find(&view_ctx, health_row.owner) else {
             continue;
         };
         regen_cache.insert(health_row.owner, row.data);
@@ -86,7 +86,7 @@ fn regen_reducer(ctx: &ReducerContext, _timer: RegenTimer) -> Result<(), String>
         // Try to get regen info from in-memory cache instead of a DB index seek
         let stats: RegenStatsData = if let Some(v) = regen_cache.get(&mana_row.owner) {
             *v
-        } else if let Some(row) = RegenStats::find(&view_ctx, mana_row.owner) {
+        } else if let Some(row) = RegenStatsRow::find(&view_ctx, mana_row.owner) {
             row.data
         } else {
             continue;

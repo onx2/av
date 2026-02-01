@@ -1,5 +1,5 @@
 use crate::{
-    active_character_tbl, active_character_tbl__view, secondary_stats_tbl, Level,
+    active_character_tbl, active_character_tbl__view, secondary_stats_tbl, LevelRow,
     SecondaryStatsData,
 };
 use shared::Owner;
@@ -9,14 +9,14 @@ use spacetimedb::{reducer, table, ReducerContext, SpacetimeType, Table, ViewCont
 ///
 /// The primary driving factors for other aspects of gameplay (secondary stats, damage, etc...)
 #[table(name=primary_stats_tbl)]
-pub struct PrimaryStats {
+pub struct PrimaryStatsRow {
     #[primary_key]
     pub owner: Owner,
 
     pub data: PrimaryStatsData,
 }
 
-impl PrimaryStats {
+impl PrimaryStatsRow {
     pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
         ctx.db.primary_stats_tbl().owner().find(owner)
     }
@@ -37,7 +37,7 @@ impl PrimaryStats {
         }
 
         if let Some(mut secondary_stats) = ctx.db.secondary_stats_tbl().owner().find(self.owner) {
-            let Some(level) = Level::find(ctx, self.owner).map(|r| r.data.level) else {
+            let Some(level) = LevelRow::find(ctx, self.owner).map(|r| r.data.level) else {
                 log::error!("Unable to find level for owner: {:?}", self.owner);
                 return;
             };
@@ -121,7 +121,7 @@ pub fn primary_stats_view(ctx: &ViewContext) -> Option<PrimaryStatsData> {
         return None;
     };
 
-    PrimaryStats::find(ctx, active_character.owner).map(|ps| ps.data)
+    PrimaryStatsRow::find(ctx, active_character.owner).map(|ps| ps.data)
 }
 
 #[derive(SpacetimeType)]

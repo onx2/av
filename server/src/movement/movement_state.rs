@@ -5,7 +5,7 @@ use spacetimedb::{table, ReducerContext, ViewContext};
 /// Ephemeral/computed & cached state for the owner's movement. This doesn't need to be persisted
 /// and can be removed when the owner is removed from the world.
 #[table(name=movement_state_tbl)]
-pub struct MovementState {
+pub struct MovementStateRow {
     #[primary_key]
     pub owner: Owner,
 
@@ -23,7 +23,7 @@ pub struct MovementState {
     pub capsule: Capsule,
 }
 
-impl MovementState {
+impl MovementStateRow {
     pub fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self> {
         ctx.db.movement_state_tbl().owner().find(owner)
     }

@@ -1,16 +1,16 @@
-use crate::{get_view_aoi_block, MovementState};
+use crate::{get_view_aoi_block, MovementStateRow};
 use shared::Owner;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 #[table(name=secondary_stats_tbl)]
-pub struct SecondaryStats {
+pub struct SecondaryStatsRow {
     #[primary_key]
     pub owner: Owner,
 
     pub data: SecondaryStatsData,
 }
 
-impl SecondaryStats {
+impl SecondaryStatsRow {
     pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
         ctx.db.secondary_stats_tbl().owner().find(owner)
     }
@@ -63,11 +63,6 @@ impl SecondaryStatsData {
     }
 }
 
-#[derive(SpacetimeType, Debug)]
-pub struct SecondaryStatsRow {
-    pub owner: Owner,
-    pub data: SecondaryStatsData,
-}
 /// Finds the secondary stats for all actors within the AOI.
 /// Primary key of `Owner`
 #[spacetimedb::view(name = secondary_stats_view, public)]
@@ -77,9 +72,9 @@ pub fn secondary_stats_view(ctx: &ViewContext) -> Vec<SecondaryStatsRow> {
     };
 
     cell_block
-        .flat_map(|cell_id| MovementState::by_cell_id(ctx, cell_id))
+        .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
         .filter_map(|ms| {
-            SecondaryStats::find(ctx, ms.owner).map(|row| SecondaryStatsRow {
+            SecondaryStatsRow::find(ctx, ms.owner).map(|row| SecondaryStatsRow {
                 owner: ms.owner,
                 data: row.data,
             })

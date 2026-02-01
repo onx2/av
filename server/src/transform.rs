@@ -1,20 +1,22 @@
+use crate::{get_view_aoi_block, MovementStateRow};
+
 use super::{Quat, Vec3};
 use nalgebra::Isometry3;
 use shared::Owner;
-use spacetimedb::{table, ReducerContext, SpacetimeType, Table};
+use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// Ephemeral
 ///
 /// The storage for various objects' transform data
 #[table(name=transform_tbl)]
-pub struct Transform {
+pub struct TransformRow {
     #[primary_key]
     pub owner: Owner,
 
     pub data: TransformData,
 }
 
-impl Transform {
+impl TransformRow {
     pub fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self> {
         ctx.db.transform_tbl().owner().find(owner)
     }
@@ -38,4 +40,18 @@ impl From<TransformData> for Isometry3<f32> {
     fn from(v: TransformData) -> Self {
         Self::from_parts(v.translation.into(), v.rotation.into())
     }
+}
+
+/// Finds the active character for all things within the AOI.
+/// Primary key of `Identity`
+#[spacetimedb::view(name = transform_view, public)]
+pub fn transform_view(ctx: &ViewContext) -> Vec<TransformRow> {
+    let Some(cell_block) = get_view_aoi_block(ctx) else {
+        return vec![];
+    };
+
+    cell_block
+        .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
+        .filter_map(|ms| ctx.db.transform_tbl().owner().find(&ms.owner))
+        .collect()
 }
