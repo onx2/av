@@ -1,6 +1,6 @@
 use crate::{
-    move_intent_tbl, movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData,
-    MovementStateRow, SecondaryStatsRow, TransformRow, Vec2,
+    movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData, SecondaryStatsRow,
+    TransformRow, Vec2,
 };
 use nalgebra::{UnitQuaternion, Vector2, Vector3};
 use rapier3d::{
@@ -84,45 +84,36 @@ fn process_move_intent_reducer(
     let query_pipeline = query_world.as_query_pipeline(QueryFilter::only_fixed());
 
     // Initialize a actor location cache. Rapier exposes a much faster HashMap, 10x fewer CPU instructions.
-    let moving_count = ctx.db.move_intent_tbl().count() as usize;
+    // We no longer have a move_intent table; size this off of movement_state rows.
+    let moving_count = ctx.db.movement_state_tbl().count() as usize;
     let mut target_xz_cache: HashMap<Owner, Vec2> =
         HashMap::with_capacity_and_hasher(moving_count, Default::default());
     let view_ctx = ctx.as_read_only();
 
-    for mut move_intent in ctx.db.move_intent_tbl().iter() {
-        let owner = move_intent.owner;
-        let Some(target_xz) = move_intent
-            .data
-            .target_position_with_cache(&view_ctx.db, &mut target_xz_cache)
-        else {
-            move_intent.delete(ctx);
-            continue;
-        };
-
+    for mut movement_state in ctx.db.movement_state_tbl().should_move().filter(true) {
+        let owner = movement_state.owner;
         let Some(mut owner_transform) = TransformRow::find(ctx, owner) else {
-            move_intent.delete(ctx);
             continue;
         };
-        let Some(mut movement_state) = MovementStateRow::find(ctx, owner) else {
-            move_intent.delete(ctx);
-            continue;
-        };
-
-        let target_xz: Vector2<f32> = target_xz.into();
         let current_xz: Vector2<f32> = owner_transform.data.translation.xz().into();
+        let target_xz: Vector2<f32> = movement_state
+            .move_intent
+            .as_ref()
+            .map(|mi| {
+                mi.target_position_with_cache(&view_ctx.db, &mut target_xz_cache)
+                    .map(|pos| pos.into())
+                    .unwrap_or(current_xz)
+            })
+            .unwrap_or(current_xz);
 
-        let mut movement_state_dirty = false;
-        // Capping vertical velocity reduces writes to DB. No need to fall faster than terminal velocity.
         if !movement_state.grounded && movement_state.vertical_velocity < TERMINAL_VELOCITY {
             movement_state.vertical_velocity += GRAVITY * dt;
-            movement_state_dirty = true;
         }
 
         let Some(speed) = SecondaryStatsRow::find(&view_ctx, owner)
             .map(|secondary_stats| secondary_stats.data.movement_speed)
         else {
             log::error!("Failed to find secondary stats for entity {}", owner);
-            move_intent.delete(ctx);
             continue;
         };
 
@@ -158,37 +149,30 @@ fn process_move_intent_reducer(
         owner_transform.data.translation.z += correction.translation.z;
         owner_transform.update(ctx, owner_transform.data);
 
-        let new_cell_id = encode_cell_id(
+        movement_state.cell_id = encode_cell_id(
             owner_transform.data.translation.x,
             owner_transform.data.translation.z,
         );
-        if movement_state.cell_id != new_cell_id {
-            movement_state.cell_id = new_cell_id;
-            movement_state_dirty = true;
-        }
-        // Update the MovementState when it has changed
-        if !movement_state.grounded || correction.grounded != movement_state.grounded {
-            movement_state.grounded = correction.grounded;
-            movement_state_dirty = true;
-        }
-        if movement_state_dirty {
-            ctx.db.movement_state_tbl().owner().update(movement_state);
-        }
+        movement_state.grounded = correction.grounded;
 
         if is_at_target_planar(owner_transform.data.translation.xz().into(), target_xz) {
-            if let MoveIntentData::Point(_) = move_intent.data {
-                move_intent.delete(ctx);
-            } else if let MoveIntentData::Path(ref mut path) = move_intent.data {
-                if !path.is_empty() {
-                    path.remove(0);
+            let clear_intent = match movement_state.move_intent.as_mut() {
+                Some(MoveIntentData::Point(_)) => true,
+                Some(MoveIntentData::Actor(_)) => true,
+                Some(MoveIntentData::Path(path)) => {
+                    if !path.is_empty() {
+                        path.remove(0);
+                    }
+                    path.is_empty()
                 }
-                if path.is_empty() {
-                    move_intent.delete(ctx);
-                } else {
-                    ctx.db.move_intent_tbl().owner().update(move_intent);
-                }
+                None => false,
+            };
+            if clear_intent {
+                movement_state.move_intent = None;
             }
         }
+        movement_state.should_move = movement_state.move_intent.is_some() || !correction.grounded;
+        ctx.db.movement_state_tbl().owner().update(movement_state);
     }
 
     // Delete the old scheduled reducer and create a new one instead up updating an "ScheduledAt::Interval"

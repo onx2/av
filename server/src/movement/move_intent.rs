@@ -3,42 +3,6 @@ use rapier3d::parry::utils::hashmap::HashMap;
 use shared::Owner;
 use spacetimedb::*;
 
-// Ephemeral movement requests, existence filtering can be used in movement tick
-// We iterate over this table and attempt to move any Owner for the move intent, removing
-// the row when we've reached the end of the intent.
-#[table(name=move_intent_tbl)]
-pub struct MoveIntentRow {
-    #[primary_key]
-    pub owner: Owner,
-
-    pub data: MoveIntentData,
-
-    pub sent_at: Timestamp,
-}
-impl MoveIntentRow {
-    pub fn upsert(ctx: &spacetimedb::ReducerContext, owner: Owner, data: MoveIntentData) -> Self {
-        // If the row doesn't exist, delete will return false, which we ignore.
-        let _ = ctx.db.move_intent_tbl().owner().delete(owner);
-        ctx.db.move_intent_tbl().insert(Self {
-            owner,
-            data,
-            sent_at: ctx.timestamp,
-        })
-    }
-    pub fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self> {
-        ctx.db.move_intent_tbl().owner().find(owner)
-    }
-    pub fn delete(&self, ctx: &ReducerContext) {
-        ctx.db.move_intent_tbl().owner().delete(self.owner);
-    }
-    pub fn insert(ctx: &ReducerContext, owner: Owner, data: MoveIntentData) {
-        ctx.db.move_intent_tbl().insert(Self {
-            owner,
-            data,
-            sent_at: ctx.timestamp,
-        });
-    }
-}
 /// Represents the 2-dimensional movement intent of an Actor in the world
 #[derive(SpacetimeType, Debug, Clone, PartialEq)]
 pub enum MoveIntentData {

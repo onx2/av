@@ -13,6 +13,7 @@ mod module_bindings;
 mod owner;
 mod player;
 mod server;
+mod transform;
 mod world;
 
 #[cfg(target_os = "macos")]
@@ -50,6 +51,7 @@ impl Plugin for AppPlugin {
 
         app.add_plugins((
             server::plugin,
+            transform::plugin,
             world::plugin,
             player::plugin,
             camera::plugin,
