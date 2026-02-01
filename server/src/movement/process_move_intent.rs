@@ -147,13 +147,15 @@ fn process_move_intent_reducer(
         owner_transform.data.translation.x += correction.translation.x;
         owner_transform.data.translation.y += correction.translation.y;
         owner_transform.data.translation.z += correction.translation.z;
-        owner_transform.update(ctx, owner_transform.data);
 
+        movement_state.grounded = correction.grounded;
+        if movement_state.grounded {
+            movement_state.vertical_velocity = 0.0;
+        }
         movement_state.cell_id = encode_cell_id(
             owner_transform.data.translation.x,
             owner_transform.data.translation.z,
         );
-        movement_state.grounded = correction.grounded;
 
         if is_at_target_planar(owner_transform.data.translation.xz().into(), target_xz) {
             let clear_intent = match movement_state.move_intent.as_mut() {
@@ -172,6 +174,8 @@ fn process_move_intent_reducer(
             }
         }
         movement_state.should_move = movement_state.move_intent.is_some() || !correction.grounded;
+
+        owner_transform.update(ctx, owner_transform.data);
         ctx.db.movement_state_tbl().owner().update(movement_state);
     }
 

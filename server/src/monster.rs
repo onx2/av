@@ -51,6 +51,8 @@ impl MonsterRow {
         ctx.db.movement_state_tbl().insert(MovementStateRow {
             owner,
             grounded: false,
+            should_move: true,
+            move_intent: None,
             vertical_velocity: 0.0,
             cell_id,
             capsule: self.capsule,
