@@ -1,6 +1,6 @@
 use crate::{
     module_bindings::TransformRow,
-    owner::{OwnerEntity, OwnerEntityMapping},
+    owner::{OwnerEntityMapping, ensure_owner_entity},
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadInsertMessage, ReadUpdateMessage};
@@ -13,53 +13,80 @@ pub struct NetTransform {
 }
 
 pub(super) fn plugin(app: &mut App) {
-    app.add_systems(Update, (on_transform_inserted, on_transform_updated));
+    app.add_systems(
+        Update,
+        (on_transform_inserted, on_transform_updated, interpolate),
+    );
 }
 
 fn on_transform_inserted(
     mut commands: Commands,
     mut msgs: ReadInsertMessage<TransformRow>,
-    oe_mapping: Res<OwnerEntityMapping>,
+    mut oe_mapping: ResMut<OwnerEntityMapping>,
 ) {
     for msg in msgs.read() {
-        println!("on_transform_inserted");
+        println!("on_transform_inserted: {:?}", msg.row.owner);
         let transform_data = msg.row.clone();
-        let Some(bevy_entity) = oe_mapping.0.get(&transform_data.owner) else {
-            continue;
-        };
 
-        let transform_bundle = Transform {
-            translation: transform_data.data.translation.into(),
-            rotation: transform_data.data.rotation.into(),
-            scale: Vec3::ONE,
-        };
+        // Ensure the owner entity exists regardless of message ordering.
+        let bevy_entity = ensure_owner_entity(&mut commands, &mut oe_mapping, transform_data.owner);
 
-        commands.entity(*bevy_entity).insert((
-            transform_bundle,
+        // Use Commands to avoid timing issues with deferred spawns/components.
+        let translation: Vec3 = transform_data.data.translation.into();
+        let rotation: Quat = transform_data.data.rotation.into();
+
+        commands.entity(bevy_entity).insert((
+            Transform {
+                translation,
+                rotation,
+                scale: Vec3::ONE,
+            },
             NetTransform {
-                translation: transform_bundle.translation,
-                rotation: transform_bundle.rotation,
+                translation,
+                rotation,
             },
         ));
     }
 }
 
 fn on_transform_updated(
-    mut owner_query: Query<&mut NetTransform, With<OwnerEntity>>,
+    mut commands: Commands,
     mut msgs: ReadUpdateMessage<TransformRow>,
-    oe_mapping: Res<OwnerEntityMapping>,
+    mut oe_mapping: ResMut<OwnerEntityMapping>,
 ) {
-    // TODO: This should either update a custom component then we can interpolate between the old and new values.
+    // Apply updates even if we haven't seen an insert yet; ensure the entity exists.
     for msg in msgs.read() {
-        println!("on_transform_updated");
         let transform_data = msg.new.clone();
-        let Some(bevy_entity) = oe_mapping.0.get(&transform_data.owner) else {
-            continue;
-        };
-        let Ok(mut net_transform) = owner_query.get_mut(*bevy_entity) else {
-            continue;
-        };
-        net_transform.translation = transform_data.data.translation.into();
-        net_transform.rotation = transform_data.data.rotation.into();
+        let bevy_entity = ensure_owner_entity(&mut commands, &mut oe_mapping, transform_data.owner);
+
+        println!("on_transform_updated: {:?}", transform_data.owner);
+
+        let translation: Vec3 = transform_data.data.translation.into();
+        let rotation: Quat = transform_data.data.rotation.into();
+
+        // Keep NetTransform in sync for interpolation, and also ensure Transform exists.
+        commands.entity(bevy_entity).insert((
+            NetTransform {
+                translation,
+                rotation,
+            },
+            Transform {
+                translation,
+                rotation,
+                scale: Vec3::ONE,
+            },
+        ));
     }
+}
+
+fn interpolate(time: Res<Time>, mut transform_q: Query<(&mut Transform, &NetTransform)>) {
+    let dt = time.delta_secs();
+    transform_q.par_iter_mut().for_each(|(mut transform, net)| {
+        transform
+            .translation
+            .smooth_nudge(&net.translation, 12.0, dt);
+        transform.rotation = transform
+            .rotation
+            .slerp(net.rotation, 1.0 - (-24.0 * dt).exp());
+    });
 }

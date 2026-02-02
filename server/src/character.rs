@@ -1,4 +1,4 @@
-use crate::{SecondaryStatsData, SecondaryStatsRow};
+use crate::{Quat, SecondaryStatsData, SecondaryStatsRow, Vec3};
 
 use super::{
     active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, movement_state_tbl,
@@ -65,7 +65,10 @@ impl CharacterRow {
             owner_id: 0,
             identity: ctx.sender,
             name,
-            transform: TransformData::default(),
+            transform: TransformData {
+                rotation: Quat::IDENTITY,
+                translation: Vec3::new(0., 10.0, 0.),
+            },
             primary_stats,
             secondary_stats: SecondaryStatsData {
                 movement_speed: SecondaryStatsData::compute_movement_speed(

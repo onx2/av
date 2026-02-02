@@ -12,10 +12,12 @@ use spacetimedb::{reducer, ReducerContext};
 #[reducer]
 pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), String> {
     let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
+        log::error!("Unable to find active character");
         return Err("Unable to find active character".into());
     };
 
     let Some(transform_row) = ctx.db.transform_tbl().owner().find(active_character.owner) else {
+        log::error!("Unable to find transform for the active character");
         return Err("Unable to find transform for the active character".into());
     };
 
@@ -28,16 +30,9 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
         .owner()
         .find(active_character.owner)
     else {
+        log::error!("Unable to find movement state for the active character");
         return Err("Unable to find movement state for the active character".into());
     };
-
-    // Rate-limit move requests to 20/sec per actor.
-    //
-    // The old move_intent table stored `sent_at`. That no longer exists on MovementStateRow.
-    // If you still need strict server-side rate limiting, add a `last_move_request_at: Timestamp`
-    // to MovementStateRow (indexed if needed) and check it here.
-    //
-    // For now, we keep the "ignore duplicate intent" behavior without timestamp rate limiting.
 
     // Should we ignore this request based on our current intent?
     if let Some(current_intent) = movement_state.move_intent.as_ref() {
@@ -53,6 +48,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
         };
 
         if should_ignore {
+            log::info!("Ignoring duplicate move intent");
             return Ok(());
         }
     }
@@ -61,21 +57,31 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
     match &intent {
         MoveIntentData::Point(point) => {
             if is_move_too_close(current, (*point).into()) {
+                log::info!(
+                    "Ignoring move intent due to distance from current position being too close"
+                );
                 return Err("Distance from current position too close".into());
             }
         }
         MoveIntentData::Path(path) => {
             if path.iter().any(|x| is_move_too_far(current, (*x).into())) {
+                log::info!(
+                    "Ignoring move intent due to distance from current position being too far"
+                );
                 return Err("Distance from current position too far".into());
             }
         }
         MoveIntentData::Actor(owner) => {
             let Some(target) = ctx.db.transform_tbl().owner().find(owner) else {
+                log::error!("Unable to find target for move intent");
                 return Err("Unable to find target for move intent".into());
             };
 
             // Only check if the actor is too far because this can be used to follow, even when close.
             if is_move_too_far(current, target.data.translation.xz().into()) {
+                log::info!(
+                    "Ignoring move intent due to distance from current position being too far"
+                );
                 return Err("Distance from current position too far".into());
             }
         }

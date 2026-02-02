@@ -23,9 +23,9 @@ pub fn delta_time(now: Timestamp, last: Timestamp) -> Option<f32> {
 
 #[spacetimedb::table(
     name = movement_tick_timer,
-    scheduled(process_move_intent_reducer)
+    scheduled(movement_tick_reducer)
 )]
-pub struct ProcessMoveIntentTimer {
+pub struct MovementTickTimer {
     #[primary_key]
     #[auto_inc]
     pub scheduled_id: u64,
@@ -35,40 +35,25 @@ pub struct ProcessMoveIntentTimer {
     pub last_tick: Timestamp,
 }
 
-pub fn init_process_move_intent(ctx: &ReducerContext) {
-    ctx.db.movement_tick_timer().iter().for_each(|row| {
-        ctx.db.movement_tick_timer().delete(row);
-    });
-    ctx.db.movement_tick_timer().insert(ProcessMoveIntentTimer {
-        scheduled_id: 0,
-        scheduled_at: ScheduleAt::Time(ctx.timestamp),
+pub fn init_movement_tick(ctx: &ReducerContext) {
+    ctx.db.movement_tick_timer().scheduled_id().delete(1);
+    ctx.db.movement_tick_timer().insert(MovementTickTimer {
+        scheduled_id: 1,
+        scheduled_at: ScheduleAt::Interval(TimeDuration::from_micros(50_000)),
         last_tick: ctx.timestamp,
     });
-}
-
-fn reschedule(ctx: &ReducerContext, timer: ProcessMoveIntentTimer) {
-    ctx.db
-        .movement_tick_timer()
-        .scheduled_id()
-        .delete(timer.scheduled_id);
-    ctx.db.movement_tick_timer().insert(ProcessMoveIntentTimer {
-        scheduled_id: 0,
-        scheduled_at: ScheduleAt::Time(ctx.timestamp + TimeDuration::from_micros(100_000)),
-        last_tick: ctx.timestamp,
-    });
+    log::info!("init movement_tick");
 }
 
 #[reducer]
-fn process_move_intent_reducer(
-    ctx: &ReducerContext,
-    timer: ProcessMoveIntentTimer,
-) -> Result<(), String> {
+fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> Result<(), String> {
     if ctx.sender != ctx.identity() {
+        log::error!("`movement_tick_reducer` may not be invoked by clients.");
         return Err("`movement_tick_reducer` may not be invoked by clients.".into());
     }
-    let Some(dt) = delta_time(ctx.timestamp, timer.last_tick).map(|dt| dt.min(0.08)) else {
-        return Err("Failed to calculate delta time".into());
-    };
+    let dt = delta_time(ctx.timestamp, timer.last_tick)
+        .map(|dt| dt.min(0.1))
+        .unwrap_or(0.1);
 
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
@@ -78,23 +63,46 @@ fn process_move_intent_reducer(
         ..KinematicCharacterController::default()
     };
 
+    let processable = ctx.db.movement_state_tbl().should_move().filter(true);
+    if processable.count() == 0 {
+        log::info!("No movement states to process");
+        return Ok(());
+    }
     // Build the rapier physics world
     let world_defs = ctx.db.world_static_tbl().iter().map(row_to_def);
     let query_world = build_static_query_world(world_defs, dt);
-    let query_pipeline = query_world.as_query_pipeline(QueryFilter::only_fixed());
+    let query_pipeline = query_world.as_query_pipeline(QueryFilter::default());
 
     // Initialize a actor location cache. Rapier exposes a much faster HashMap, 10x fewer CPU instructions.
     // We no longer have a move_intent table; size this off of movement_state rows.
-    let moving_count = ctx.db.movement_state_tbl().count() as usize;
-    let mut target_xz_cache: HashMap<Owner, Vec2> =
-        HashMap::with_capacity_and_hasher(moving_count, Default::default());
+    let mut target_xz_cache: HashMap<Owner, Vec2> = HashMap::default();
     let view_ctx = ctx.as_read_only();
-
     for mut movement_state in ctx.db.movement_state_tbl().should_move().filter(true) {
+        log::info!(
+            "processing owner={:?} should_move={} grounded={} vv={:.4} dt={:.4}",
+            movement_state.owner,
+            movement_state.should_move,
+            movement_state.grounded,
+            movement_state.vertical_velocity,
+            dt
+        );
+
         let owner = movement_state.owner;
         let Some(mut owner_transform) = TransformRow::find(ctx, owner) else {
+            log::error!("Failed to find transform for owner {}", owner);
             continue;
         };
+
+        log::info!(
+            "pre-move owner={:?} pos=({:.4},{:.4},{:.4}) rot_yaw? grounded={} vv={:.4}",
+            owner,
+            owner_transform.data.translation.x,
+            owner_transform.data.translation.y,
+            owner_transform.data.translation.z,
+            movement_state.grounded,
+            movement_state.vertical_velocity
+        );
+
         let current_xz: Vector2<f32> = owner_transform.data.translation.xz().into();
         let target_xz: Vector2<f32> = movement_state
             .move_intent
@@ -106,8 +114,24 @@ fn process_move_intent_reducer(
             })
             .unwrap_or(current_xz);
 
-        if !movement_state.grounded && movement_state.vertical_velocity < TERMINAL_VELOCITY {
+        if !movement_state.grounded && movement_state.vertical_velocity > TERMINAL_VELOCITY {
+            let vv_before = movement_state.vertical_velocity;
             movement_state.vertical_velocity += GRAVITY * dt;
+            log::info!(
+                "gravity owner={:?} vv_before={:.4} vv_after={:.4} (GRAVITY={:.4})",
+                owner,
+                vv_before,
+                movement_state.vertical_velocity,
+                GRAVITY
+            );
+        } else {
+            log::info!(
+                "gravity skipped owner={:?} grounded={} vv={:.4} terminal={:.4}",
+                owner,
+                movement_state.grounded,
+                movement_state.vertical_velocity,
+                TERMINAL_VELOCITY
+            );
         }
 
         let Some(speed) = SecondaryStatsRow::find(&view_ctx, owner)
@@ -126,6 +150,25 @@ fn process_move_intent_reducer(
                 UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw).into();
         }
 
+        let desired_delta = get_desired_delta(
+            current_xz,
+            target_xz,
+            speed,
+            movement_state.vertical_velocity,
+            movement_state.grounded,
+            dt,
+        );
+
+        log::info!(
+            "desired_delta owner={:?} planar=({:.4},{:.4}) dy={:.4} grounded={} vv={:.4}",
+            owner,
+            desired_delta.x,
+            desired_delta.z,
+            desired_delta.y,
+            movement_state.grounded,
+            movement_state.vertical_velocity
+        );
+
         let correction = kcc.move_shape(
             dt,
             &query_pipeline,
@@ -134,27 +177,49 @@ fn process_move_intent_reducer(
                 movement_state.capsule.radius,
             ),
             &owner_transform.data.into(),
-            get_desired_delta(
-                current_xz,
-                target_xz,
-                speed,
-                movement_state.vertical_velocity,
-                movement_state.grounded,
-                dt,
-            ),
+            desired_delta,
             |_| {},
         );
+
+        log::info!(
+            "kcc correction owner={:?} corr=({:.4},{:.4},{:.4}) grounded_after={} grounded_before={}",
+            owner,
+            correction.translation.x,
+            correction.translation.y,
+            correction.translation.z,
+            correction.grounded,
+            movement_state.grounded
+        );
+
         owner_transform.data.translation.x += correction.translation.x;
         owner_transform.data.translation.y += correction.translation.y;
         owner_transform.data.translation.z += correction.translation.z;
 
         movement_state.grounded = correction.grounded;
         if movement_state.grounded {
+            if movement_state.vertical_velocity != 0.0 {
+                log::info!(
+                    "grounded -> reset vv owner={:?} vv_before={:.4}",
+                    owner,
+                    movement_state.vertical_velocity
+                );
+            }
             movement_state.vertical_velocity = 0.0;
         }
+
         movement_state.cell_id = encode_cell_id(
             owner_transform.data.translation.x,
             owner_transform.data.translation.z,
+        );
+
+        log::info!(
+            "post-move owner={:?} pos=({:.4},{:.4},{:.4}) grounded={} vv={:.4}",
+            owner,
+            owner_transform.data.translation.x,
+            owner_transform.data.translation.y,
+            owner_transform.data.translation.z,
+            movement_state.grounded,
+            movement_state.vertical_velocity
         );
 
         if is_at_target_planar(owner_transform.data.translation.xz().into(), target_xz) {
@@ -179,10 +244,8 @@ fn process_move_intent_reducer(
         ctx.db.movement_state_tbl().owner().update(movement_state);
     }
 
-    // Delete the old scheduled reducer and create a new one instead up updating an "ScheduledAt::Interval"
-    // version because of an engine bug that considers time elapsed in reducer as part of the Interval.
-    // https://discord.com/channels/1037340874172014652/1455222615747858534
-    reschedule(ctx, timer);
+    timer.last_tick = ctx.timestamp;
+    ctx.db.movement_tick_timer().scheduled_id().update(timer);
 
     Ok(())
 }
