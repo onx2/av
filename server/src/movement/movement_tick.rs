@@ -1,3 +1,5 @@
+use std::iter::once;
+
 use crate::{
     movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData, SecondaryStatsRow,
     TransformRow, Vec2,
@@ -52,16 +54,17 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         return Err("`movement_tick_reducer` may not be invoked by clients.".into());
     }
 
-    let processable = ctx.db.movement_state_tbl().should_move().filter(true);
     // No need to waste CPU instructions and a table scan for building the query world
     // when we don't have processable movement states...
-    if processable.count() == 0 {
+    let mut movement_states = ctx.db.movement_state_tbl().should_move().filter(true);
+    let Some(first_movement_state) = movement_states.next() else {
+        log::info!("No movement states to process");
         return Ok(());
-    }
+    };
 
     let dt = delta_time(ctx.timestamp, timer.last_tick)
-        .map(|dt| dt.min(0.1))
-        .unwrap_or(0.1);
+        .map(|dt| dt.min(0.075))
+        .unwrap_or(0.075);
 
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
@@ -81,7 +84,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
     // Initialize a actor location cache. Rapier exposes a much faster HashMap, 10x fewer CPU instructions.
     let mut target_xz_cache: HashMap<Owner, Vec2> = HashMap::default();
     let view_ctx = ctx.as_read_only();
-    for mut movement_state in ctx.db.movement_state_tbl().should_move().filter(true) {
+    for mut movement_state in once(first_movement_state).chain(movement_states) {
         let owner = movement_state.owner;
         let Some(mut owner_transform) = TransformRow::find(ctx, owner) else {
             log::error!("Failed to find transform for owner {}", owner);
