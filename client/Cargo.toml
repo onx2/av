@@ -14,6 +14,7 @@ iyes_perf_ui = { git = "https://github.com/BigWoofStudios/iyes_perf_ui", rev = "
 
 shared = { path = "../shared" }
 nalgebra = {workspace = true}
+rapier3d = { workspace = true }
 
 # Set max log levels. This helps avoid unwanted low-severity log spam, which can affect performance.
 log = { version = "0.4", features = [

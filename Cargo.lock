@@ -1907,6 +1907,7 @@ dependencies = [
  "leafwing-input-manager",
  "log",
  "nalgebra",
+ "rapier3d",
  "shared",
  "spacetimedb-sdk",
  "tracing",

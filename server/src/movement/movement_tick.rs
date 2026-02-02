@@ -41,7 +41,7 @@ pub fn init_movement_tick(ctx: &ReducerContext) {
     ctx.db.movement_tick_timer().scheduled_id().delete(1);
     ctx.db.movement_tick_timer().insert(MovementTickTimer {
         scheduled_id: 1,
-        scheduled_at: ScheduleAt::Interval(TimeDuration::from_micros(33_333)),
+        scheduled_at: ScheduleAt::Interval(TimeDuration::from_micros(50_000)),
         last_tick: ctx.timestamp,
     });
     log::info!("init movement_tick");

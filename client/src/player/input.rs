@@ -3,7 +3,7 @@ use crate::{
     cursor::{CurrentCursor, set_cursor_to_ability, set_cursor_to_combat, set_cursor_to_default},
     input::InputAction,
     module_bindings::{MoveIntentData, cancel_move, create_character, enter_game, request_move},
-    owner::LocalOwner,
+    // owner::LocalOwner,
     server::SpacetimeDB,
 };
 use bevy::{picking::pointer::PointerInteraction, prelude::*};

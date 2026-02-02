@@ -19,13 +19,12 @@ pub struct LocalOwner;
 #[derive(Component, Debug)]
 pub struct RemoteOwner;
 
-/// Ensures there is a Bevy `Entity` for the given `owner`.
+/// Ensures there is a Bevy `Entity` for the given `owner`, regardless of message ordering.
 ///
 /// This is the common pattern for replication timing issues:
 /// - Any table insert/update handler can call this first.
 /// - It guarantees a stable `Owner -> Entity` mapping exists.
 /// - It spawns a minimal entity (only `OwnerEntity`) when needed.
-/// - It can opportunistically tag the entity as local/remote when that info is known.
 pub fn ensure_owner_entity(
     commands: &mut Commands,
     oe_mapping: &mut OwnerEntityMapping,
@@ -35,12 +34,18 @@ pub fn ensure_owner_entity(
         return entity;
     }
 
-    let entity = commands.spawn((OwnerEntity(owner),)).id();
+    let entity = commands
+        .spawn((
+            OwnerEntity(owner),
+            // Hidden until we have a valid transform. TODO: this might not be necessary once assets for the character are used.
+            Visibility::Hidden,
+        ))
+        .id();
     oe_mapping.0.insert(owner, entity);
     entity
 }
 
-/// Opportunistically set local/remote tags when we know whether the `owner` is local.
+/// Set local/remote tags when we know whether the `owner` is local.
 ///
 /// Safe to call multiple times; inserts are idempotent.
 pub fn ensure_local_remote_tags(commands: &mut Commands, entity: Entity, is_local: bool) {

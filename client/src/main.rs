@@ -10,11 +10,15 @@ mod camera;
 mod cursor;
 mod input;
 mod module_bindings;
+mod movement_state;
 mod owner;
 mod player;
+mod secondary_stats;
 mod server;
 mod transform;
 mod world;
+
+pub use owner::{LocalOwner, OwnerEntity, OwnerEntityMapping, RemoteOwner, ensure_owner_entity};
 
 #[cfg(target_os = "macos")]
 use bevy::window::CompositeAlphaMode;
@@ -58,6 +62,8 @@ impl Plugin for AppPlugin {
             input::plugin,
             cursor::plugin,
             owner::plugin,
+            movement_state::plugin,
+            secondary_stats::plugin,
         ));
 
         #[cfg(feature = "dev_native")]

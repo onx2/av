@@ -35,6 +35,6 @@ pub fn active_character_view(ctx: &ViewContext) -> Vec<ActiveCharacterRow> {
 
     cell_block
         .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
-        .filter_map(|ms| ctx.db.active_character_tbl().owner().find(&ms.owner))
+        .filter_map(|ms| ActiveCharacterRow::find_by_owner(ctx, ms.owner))
         .collect()
 }

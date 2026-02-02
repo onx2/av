@@ -1,4 +1,4 @@
-use crate::{Capsule, MoveIntentData};
+use crate::{get_view_aoi_block, Capsule, MoveIntentData};
 use shared::Owner;
 use spacetimedb::{table, ReducerContext, ViewContext};
 
@@ -46,4 +46,17 @@ impl MovementStateRow {
     pub fn by_cell_id(ctx: &ViewContext, cell_id: u32) -> impl Iterator<Item = Self> {
         ctx.db.movement_state_tbl().cell_id().filter(cell_id)
     }
+}
+
+/// Finds the secondary stats for all actors within the AOI.
+/// Primary key of `Owner`
+#[spacetimedb::view(name = movement_state_view, public)]
+pub fn movement_state_view(ctx: &ViewContext) -> Vec<MovementStateRow> {
+    let Some(cell_block) = get_view_aoi_block(ctx) else {
+        return vec![];
+    };
+
+    cell_block
+        .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
+        .collect()
 }
