@@ -36,6 +36,10 @@ impl TransformRow {
 #[derive(SpacetimeType, Debug, Default, PartialEq, Clone, Copy)]
 pub struct TransformData {
     pub translation: Vec3,
+
+    // TODO: this doesn't need to be stored as a quat... yaw is fine.
+    // We actually only need a u16 here too, quantizing to 2bytes from
+    // the 16bytes really saves money
     pub rotation: Quat,
 }
 

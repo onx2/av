@@ -1,5 +1,4 @@
 mod extrapolate;
-mod interpolate;
 mod replication;
 
 use bevy::{platform::collections::HashMap, prelude::*};
@@ -18,7 +17,6 @@ pub(super) fn plugin(app: &mut App) {
         ),
     );
     // app.add_systems(Update, extrapolate::extrapolate_movement);
-    app.add_systems(PostUpdate, interpolate::interpolate);
 }
 
 /// Used to tie the server TransformData ID to the local bevy entity for efficient lookups when reconciling from network

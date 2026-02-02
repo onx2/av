@@ -1,4 +1,4 @@
-use crate::{module_bindings::ActiveCharacterRow, server::SpacetimeDB, transform::NetTransform};
+use crate::{module_bindings::ActiveCharacterRow, server::SpacetimeDB};
 use bevy::{platform::collections::HashMap, prelude::*};
 use bevy_spacetimedb::ReadInsertMessage;
 use shared::Owner;
@@ -86,17 +86,43 @@ fn on_active_character_inserted(
 
             // Don't insert `Transform` / `NetTransform` here.
             // Those are owned by transform replication (insert/update messages).
-            commands.entity(entity).insert((
-                ActiveCharacterVisuals,
-                Mesh3d(meshes.add(Mesh::from(Capsule3d {
-                    radius: 0.3,
-                    half_length: 0.85,
-                }))),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color,
-                    ..default()
-                })),
-            ));
+            commands
+                .entity(entity)
+                .insert((
+                    ActiveCharacterVisuals,
+                    Mesh3d(meshes.add(Mesh::from(Capsule3d {
+                        radius: 0.3,
+                        half_length: 0.85,
+                    }))),
+                    MeshMaterial3d(materials.add(StandardMaterial {
+                        base_color,
+                        ..default()
+                    })),
+                ))
+                .with_children(|parent| {
+                    let eye_mesh = meshes.add(Mesh::from(Sphere { radius: 0.12 }));
+                    let eye_mat = materials.add(StandardMaterial {
+                        base_color: Color::srgb(1.0, 1.0, 1.0),
+                        ..default()
+                    });
+
+                    let x = 0.18;
+                    let y = 0.85;
+                    let z = -0.3;
+
+                    parent.spawn((
+                        Name::new("LeftEye"),
+                        Mesh3d(eye_mesh.clone()),
+                        MeshMaterial3d(eye_mat.clone()),
+                        Transform::from_translation(Vec3::new(-x, y, z)),
+                    ));
+                    parent.spawn((
+                        Name::new("RightEye"),
+                        Mesh3d(eye_mesh),
+                        MeshMaterial3d(eye_mat),
+                        Transform::from_translation(Vec3::new(x, y, z)),
+                    ));
+                });
         }
 
         println!("on_active_character_inserted: {:?}", owner);
