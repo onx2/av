@@ -52,8 +52,8 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         return Err("`movement_tick_reducer` may not be invoked by clients.".into());
     }
     let dt = delta_time(ctx.timestamp, timer.last_tick)
-        .map(|dt| dt.min(0.1))
-        .unwrap_or(0.1);
+        .map(|dt| dt.min(0.05))
+        .unwrap_or(0.05);
 
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
@@ -71,7 +71,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
     // Build the rapier physics world
     let world_defs = ctx.db.world_static_tbl().iter().map(row_to_def);
     let query_world = build_static_query_world(world_defs, dt);
-    let query_pipeline = query_world.as_query_pipeline(QueryFilter::default());
+    let query_pipeline = query_world.as_query_pipeline(QueryFilter::only_fixed());
 
     // Initialize a actor location cache. Rapier exposes a much faster HashMap, 10x fewer CPU instructions.
     // We no longer have a move_intent table; size this off of movement_state rows.

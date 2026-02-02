@@ -43,7 +43,7 @@ pub fn get_desired_delta(
 
     if grounded {
         // No need for downward bias or gravity because snap to ground is active
-        [desired_planar.x, 0.0, desired_planar.y].into()
+        [desired_planar.x, -0.5 * dt, desired_planar.y].into()
     } else {
         let dy = vertical_velocity * dt;
         // Air control reduction in planar and gravity.
