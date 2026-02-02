@@ -85,8 +85,8 @@ pub fn is_move_too_close(a: Vector2<f32>, b: Vector2<f32>) -> bool {
 ///
 /// Result: Unique u32 ID with X-major ordering (x high, z low).
 pub fn encode_cell_id(x: f32, z: f32) -> u32 {
-    let grid_x = ((x + WORLD_OFFSET) / CELL_SIZE) as u16;
-    let grid_z = ((z + WORLD_OFFSET) / CELL_SIZE) as u16;
+    let grid_x = ((x + WORLD_OFFSET) * INV_CELL_SIZE) as u16;
+    let grid_z = ((z + WORLD_OFFSET) * INV_CELL_SIZE) as u16;
     (u32::from(grid_x) << 16) | u32::from(grid_z)
 }
 
@@ -100,6 +100,7 @@ pub fn encode_cell_id(x: f32, z: f32) -> u32 {
 pub fn decode_cell_id(id: u32) -> [f32; 2] {
     [
         f32::from((id >> 16) as u16) * CELL_SIZE - WORLD_OFFSET,
+        // 0xFFFF == u16::MAX, but converts to u32 implicitly
         f32::from((id & 0xFFFF) as u16) * CELL_SIZE - WORLD_OFFSET,
     ]
 }
