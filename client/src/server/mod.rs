@@ -35,6 +35,7 @@ pub(super) fn plugin(app: &mut App) {
             .add_reducer::<RequestMove>()
             .add_reducer::<EnterGame>()
             .add_reducer::<CreateCharacter>()
+            .add_reducer::<CancelMove>()
             // --------------------------------
             // Register all tables
             // --------------------------------

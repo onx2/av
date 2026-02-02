@@ -28,28 +28,34 @@ pub fn get_desired_delta(
     grounded: bool,
     dt: f32,
 ) -> Vector3<f32> {
+    const GROUND_BIAS_VELOCITY: f32 = -0.25;
+    const AIR_CONTROL_REDUCTION: f32 = 0.5;
     const MM_SQ: f32 = 1.0e-6;
 
     let max_step = movement_speed_mps * dt;
-    let displacement = target_planar - current_planar;
-    let dist_sq = displacement.norm_squared();
+    let dx = target_planar.x - current_planar.x;
+    let dz = target_planar.y - current_planar.y;
+    let dist_sq = dx * dx + dz * dz;
 
-    let desired_planar = if dist_sq <= MM_SQ {
-        Vector2::new(0.0, 0.0)
+    let (x, z) = if dist_sq <= MM_SQ {
+        (0.0, 0.0)
     } else {
         let dist = dist_sq.sqrt();
-        displacement * (max_step.min(dist) / dist)
+        let scale = max_step.min(dist) / dist;
+        (dx * scale, dz * scale)
     };
 
     if grounded {
-        // No need for downward bias or gravity because snap to ground is active
-        [desired_planar.x, -0.5 * dt, desired_planar.y].into()
+        // Very slight downward bias to help snap to ground on slopes
+        [x, GROUND_BIAS_VELOCITY * dt, z].into()
     } else {
-        let dy = vertical_velocity * dt;
         // Air control reduction in planar and gravity.
-        // Gravity is linear because I don't expect to have a need for "real" gravity...
-        // in the world, it is only applied here to make sure we end up on the ground eventually.
-        [desired_planar.x * 0.35, dy, desired_planar.y * 0.35].into()
+        [
+            x * AIR_CONTROL_REDUCTION,
+            vertical_velocity * dt,
+            z * AIR_CONTROL_REDUCTION,
+        ]
+        .into()
     }
 }
 

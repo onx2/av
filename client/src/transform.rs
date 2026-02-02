@@ -13,10 +13,8 @@ pub struct NetTransform {
 }
 
 pub(super) fn plugin(app: &mut App) {
-    app.add_systems(
-        Update,
-        (on_transform_inserted, on_transform_updated, interpolate),
-    );
+    app.add_systems(PreUpdate, (on_transform_inserted, on_transform_updated));
+    app.add_systems(PostUpdate, interpolate);
 }
 
 fn on_transform_inserted(
@@ -54,28 +52,14 @@ fn on_transform_updated(
     mut msgs: ReadUpdateMessage<TransformRow>,
     mut oe_mapping: ResMut<OwnerEntityMapping>,
 ) {
-    // Apply updates even if we haven't seen an insert yet; ensure the entity exists.
     for msg in msgs.read() {
         let transform_data = msg.new.clone();
         let bevy_entity = ensure_owner_entity(&mut commands, &mut oe_mapping, transform_data.owner);
 
-        println!("on_transform_updated: {:?}", transform_data.owner);
-
-        let translation: Vec3 = transform_data.data.translation.into();
-        let rotation: Quat = transform_data.data.rotation.into();
-
-        // Keep NetTransform in sync for interpolation, and also ensure Transform exists.
-        commands.entity(bevy_entity).insert((
-            NetTransform {
-                translation,
-                rotation,
-            },
-            Transform {
-                translation,
-                rotation,
-                scale: Vec3::ONE,
-            },
-        ));
+        commands.entity(bevy_entity).insert(NetTransform {
+            translation: transform_data.data.translation.into(),
+            rotation: transform_data.data.rotation.into(),
+        });
     }
 }
 
@@ -84,7 +68,7 @@ fn interpolate(time: Res<Time>, mut transform_q: Query<(&mut Transform, &NetTran
     transform_q.par_iter_mut().for_each(|(mut transform, net)| {
         transform
             .translation
-            .smooth_nudge(&net.translation, 12.0, dt);
+            .smooth_nudge(&net.translation, 18.0, dt);
         transform.rotation = transform
             .rotation
             .slerp(net.rotation, 1.0 - (-24.0 * dt).exp());

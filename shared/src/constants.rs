@@ -27,5 +27,5 @@ pub const CELL_SIZE: f32 = 10.0;
 /// Allows unsigned u16 grid coords to cover a world range of ~655360 units (±327680).
 pub const WORLD_OFFSET: f32 = 32768.0;
 
-pub const GRAVITY: f32 = -9.81;
+pub const GRAVITY: f32 = -13.81;
 pub const TERMINAL_VELOCITY: f32 = GRAVITY * 4.0;

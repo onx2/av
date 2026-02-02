@@ -51,9 +51,17 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         log::error!("`movement_tick_reducer` may not be invoked by clients.");
         return Err("`movement_tick_reducer` may not be invoked by clients.".into());
     }
+
+    let processable = ctx.db.movement_state_tbl().should_move().filter(true);
+    // No need to waste CPU instructions and a table scan for building the query world
+    // when we don't have processable movement states...
+    if processable.count() == 0 {
+        return Ok(());
+    }
+
     let dt = delta_time(ctx.timestamp, timer.last_tick)
-        .map(|dt| dt.min(0.05))
-        .unwrap_or(0.05);
+        .map(|dt| dt.min(0.1))
+        .unwrap_or(0.1);
 
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
@@ -63,18 +71,12 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         ..KinematicCharacterController::default()
     };
 
-    let processable = ctx.db.movement_state_tbl().should_move().filter(true);
-    if processable.count() == 0 {
-        log::info!("No movement states to process");
-        return Ok(());
-    }
     // Build the rapier physics world
     let world_defs = ctx.db.world_static_tbl().iter().map(row_to_def);
     let query_world = build_static_query_world(world_defs, dt);
     let query_pipeline = query_world.as_query_pipeline(QueryFilter::only_fixed());
 
     // Initialize a actor location cache. Rapier exposes a much faster HashMap, 10x fewer CPU instructions.
-    // We no longer have a move_intent table; size this off of movement_state rows.
     let mut target_xz_cache: HashMap<Owner, Vec2> = HashMap::default();
     let view_ctx = ctx.as_read_only();
     for mut movement_state in ctx.db.movement_state_tbl().should_move().filter(true) {
@@ -84,29 +86,29 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             continue;
         };
 
-        let current_xz: Vector2<f32> = owner_transform.data.translation.xz().into();
-        let target_xz: Vector2<f32> = movement_state
+        let current_planar: Vector2<f32> = owner_transform.data.translation.xz().into();
+        let target_planar: Vector2<f32> = movement_state
             .move_intent
             .as_ref()
             .map(|mi| {
                 mi.target_position_with_cache(&view_ctx.db, &mut target_xz_cache)
                     .map(|pos| pos.into())
-                    .unwrap_or(current_xz)
+                    .unwrap_or(current_planar)
             })
-            .unwrap_or(current_xz);
+            .unwrap_or(current_planar);
 
         if !movement_state.grounded && movement_state.vertical_velocity > TERMINAL_VELOCITY {
             movement_state.vertical_velocity += GRAVITY * dt;
         }
 
-        let Some(speed) = SecondaryStatsRow::find(&view_ctx, owner)
+        let Some(movement_speed_mps) = SecondaryStatsRow::find(&view_ctx, owner)
             .map(|secondary_stats| secondary_stats.data.movement_speed)
         else {
             log::error!("Failed to find secondary stats for entity {}", owner);
             continue;
         };
 
-        let direction = (target_xz - current_xz)
+        let direction = (target_planar - current_planar)
             .try_normalize(0.0)
             .unwrap_or_default();
 
@@ -114,15 +116,6 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             owner_transform.data.rotation =
                 UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw).into();
         }
-
-        let desired_delta = get_desired_delta(
-            current_xz,
-            target_xz,
-            speed,
-            movement_state.vertical_velocity,
-            movement_state.grounded,
-            dt,
-        );
 
         let correction = kcc.move_shape(
             dt,
@@ -132,7 +125,14 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
                 movement_state.capsule.radius,
             ),
             &owner_transform.data.into(),
-            desired_delta,
+            get_desired_delta(
+                current_planar,
+                target_planar,
+                movement_speed_mps,
+                movement_state.vertical_velocity,
+                movement_state.grounded,
+                dt,
+            ),
             |_| {},
         );
 
@@ -150,7 +150,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             owner_transform.data.translation.z,
         );
 
-        if is_at_target_planar(owner_transform.data.translation.xz().into(), target_xz) {
+        if is_at_target_planar(owner_transform.data.translation.xz().into(), target_planar) {
             let clear_intent = match movement_state.move_intent.as_mut() {
                 Some(MoveIntentData::Point(_)) => true,
                 Some(MoveIntentData::Actor(_)) => true,
@@ -168,8 +168,8 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         }
         movement_state.should_move = movement_state.move_intent.is_some() || !correction.grounded;
 
-        owner_transform.update(ctx, owner_transform.data);
-        ctx.db.movement_state_tbl().owner().update(movement_state);
+        owner_transform.update_from_self(ctx);
+        movement_state.update_from_self(ctx);
     }
 
     timer.last_tick = ctx.timestamp;
