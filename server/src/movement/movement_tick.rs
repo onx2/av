@@ -78,30 +78,11 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
     let mut target_xz_cache: HashMap<Owner, Vec2> = HashMap::default();
     let view_ctx = ctx.as_read_only();
     for mut movement_state in ctx.db.movement_state_tbl().should_move().filter(true) {
-        log::info!(
-            "processing owner={:?} should_move={} grounded={} vv={:.4} dt={:.4}",
-            movement_state.owner,
-            movement_state.should_move,
-            movement_state.grounded,
-            movement_state.vertical_velocity,
-            dt
-        );
-
         let owner = movement_state.owner;
         let Some(mut owner_transform) = TransformRow::find(ctx, owner) else {
             log::error!("Failed to find transform for owner {}", owner);
             continue;
         };
-
-        log::info!(
-            "pre-move owner={:?} pos=({:.4},{:.4},{:.4}) rot_yaw? grounded={} vv={:.4}",
-            owner,
-            owner_transform.data.translation.x,
-            owner_transform.data.translation.y,
-            owner_transform.data.translation.z,
-            movement_state.grounded,
-            movement_state.vertical_velocity
-        );
 
         let current_xz: Vector2<f32> = owner_transform.data.translation.xz().into();
         let target_xz: Vector2<f32> = movement_state
@@ -115,23 +96,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             .unwrap_or(current_xz);
 
         if !movement_state.grounded && movement_state.vertical_velocity > TERMINAL_VELOCITY {
-            let vv_before = movement_state.vertical_velocity;
             movement_state.vertical_velocity += GRAVITY * dt;
-            log::info!(
-                "gravity owner={:?} vv_before={:.4} vv_after={:.4} (GRAVITY={:.4})",
-                owner,
-                vv_before,
-                movement_state.vertical_velocity,
-                GRAVITY
-            );
-        } else {
-            log::info!(
-                "gravity skipped owner={:?} grounded={} vv={:.4} terminal={:.4}",
-                owner,
-                movement_state.grounded,
-                movement_state.vertical_velocity,
-                TERMINAL_VELOCITY
-            );
         }
 
         let Some(speed) = SecondaryStatsRow::find(&view_ctx, owner)
@@ -159,16 +124,6 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             dt,
         );
 
-        log::info!(
-            "desired_delta owner={:?} planar=({:.4},{:.4}) dy={:.4} grounded={} vv={:.4}",
-            owner,
-            desired_delta.x,
-            desired_delta.z,
-            desired_delta.y,
-            movement_state.grounded,
-            movement_state.vertical_velocity
-        );
-
         let correction = kcc.move_shape(
             dt,
             &query_pipeline,
@@ -181,45 +136,18 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             |_| {},
         );
 
-        log::info!(
-            "kcc correction owner={:?} corr=({:.4},{:.4},{:.4}) grounded_after={} grounded_before={}",
-            owner,
-            correction.translation.x,
-            correction.translation.y,
-            correction.translation.z,
-            correction.grounded,
-            movement_state.grounded
-        );
-
         owner_transform.data.translation.x += correction.translation.x;
         owner_transform.data.translation.y += correction.translation.y;
         owner_transform.data.translation.z += correction.translation.z;
 
         movement_state.grounded = correction.grounded;
         if movement_state.grounded {
-            if movement_state.vertical_velocity != 0.0 {
-                log::info!(
-                    "grounded -> reset vv owner={:?} vv_before={:.4}",
-                    owner,
-                    movement_state.vertical_velocity
-                );
-            }
             movement_state.vertical_velocity = 0.0;
         }
 
         movement_state.cell_id = encode_cell_id(
             owner_transform.data.translation.x,
             owner_transform.data.translation.z,
-        );
-
-        log::info!(
-            "post-move owner={:?} pos=({:.4},{:.4},{:.4}) grounded={} vv={:.4}",
-            owner,
-            owner_transform.data.translation.x,
-            owner_transform.data.translation.y,
-            owner_transform.data.translation.z,
-            movement_state.grounded,
-            movement_state.vertical_velocity
         );
 
         if is_at_target_planar(owner_transform.data.translation.xz().into(), target_xz) {
