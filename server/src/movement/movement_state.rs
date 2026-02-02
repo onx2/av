@@ -35,8 +35,7 @@ impl MovementStateRow {
         ctx.db.movement_state_tbl().owner().find(owner)
     }
 
-    /// Update the movement state from the current state. It is expected that the
-    /// caller has already updated the state with the latest values.
+    /// Updates from given self, caller should have updated the state with the latest values.
     pub fn update_from_self(self, ctx: &ReducerContext) {
         ctx.db.movement_state_tbl().owner().update(self);
     }

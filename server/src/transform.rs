@@ -23,6 +23,7 @@ impl TransformRow {
     pub fn insert(ctx: &ReducerContext, owner: Owner, data: TransformData) {
         ctx.db.transform_tbl().insert(Self { owner, data });
     }
+    /// Updates from given self, caller should have updated the state with the latest values.
     pub fn update_from_self(self, ctx: &ReducerContext) {
         ctx.db.transform_tbl().owner().update(self);
     }

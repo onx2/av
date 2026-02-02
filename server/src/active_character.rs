@@ -12,6 +12,13 @@ pub struct ActiveCharacterRow {
     pub owner: Owner,
 }
 impl ActiveCharacterRow {
+    pub fn find_by_identity(ctx: &ViewContext) -> Option<Self> {
+        ctx.db.active_character_tbl().identity().find(ctx.sender)
+    }
+    pub fn find_by_owner(ctx: &ViewContext, owner: Owner) -> Option<Self> {
+        ctx.db.active_character_tbl().owner().find(owner)
+    }
+
     pub fn new(identity: Identity, owner: Owner) -> Self {
         Self { identity, owner }
     }

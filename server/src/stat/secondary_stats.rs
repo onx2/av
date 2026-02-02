@@ -17,6 +17,10 @@ impl SecondaryStatsRow {
     pub fn insert(ctx: &ReducerContext, owner: Owner, data: SecondaryStatsData) {
         ctx.db.secondary_stats_tbl().insert(Self { owner, data });
     }
+    /// Updates from given self, caller should have updated the state with the latest values.
+    pub fn update_from_self(self, ctx: &ReducerContext) {
+        ctx.db.secondary_stats_tbl().owner().update(self);
+    }
 }
 
 #[derive(SpacetimeType, Debug, PartialEq, Clone, Copy)]
@@ -28,6 +32,9 @@ pub struct SecondaryStatsData {
 }
 
 impl SecondaryStatsData {
+    const MAX_MOVEMENT_SPEED: f32 = 10.0;
+    const MAX_CRITICAL_HIT_CHANCE: f32 = 50.0;
+
     /// Movement speed is determined by level, buffs, and gear only.
     ///
     /// Note: Bonus values should be passed in as decimal percentages (normalized between 0 and 1)
@@ -44,7 +51,7 @@ impl SecondaryStatsData {
         // Ideally buffs grant up to an additional 30% movement speed and gear +20%
         // Meaning (4 + 2) * (1 + 0.2) * (1 + 0.1) -> ~9.36, so the 10m/s cap is just a safety net
         ((base_speed + level_bonus) * gear_multiplier * buff_multiplier * debuff_multiplier)
-            .min(10.0)
+            .min(Self::MAX_MOVEMENT_SPEED)
     }
 
     /// Critical hit chance is determined by level, ferocity (primary stat), and gear
@@ -59,7 +66,8 @@ impl SecondaryStatsData {
         let level_bonus = level as f32 * 0.01;
         let gear_multiplier = 1. + gear;
         // Max critical hit chance of 50% seems reasonable for now... tbd
-        (base_speed * (1. + ferocity_bonus + level_bonus) * gear_multiplier).min(50.0)
+        (base_speed * (1. + ferocity_bonus + level_bonus) * gear_multiplier)
+            .min(Self::MAX_CRITICAL_HIT_CHANCE)
     }
 }
 

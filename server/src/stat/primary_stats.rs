@@ -1,7 +1,4 @@
-use crate::{
-    active_character_tbl, active_character_tbl__view, secondary_stats_tbl, LevelRow,
-    SecondaryStatsData,
-};
+use crate::{ActiveCharacterRow, LevelData, LevelRow, SecondaryStatsData, SecondaryStatsRow};
 use shared::Owner;
 use spacetimedb::{reducer, table, ReducerContext, SpacetimeType, Table, ViewContext};
 
@@ -31,13 +28,14 @@ impl PrimaryStatsRow {
             data,
         });
 
-        // Update derived stats when the base values change. Right now only ferocity is used.
+        // TODO: Update derived stats when the base values change. Right now only ferocity is used.
         if original_ferocity == data.ferocity {
             return;
         }
 
-        if let Some(mut secondary_stats) = ctx.db.secondary_stats_tbl().owner().find(self.owner) {
-            let Some(level) = LevelRow::find(ctx, self.owner).map(|r| r.data.level) else {
+        let view_ctx = ctx.as_read_only();
+        if let Some(mut secondary_stats) = SecondaryStatsRow::find(&view_ctx, self.owner) {
+            let Some(level) = LevelRow::find(&view_ctx, self.owner).map(|r| r.data.level) else {
                 log::error!("Unable to find level for owner: {:?}", self.owner);
                 return;
             };
@@ -48,7 +46,7 @@ impl PrimaryStatsRow {
                     primary_stats.data.ferocity,
                     0.,
                 );
-            ctx.db.secondary_stats_tbl().owner().update(secondary_stats);
+            secondary_stats.update_from_self(ctx);
         }
     }
 }
@@ -87,14 +85,14 @@ impl Default for PrimaryStatsData {
 }
 
 impl PrimaryStatsData {
-    const CREATION_POINTS: u8 = 15;
     const MIN_STAT: u8 = 10;
     const MAX_STAT: u8 = 60;
 
-    pub fn validate(&self) -> bool {
+    /// Determines if stats are within bounds of the available points, level, and and min/max
+    pub fn validate(&self, level: u8) -> bool {
         let stats = [self.ferocity, self.fortitude, self.intellect, self.acuity];
 
-        // Per-stat bounds.
+        // Per-stat bounds, are we within the min and max?
         if !stats
             .iter()
             .all(|&v| v >= Self::MIN_STAT && v <= Self::MAX_STAT)
@@ -102,13 +100,13 @@ impl PrimaryStatsData {
             return false;
         }
 
-        // Total cap: (# of stats * MIN_STAT) + CREATION_POINTS
-        // Use u16 to avoid any chance of overflow during accumulation.
-        let max_total =
-            (Self::MIN_STAT as u16) * (stats.len() as u16) + (Self::CREATION_POINTS as u16);
-        let total = stats.iter().map(|&v| v as u16).sum::<u16>();
+        // Are we within the total cap for this level?
+        let total: u8 = stats.iter().sum();
+        if total > LevelData::points_for_level(level) {
+            return false;
+        }
 
-        total == max_total
+        true
     }
 }
 
@@ -117,7 +115,7 @@ impl PrimaryStatsData {
 /// Primary key of `Owner`
 #[spacetimedb::view(name = primary_stats_view, public)]
 pub fn primary_stats_view(ctx: &ViewContext) -> Option<PrimaryStatsData> {
-    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
+    let Some(active_character) = ActiveCharacterRow::find_by_identity(ctx) else {
         return None;
     };
 
@@ -134,15 +132,11 @@ pub struct PlacePointsInput {
 
 #[reducer]
 pub fn place_points(ctx: &ReducerContext, input: PlacePointsInput) -> Result<(), String> {
-    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
+    let view_ctx = ctx.as_read_only();
+    let Some(active_character) = ActiveCharacterRow::find_by_identity(&view_ctx) else {
         return Err("No active character found".to_string());
     };
-    let Some(ps) = ctx
-        .db
-        .primary_stats_tbl()
-        .owner()
-        .find(active_character.owner)
-    else {
+    let Some(ps) = PrimaryStatsRow::find(&view_ctx, active_character.owner) else {
         return Err("No primary stats found".to_string());
     };
 

@@ -4,7 +4,7 @@ use crate::{
 };
 use nalgebra::{UnitQuaternion, Vector2, Vector3};
 use rapier3d::{
-    control::{CharacterAutostep, KinematicCharacterController},
+    control::{CharacterAutostep, CharacterLength, KinematicCharacterController},
     parry::utils::hashmap::HashMap,
     prelude::{Capsule, QueryFilter},
 };
@@ -66,8 +66,10 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
             include_dynamic_bodies: false,
+            max_height: CharacterLength::Relative(0.35),
             ..CharacterAutostep::default()
         }),
+        offset: CharacterLength::Relative(0.02),
         ..KinematicCharacterController::default()
     };
 
