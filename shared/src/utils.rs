@@ -28,7 +28,7 @@ pub fn get_desired_delta(
     grounded: bool,
     dt: f32,
 ) -> Vector3<f32> {
-    const GROUND_BIAS_VELOCITY: f32 = -0.25;
+    const GROUND_BIAS_VELOCITY: f32 = -0.125;
     const AIR_CONTROL_REDUCTION: f32 = 0.5;
     const MM_SQ: f32 = 1.0e-6;
 
