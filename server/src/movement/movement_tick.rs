@@ -102,8 +102,10 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             })
             .unwrap_or(current_planar);
 
+        let mut movement_state_dirty = false;
         if !movement_state.grounded && movement_state.vertical_velocity > TERMINAL_VELOCITY {
             movement_state.vertical_velocity += GRAVITY * dt;
+            movement_state_dirty = true;
         }
 
         let Some(movement_speed_mps) = SecondaryStatsRow::find(&view_ctx, owner)
@@ -145,15 +147,23 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         owner_transform.data.translation.y += correction.translation.y;
         owner_transform.data.translation.z += correction.translation.z;
 
-        movement_state.grounded = correction.grounded;
-        if movement_state.grounded {
+        if movement_state.grounded != correction.grounded {
+            movement_state.grounded = correction.grounded;
+            movement_state_dirty = true;
+        }
+        if movement_state.grounded && movement_state.vertical_velocity != 0.0 {
             movement_state.vertical_velocity = 0.0;
+            movement_state_dirty = true;
         }
 
-        movement_state.cell_id = encode_cell_id(
+        let cell_id = encode_cell_id(
             owner_transform.data.translation.x,
             owner_transform.data.translation.z,
         );
+        if movement_state.cell_id != cell_id {
+            movement_state.cell_id = cell_id;
+            movement_state_dirty = true;
+        }
 
         if is_at_target_planar(owner_transform.data.translation.xz().into(), target_planar) {
             let clear_intent = match movement_state.move_intent.as_mut() {
@@ -169,12 +179,19 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             };
             if clear_intent {
                 movement_state.move_intent = None;
+                movement_state_dirty = true;
             }
         }
-        movement_state.should_move = movement_state.move_intent.is_some() || !correction.grounded;
+        let should_move = movement_state.move_intent.is_some() || !correction.grounded;
+        if movement_state.should_move != should_move {
+            movement_state.should_move = should_move;
+            movement_state_dirty = true;
+        }
 
         owner_transform.update_from_self(ctx);
-        movement_state.update_from_self(ctx);
+        if movement_state_dirty {
+            movement_state.update_from_self(ctx);
+        }
     }
 
     timer.last_tick = ctx.timestamp;
