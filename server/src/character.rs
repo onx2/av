@@ -49,7 +49,10 @@ impl AsOwner for CharacterRow {
 }
 
 impl CharacterRow {
-    pub fn create(ctx: &ReducerContext, name: impl Into<String>) -> Result<Owner, &'static str> {
+    pub fn create(
+        ctx: &ReducerContext,
+        name: impl Into<String>,
+    ) -> Result<CharacterRow, &'static str> {
         let name = name.into();
         let length = name.chars().count();
         if length < 3 || length > 64 {
@@ -100,7 +103,7 @@ impl CharacterRow {
             },
         });
 
-        Ok(pack_owner(inserted.owner_id, OwnerKind::Character))
+        Ok(inserted)
     }
 
     pub fn delete(&self, _ctx: &ReducerContext) -> bool {
@@ -157,14 +160,19 @@ pub fn create_character(ctx: &ReducerContext, name: String) -> Result<(), String
         .map_err(|e| e.into())
 }
 
+// TODO: make this correct again, this is changed to just find the first char for testing
 #[reducer]
 pub fn enter_game(ctx: &ReducerContext, character_id: OwnerId) -> Result<(), String> {
-    let Some(character) = ctx.db.character_tbl().owner_id().find(character_id) else {
-        return Err("Character not found".into());
+    // let Some(character) = ctx.db.character_tbl().owner_id().find(character_id) else {
+    //     return Err("Character not found".into());
+    // };
+    // if character.identity != ctx.sender {
+    //     return Err("Unauthorized".into());
+    // }
+
+    let Ok(character) = CharacterRow::create(ctx, ctx.sender.to_string()) else {
+        return Err("Failed to create character".into());
     };
-    if character.identity != ctx.sender {
-        return Err("Unauthorized".into());
-    }
     Ok(character.enter_game(ctx))
 }
 

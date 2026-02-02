@@ -41,7 +41,7 @@ pub fn init_movement_tick(ctx: &ReducerContext) {
     ctx.db.movement_tick_timer().scheduled_id().delete(1);
     ctx.db.movement_tick_timer().insert(MovementTickTimer {
         scheduled_id: 1,
-        scheduled_at: ScheduleAt::Interval(TimeDuration::from_micros(50_000)),
+        scheduled_at: ScheduleAt::Interval(TimeDuration::from_micros(33_333)),
         last_tick: ctx.timestamp,
     });
     log::info!("init movement_tick");
@@ -69,10 +69,10 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
             include_dynamic_bodies: false,
-            max_height: CharacterLength::Relative(0.35),
+            max_height: CharacterLength::Relative(0.4),
             ..CharacterAutostep::default()
         }),
-        offset: CharacterLength::Relative(0.02),
+        offset: CharacterLength::Relative(0.025),
         ..KinematicCharacterController::default()
     };
 

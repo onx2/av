@@ -16,11 +16,13 @@ fn setup(mut commands: Commands) {
 
     // light
     commands.spawn((
-        PointLight {
+        DirectionalLight {
+            illuminance: 80_000.0,
             shadows_enabled: true,
             ..default()
         },
-        Transform::from_xyz(4.0, 8.0, 4.0),
+        // Orientation: Looking down from the sky
+        Transform::from_xyz(0.0, 10.0, 0.0).looking_at(Vec3::new(1.0, -1.0, 1.0), Vec3::Y),
     ));
 }
 

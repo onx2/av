@@ -1,6 +1,6 @@
 use crate::{module_bindings::ActiveCharacterRow, server::SpacetimeDB};
 use bevy::{platform::collections::HashMap, prelude::*};
-use bevy_spacetimedb::ReadInsertMessage;
+use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage};
 use shared::Owner;
 
 /// Marker to ensure we only attach active-character visuals once per entity.
@@ -55,8 +55,24 @@ pub(super) fn plugin(app: &mut App) {
     app.insert_resource(OwnerEntityMapping::default());
     app.add_systems(
         Update,
-        (on_active_character_inserted, on_monster_instance_inserted),
+        (
+            on_active_character_inserted,
+            on_active_character_deleted,
+            on_monster_instance_inserted,
+        ),
     );
+}
+
+fn on_active_character_deleted(
+    mut commands: Commands,
+    mut oe_mapping: ResMut<OwnerEntityMapping>,
+    mut msgs: ReadDeleteMessage<ActiveCharacterRow>,
+) {
+    for msg in msgs.read() {
+        if let Some(bevy_entity) = oe_mapping.0.remove(&msg.row.owner) {
+            commands.entity(bevy_entity).despawn();
+        }
+    }
 }
 
 fn on_active_character_inserted(
