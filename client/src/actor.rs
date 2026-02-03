@@ -1,16 +1,17 @@
 use crate::{module_bindings::CharacterInstanceRow, server::SpacetimeDB};
 use bevy::{platform::collections::HashMap, prelude::*};
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage};
+use shared::ActorId;
 
 /// Marker to ensure we only attach active-character visuals once per entity.
 #[derive(Component, Debug)]
 pub struct ActiveCharacterVisuals;
 
 #[derive(Resource, Default)]
-pub struct ActorEntityMapping(pub HashMap<u64, Entity>);
+pub struct ActorEntityMapping(pub HashMap<ActorId, Entity>);
 
 #[derive(Component, Debug)]
-pub struct ActorEntity(pub u64);
+pub struct ActorEntity(pub ActorId);
 
 #[derive(Component, Debug)]
 pub struct LocalActor;
@@ -27,7 +28,7 @@ pub struct RemoteActor;
 pub fn ensure_actor_entity(
     commands: &mut Commands,
     oe_mapping: &mut ActorEntityMapping,
-    actor_id: u64,
+    actor_id: ActorId,
 ) -> Entity {
     if let Some(&entity) = oe_mapping.0.get(&actor_id) {
         return entity;

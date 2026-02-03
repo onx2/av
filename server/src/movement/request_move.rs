@@ -104,7 +104,7 @@ pub fn cancel_move(ctx: &ReducerContext) -> Result<(), String> {
     };
 
     movement_state.move_intent = None;
-    movement_state.should_move = !movement_state.grounded;
+    movement_state.should_move = movement_state.vertical_velocity != 0;
 
     ctx.db
         .movement_state_tbl()

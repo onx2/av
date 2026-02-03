@@ -55,8 +55,7 @@ pub fn get_desired_delta(
     current_planar: Vector2<f32>,
     target_planar: Vector2<f32>,
     movement_speed_mps: f32,
-    vertical_velocity: f32,
-    grounded: bool,
+    vertical_velocity: u16,
     dt: f32,
 ) -> Vector3<f32> {
     const GROUND_BIAS_VELOCITY: f32 = -0.125;
@@ -76,14 +75,14 @@ pub fn get_desired_delta(
         (dx * scale, dz * scale)
     };
 
-    if grounded {
+    if vertical_velocity == 0 {
         // Very slight downward bias to help snap to ground on slopes
         [x, GROUND_BIAS_VELOCITY * dt, z].into()
     } else {
         // Air control reduction in planar and gravity.
         [
             x * AIR_CONTROL_REDUCTION,
-            vertical_velocity * dt,
+            -(vertical_velocity as f32) * dt,
             z * AIR_CONTROL_REDUCTION,
         ]
         .into()

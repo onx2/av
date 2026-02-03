@@ -19,11 +19,8 @@ pub struct MovementStateRow {
 
     pub move_intent: Option<MoveIntentData>,
 
-    /// Is the owner in contact with a surface, I.E. not "falling"
-    pub grounded: bool,
-
     /// Tracked for gravity acceleration
-    pub vertical_velocity: f32,
+    pub vertical_velocity: u16,
 }
 
 impl MovementStateRow {

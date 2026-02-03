@@ -36,7 +36,7 @@ pub struct MovementTickTimer {
     pub last_tick: Timestamp,
 }
 
-const TICK_INTERVAL_MICROS: i64 = 200_000;
+const TICK_INTERVAL_MICROS: i64 = 100_000;
 
 pub fn init_movement_tick(ctx: &ReducerContext) {
     ctx.db.movement_tick_timer().scheduled_id().delete(1);
@@ -108,8 +108,8 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             .unwrap_or(current_planar);
 
         let mut movement_state_dirty = false;
-        if !movement_state.grounded && movement_state.vertical_velocity > TERMINAL_VELOCITY {
-            movement_state.vertical_velocity += GRAVITY * dt;
+        if movement_state.vertical_velocity < TERMINAL_VELOCITY {
+            movement_state.vertical_velocity += (GRAVITY as f32 * dt) as u16;
             movement_state_dirty = true;
         }
 
@@ -138,7 +138,6 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
                 target_planar,
                 movement_speed_mps,
                 movement_state.vertical_velocity,
-                movement_state.grounded,
                 dt,
             ),
             |_| {},
@@ -148,12 +147,9 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         owner_transform.data.translation.y += correction.translation.y;
         owner_transform.data.translation.z += correction.translation.z;
 
-        if movement_state.grounded != correction.grounded {
-            movement_state.grounded = correction.grounded;
-            movement_state_dirty = true;
-        }
-        if movement_state.grounded && movement_state.vertical_velocity != 0.0 {
-            movement_state.vertical_velocity = 0.0;
+        let was_grounded = movement_state.vertical_velocity == 0;
+        if !was_grounded && correction.grounded {
+            movement_state.vertical_velocity = 0;
             movement_state_dirty = true;
         }
 
