@@ -4,7 +4,7 @@ use crate::{
     movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData, SecondaryStatsRow,
     TransformRow, Vec2,
 };
-use nalgebra::{UnitQuaternion, Vector2, Vector3};
+use nalgebra::Vector2;
 use rapier3d::{
     control::{CharacterAutostep, CharacterLength, KinematicCharacterController},
     parry::utils::hashmap::HashMap,
@@ -13,7 +13,7 @@ use rapier3d::{
 use shared::{
     constants::{GRAVITY, TERMINAL_VELOCITY},
     encode_cell_id, get_desired_delta, is_at_target_planar,
-    utils::build_static_query_world,
+    utils::{build_static_query_world, yaw_to_u8},
     yaw_from_xz, Owner,
 };
 use spacetimedb::{reducer, ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
@@ -37,11 +37,13 @@ pub struct MovementTickTimer {
     pub last_tick: Timestamp,
 }
 
+const TICK_INTERVAL_MICROS: i64 = 100_000;
+
 pub fn init_movement_tick(ctx: &ReducerContext) {
     ctx.db.movement_tick_timer().scheduled_id().delete(1);
     ctx.db.movement_tick_timer().insert(MovementTickTimer {
         scheduled_id: 1,
-        scheduled_at: ScheduleAt::Interval(TimeDuration::from_micros(100_000)),
+        scheduled_at: ScheduleAt::Interval(TimeDuration::from_micros(TICK_INTERVAL_MICROS)),
         last_tick: ctx.timestamp,
     });
     log::info!("init movement_tick");
@@ -120,8 +122,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             .unwrap_or_default();
 
         if let Some(yaw) = yaw_from_xz(direction) {
-            owner_transform.data.rotation =
-                UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw).into();
+            owner_transform.data.yaw = yaw_to_u8(yaw);
         }
 
         let correction = kcc.move_shape(

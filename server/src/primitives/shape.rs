@@ -9,7 +9,7 @@ use spacetimedb::SpacetimeType;
 /// - `half_height`: half of the cylinder length along local +Y.
 /// - Total capsule height = `2*half_height + 2*radius`.
 #[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
-pub struct Capsule {
+pub struct CapsuleY {
     pub radius: f32,
     pub half_height: f32,
 }
@@ -92,7 +92,7 @@ pub enum ColliderShape {
     /// Sphere/ball with the given radius (meters).
     Sphere(f32),
     /// Y-aligned capsule with `radius` and `half_height`.
-    Capsule(Capsule),
+    CapsuleY(CapsuleY),
     /// Y-aligned cylinder.
     Cylinder(Cylinder),
     /// Y-aligned cone.
@@ -114,7 +114,7 @@ impl From<ColliderShape> for SharedShape {
                 SharedShape::cuboid(half_extents.x, half_extents.y, half_extents.z)
             }
             ColliderShape::Sphere(radius) => SharedShape::ball(radius),
-            ColliderShape::Capsule(c) => SharedShape::capsule_y(c.half_height, c.radius),
+            ColliderShape::CapsuleY(c) => SharedShape::capsule_y(c.half_height, c.radius),
             ColliderShape::Cylinder(c) => SharedShape::cylinder(c.half_height, c.radius),
             ColliderShape::Cone(c) => SharedShape::cone(c.half_height, c.radius),
             ColliderShape::RoundCuboid(c) => SharedShape::round_cuboid(

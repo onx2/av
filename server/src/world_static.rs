@@ -42,7 +42,7 @@ pub fn row_to_def(row: WorldStatic) -> WorldStaticDef {
             half_extents: half_extents.into(),
         },
         ColliderShape::Sphere(radius) => ColliderShapeDef::Sphere { radius },
-        ColliderShape::Capsule(dim) => ColliderShapeDef::CapsuleY {
+        ColliderShape::CapsuleY(dim) => ColliderShapeDef::CapsuleY {
             radius: dim.radius,
             half_height: dim.half_height,
         },

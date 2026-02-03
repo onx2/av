@@ -32,7 +32,7 @@ pub struct SecondaryStatsData {
 }
 
 impl SecondaryStatsData {
-    const MAX_MOVEMENT_SPEED: f32 = 10.0;
+    const MAX_MOVEMENT_SPEED: f32 = 6.5;
     const MAX_CRITICAL_HIT_CHANCE: f32 = 50.0;
 
     /// Movement speed is determined by level, buffs, and gear only.
@@ -43,7 +43,7 @@ impl SecondaryStatsData {
     /// TODO: implement buffs and gear
     pub fn compute_movement_speed(level: u8, gear: f32, buff: f32, debuff: f32) -> f32 {
         let base_speed = 4.0;
-        let level_bonus = level as f32 * 0.04; // Max lvl 50 -> 50 * 0.04 = 2 m/s bonus
+        let level_bonus = level as f32 * 0.02; // MAX_LEVEL of 50 gives +1 to movement speed
         let gear_multiplier = 1. + gear;
         let buff_multiplier = 1. + buff;
         let debuff_multiplier = 1. - debuff;

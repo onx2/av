@@ -1,10 +1,9 @@
-use crate::{Quat, SecondaryStatsData, SecondaryStatsRow, Vec3};
-
-use super::{
+use crate::{
     active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, movement_state_tbl,
-    primary_stats_tbl, transform_tbl, ActiveCharacterRow, Capsule, ExperienceData, ExperienceRow,
+    primary_stats_tbl, transform_tbl, ActiveCharacterRow, CapsuleY, ExperienceData, ExperienceRow,
     HealthData, HealthRow, LevelData, LevelRow, ManaData, ManaRow, MovementStateRow,
-    PrimaryStatsData, PrimaryStatsRow, TransformData, TransformRow,
+    PrimaryStatsData, PrimaryStatsRow, SecondaryStatsData, SecondaryStatsRow, TransformData,
+    TransformRow, Vec3,
 };
 use shared::{encode_cell_id, pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
@@ -25,7 +24,7 @@ pub struct CharacterRow {
     #[index(btree)]
     pub deleted: bool,
 
-    pub capsule: Capsule,
+    pub capsule: CapsuleY,
 
     pub transform: TransformData,
     pub primary_stats: PrimaryStatsData,
@@ -69,7 +68,7 @@ impl CharacterRow {
             identity: ctx.sender,
             name,
             transform: TransformData {
-                rotation: Quat::IDENTITY,
+                yaw: 0,
                 translation: Vec3::new(0., 10.0, 0.),
             },
             primary_stats,
@@ -97,7 +96,7 @@ impl CharacterRow {
                 level_data.level,
                 primary_stats.intellect,
             )),
-            capsule: Capsule {
+            capsule: CapsuleY {
                 radius: 0.3,
                 half_height: 0.9,
             },

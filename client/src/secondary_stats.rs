@@ -21,7 +21,7 @@ fn on_secondary_stats_inserted(
     mut oe_mapping: ResMut<OwnerEntityMapping>,
 ) {
     for msg in msgs.read() {
-        println!("on_secondary_stats_inserted: {:?}", msg.row.owner);
+        println!("on_secondary_stats_inserted: {:?}", msg.row.clone());
         let bevy_entity = ensure_owner_entity(&mut commands, &mut oe_mapping, msg.row.owner);
         commands.entity(bevy_entity).insert(SecondaryStats {
             movement_speed: msg.row.data.movement_speed,

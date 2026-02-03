@@ -1,4 +1,4 @@
-use crate::{get_view_aoi_block, Capsule, MoveIntentData};
+use crate::{get_view_aoi_block, CapsuleY, MoveIntentData};
 use shared::Owner;
 use spacetimedb::{table, ReducerContext, ViewContext};
 
@@ -27,7 +27,7 @@ pub struct MovementStateRow {
 
     /// Capsule shape of the collider for the owner, restricting this to capsules to simplify and
     /// lower costs in spacetimeDB. Capsule = 8 bytes, but quantized to 4bytes using u16.
-    pub capsule: Capsule,
+    pub capsule: CapsuleY,
 }
 
 impl MovementStateRow {

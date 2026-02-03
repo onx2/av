@@ -1,8 +1,8 @@
 use crate::{get_view_aoi_block, MovementStateRow};
 
-use super::{Quat, Vec3};
-use nalgebra::Isometry3;
-use shared::Owner;
+use super::Vec3;
+use nalgebra::{Isometry3, UnitQuaternion, Vector3};
+use shared::{utils::yaw_from_u8, Owner};
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// Ephemeral
@@ -38,15 +38,17 @@ impl TransformRow {
 pub struct TransformData {
     pub translation: Vec3,
 
-    // TODO: this doesn't need to be stored as a quat... yaw is fine.
-    // We actually only need a u16 here too, quantizing to 2bytes from
-    // the 16bytes really saves money
-    pub rotation: Quat,
+    /// Quantized rotation around the Y axis.
+    /// ~1.4 degrees of precision seems good enough for most purposes
+    /// and this saves 15bytes of data on each move tick.
+    pub yaw: u8,
 }
 
 impl From<TransformData> for Isometry3<f32> {
     fn from(v: TransformData) -> Self {
-        Self::from_parts(v.translation.into(), v.rotation.into())
+        let yaw = yaw_from_u8(v.yaw);
+        let rotation = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw);
+        Self::from_parts(v.translation.into(), rotation)
     }
 }
 

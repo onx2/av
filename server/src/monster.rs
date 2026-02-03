@@ -1,5 +1,5 @@
 use super::{
-    monster_instance_tbl, movement_state_tbl, Capsule, HealthData, HealthRow, ManaData, ManaRow,
+    monster_instance_tbl, movement_state_tbl, CapsuleY, HealthData, HealthRow, ManaData, ManaRow,
     MonsterInstanceRow, MovementStateRow, PrimaryStatsData, PrimaryStatsRow, StatusFlags,
     StatusFlagsData, TransformData, TransformRow,
 };
@@ -18,11 +18,11 @@ pub struct MonsterRow {
 
     pub name: String,
 
-    pub capsule: Capsule,
+    pub capsule: CapsuleY,
 }
 
 impl MonsterRow {
-    pub fn insert(name: impl Into<String>, capsule: Capsule) -> Self {
+    pub fn insert(name: impl Into<String>, capsule: CapsuleY) -> Self {
         Self {
             id: 0,
             name: name.into(),
@@ -73,7 +73,7 @@ impl MonsterRow {
 
         MonsterRow::insert(
             "Troll",
-            Capsule {
+            CapsuleY {
                 radius: 0.3,
                 half_height: 0.9,
             },

@@ -4,6 +4,7 @@ use crate::{
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadInsertMessage, ReadUpdateMessage};
+use shared::utils::yaw_from_u8;
 
 /// Cached server transform data for an entity.
 #[derive(Component, Debug)]
@@ -24,14 +25,12 @@ fn on_transform_inserted(
 ) {
     for msg in msgs.read() {
         println!("on_transform_inserted: {:?}", msg.row.owner);
-        let transform_data = msg.row.clone();
-
         // Ensure the owner entity exists regardless of message ordering.
-        let bevy_entity = ensure_owner_entity(&mut commands, &mut oe_mapping, transform_data.owner);
+        let bevy_entity = ensure_owner_entity(&mut commands, &mut oe_mapping, msg.row.owner);
 
         // Use Commands to avoid timing issues with deferred spawns/components.
-        let translation: Vec3 = transform_data.data.translation.into();
-        let rotation: Quat = transform_data.data.rotation.into();
+        let translation: Vec3 = msg.row.data.translation.clone().into();
+        let rotation: Quat = Quat::from_rotation_y(yaw_from_u8(msg.row.data.yaw));
 
         commands.entity(bevy_entity).insert((
             // Make visible now that we have a valid transform. TODO: this might not be necessary once assets for the character are used.
@@ -55,16 +54,15 @@ fn on_transform_updated(
     oe_mapping: Res<OwnerEntityMapping>,
 ) {
     for msg in msgs.read() {
-        let transform = msg.new.clone();
-        let Some(&bevy_entity) = oe_mapping.0.get(&transform.owner) else {
+        let Some(&bevy_entity) = oe_mapping.0.get(&msg.new.owner) else {
             continue;
         };
         let Ok(mut net_transform) = transform_q.get_mut(bevy_entity) else {
             continue;
         };
         // println!("on_transform_updated: {:?}", transform.owner);
-        net_transform.translation = transform.data.translation.into();
-        net_transform.rotation = transform.data.rotation.into();
+        net_transform.translation = msg.new.data.translation.clone().into();
+        net_transform.rotation = Quat::from_rotation_y(yaw_from_u8(msg.new.data.yaw));
     }
 }
 
@@ -76,6 +74,6 @@ fn interpolate(time: Res<Time>, mut transform_q: Query<(&mut Transform, &NetTran
             .smooth_nudge(&net.translation, 12.0, dt);
         transform.rotation = transform
             .rotation
-            .slerp(net.rotation, 1.0 - (-24.0 * dt).exp());
+            .slerp(net.rotation, 1.0 - (-14.0 * dt).exp());
     });
 }
