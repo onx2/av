@@ -1,5 +1,5 @@
 use crate::{
-    character_instance_tbl, character_instance_tbl__view, LevelData, LevelRow, SecondaryStatsData,
+    character_instance_tbl, character_instance_tbl__view, LevelRow, SecondaryStatsData,
     SecondaryStatsRow,
 };
 use shared::ActorId;
@@ -38,7 +38,7 @@ impl PrimaryStatsRow {
 
         let view_ctx = ctx.as_read_only();
         if let Some(mut secondary_stats) = SecondaryStatsRow::find(&view_ctx, self.actor_id) {
-            let Some(level) = LevelRow::find(&view_ctx, self.actor_id).map(|r| r.data.level) else {
+            let Some(level) = LevelRow::find(&view_ctx, self.actor_id).map(|r| r.level) else {
                 log::error!("Unable to find level for actor: {:?}", self.actor_id);
                 return;
             };
@@ -105,7 +105,7 @@ impl PrimaryStatsData {
 
         // Are we within the total cap for this level?
         let total: u8 = stats.iter().sum();
-        if total > LevelData::points_for_level(level) {
+        if total > LevelRow::points_for_level(level) {
             return false;
         }
 

@@ -8,11 +8,11 @@ pub struct ManaRow {
     #[primary_key]
     pub actor_id: ActorId,
 
+    pub data: ManaData,
+
     /// Indexed lookup for "is current mana at max?"
     #[index(btree)]
     pub is_full: bool,
-
-    pub data: ManaData,
 }
 
 impl ManaRow {

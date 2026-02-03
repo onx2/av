@@ -3,7 +3,7 @@ use crate::{
     SecondaryStatsRow, MAX_LEVEL, TIER_INTERVAL,
 };
 use shared::ActorId;
-use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
+use spacetimedb::{table, ReducerContext, Table, ViewContext};
 
 /// The amount of progression this person has accumulated
 #[table(name = level_tbl)]
@@ -11,37 +11,26 @@ pub struct LevelRow {
     #[primary_key]
     pub actor_id: ActorId,
 
-    pub data: LevelData,
-}
-#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LevelData {
     pub level: u8,
 }
 
-impl Default for LevelData {
-    fn default() -> Self {
-        Self { level: 1 }
-    }
-}
-impl LevelData {
+impl LevelRow {
     /// What is the total amount of points alloted for every level up to and including this level.
     /// 1 point per level, except each tier level (10, 20, 30, ...) gives 3 instead of 1.
     /// That means +2 bonus points per tier reached.
     pub fn points_for_level(level: u8) -> u8 {
         level + (level / TIER_INTERVAL) * 2
     }
-}
 
-impl LevelRow {
     pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
         ctx.db.level_tbl().actor_id().find(actor_id)
     }
-    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: LevelData) {
-        ctx.db.level_tbl().insert(Self { actor_id, data });
+    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, level: u8) {
+        ctx.db.level_tbl().insert(Self { actor_id, level });
     }
 
     pub fn update(&self, ctx: &ReducerContext, new_level: u8) {
-        if new_level == self.data.level {
+        if new_level == self.level {
             log::warn!("Unable to change level to the same value");
             return;
         }
@@ -52,7 +41,7 @@ impl LevelRow {
 
         let res = ctx.db.level_tbl().actor_id().update(Self {
             actor_id: self.actor_id,
-            data: LevelData { level: new_level },
+            level: new_level,
         });
         let Some(primary_stats_data) =
             PrimaryStatsRow::find(&ctx.as_read_only(), self.actor_id).map(|row| row.data)
@@ -69,23 +58,23 @@ impl LevelRow {
         if let Some(health) = HealthRow::find(&view_ctx, self.actor_id) {
             health.set_max(
                 ctx,
-                HealthData::compute_max(res.data.level, primary_stats_data.fortitude),
+                HealthData::compute_max(res.level, primary_stats_data.fortitude),
             );
         }
         if let Some(mana) = ManaRow::find(&view_ctx, self.actor_id) {
             mana.set_max(
                 ctx,
-                ManaData::compute_max(res.data.level, primary_stats_data.intellect),
+                ManaData::compute_max(res.level, primary_stats_data.intellect),
             );
         }
 
         // Update secondary stats when we change level
         if let Some(mut secondary_stats) = SecondaryStatsRow::find(&view_ctx, self.actor_id) {
             secondary_stats.data.movement_speed =
-                SecondaryStatsData::compute_movement_speed(res.data.level, 0., 0., 0.);
+                SecondaryStatsData::compute_movement_speed(res.level, 0., 0., 0.);
             secondary_stats.data.critical_hit_chance =
                 SecondaryStatsData::compute_critical_hit_chance(
-                    res.data.level,
+                    res.level,
                     primary_stats_data.ferocity,
                     0.,
                 );

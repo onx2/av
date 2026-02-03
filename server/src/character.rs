@@ -1,9 +1,9 @@
 use crate::{
     actor_tbl, character_instance_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl,
     movement_state_tbl, primary_stats_tbl, transform_tbl, ActorRow, CapsuleY, CharacterInstanceRow,
-    ExperienceData, ExperienceRow, HealthData, HealthRow, LevelData, LevelRow, ManaData, ManaRow,
-    MovementStateRow, PrimaryStatsData, PrimaryStatsRow, SecondaryStatsData, SecondaryStatsRow,
-    TransformData, TransformRow, Vec3,
+    ExperienceRow, HealthData, HealthRow, LevelRow, ManaData, ManaRow, MovementStateRow,
+    PrimaryStatsData, PrimaryStatsRow, SecondaryStatsData, SecondaryStatsRow, TransformData,
+    TransformRow, Vec3,
 };
 use shared::{encode_cell_id, CellId};
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
@@ -11,15 +11,17 @@ use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 /// The persistence layer for a player's characters
 #[table(name=character_tbl)]
 pub struct CharacterRow {
+    #[index(btree)]
+    pub identity: Identity,
+
     #[auto_inc]
     #[primary_key]
     pub id: u32,
 
-    #[index(btree)]
-    pub identity: Identity,
-
     #[unique]
     pub name: String,
+
+    pub experience: u32,
 
     #[index(btree)]
     pub deleted: bool,
@@ -31,8 +33,7 @@ pub struct CharacterRow {
     pub secondary_stats: SecondaryStatsData,
     pub health: HealthData,
     pub mana: ManaData,
-    pub experience: ExperienceData,
-    pub level: LevelData,
+    pub level: u8,
 }
 
 impl CharacterRow {
@@ -49,7 +50,7 @@ impl CharacterRow {
             return Err("Name must be alphanumeric");
         }
 
-        let level_data = LevelData::default();
+        let level = 1;
         let primary_stats = PrimaryStatsData::default();
         let inserted = ctx.db.character_tbl().insert(CharacterRow {
             id: 0,
@@ -61,29 +62,18 @@ impl CharacterRow {
             },
             primary_stats,
             secondary_stats: SecondaryStatsData {
-                movement_speed: SecondaryStatsData::compute_movement_speed(
-                    level_data.level,
-                    0.0,
-                    0.0,
-                    0.0,
-                ),
+                movement_speed: SecondaryStatsData::compute_movement_speed(level, 0.0, 0.0, 0.0),
                 critical_hit_chance: SecondaryStatsData::compute_critical_hit_chance(
-                    level_data.level,
+                    level,
                     primary_stats.ferocity,
                     0.0,
                 ),
             },
             deleted: false,
-            experience: ExperienceData::default(),
-            level: level_data,
-            health: HealthData::new(HealthData::compute_max(
-                level_data.level,
-                primary_stats.fortitude,
-            )),
-            mana: ManaData::new(ManaData::compute_max(
-                level_data.level,
-                primary_stats.intellect,
-            )),
+            experience: 0,
+            level,
+            health: HealthData::new(HealthData::compute_max(level, primary_stats.fortitude)),
+            mana: ManaData::new(ManaData::compute_max(level, primary_stats.intellect)),
             capsule: CapsuleY {
                 radius: 0.3,
                 half_height: 0.9,

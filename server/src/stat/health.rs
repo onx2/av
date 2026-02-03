@@ -8,11 +8,11 @@ pub struct HealthRow {
     #[primary_key]
     pub actor_id: ActorId,
 
+    pub data: HealthData,
+
     /// Indexed lookup for "is current health at max?"
     #[index(btree)]
     pub is_full: bool,
-
-    pub data: HealthData,
 }
 
 impl HealthRow {
