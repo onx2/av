@@ -37,7 +37,7 @@ pub struct MovementTickTimer {
     pub last_tick: Timestamp,
 }
 
-const TICK_INTERVAL_MICROS: i64 = 100_000;
+const TICK_INTERVAL_MICROS: i64 = 200_000;
 
 pub fn init_movement_tick(ctx: &ReducerContext) {
     ctx.db.movement_tick_timer().scheduled_id().delete(1);
