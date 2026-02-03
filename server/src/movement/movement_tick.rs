@@ -55,8 +55,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         return Err("`movement_tick_reducer` may not be invoked by clients.".into());
     }
 
-    // No need to waste CPU instructions and a table scan for building the query world
-    // when we don't have processable movement states...
+    // Prevent wasting CPU instructions + table scan for the query world when possible
     let mut movement_states = ctx.db.movement_state_tbl().should_move().filter(true);
     let Some(first_movement_state) = movement_states.next() else {
         log::info!("No movement states to process");

@@ -17,7 +17,7 @@ pub const SMALLEST_MOVE_DISTANCE_SQ: f32 = 0.0001;
 pub const MAX_INTENT_DISTANCE_SQ: f32 = 100.0 * 100.0;
 
 /// The maximum number of points on a path that are allowed
-pub const MAX_INTENT_PATH_LEN: usize = 20;
+pub const MAX_INTENT_PATH_LEN: usize = 5;
 
 /// Minimum planar motion required to update yaw (meters per tick).
 pub const YAW_EPS: f32 = 1.0e-6;

@@ -19,7 +19,7 @@ pub struct MovementStateRow {
 
     pub move_intent: Option<MoveIntentData>,
 
-    /// Tracked for gravity acceleration
+    /// Tracked for gravity acceleration and used to determine if the actor was previously grounded.
     pub vertical_velocity: u16,
 }
 
