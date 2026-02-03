@@ -1,8 +1,6 @@
-use std::iter::once;
-
 use crate::{
-    actor_tbl, movement_state_tbl, row_to_def, world_static_tbl, ActorId, MoveIntentData,
-    SecondaryStatsRow, TransformRow, Vec2,
+    actor_tbl, movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData, SecondaryStatsRow,
+    TransformRow, Vec2,
 };
 use nalgebra::Vector2;
 use rapier3d::{
@@ -14,9 +12,10 @@ use shared::{
     constants::{GRAVITY, TERMINAL_VELOCITY},
     encode_cell_id, get_desired_delta, is_at_target_planar,
     utils::{build_static_query_world, yaw_to_u8},
-    yaw_from_xz,
+    yaw_from_xz, ActorId,
 };
 use spacetimedb::{reducer, ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
+use std::iter::once;
 
 pub fn delta_time(now: Timestamp, last: Timestamp) -> Option<f32> {
     now.time_duration_since(last)

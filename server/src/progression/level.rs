@@ -1,7 +1,8 @@
 use crate::{
-    ActorId, HealthData, HealthRow, ManaData, ManaRow, PrimaryStatsRow, SecondaryStatsData,
+    HealthData, HealthRow, ManaData, ManaRow, PrimaryStatsRow, SecondaryStatsData,
     SecondaryStatsRow, MAX_LEVEL, TIER_INTERVAL,
 };
+use shared::ActorId;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// The amount of progression this person has accumulated

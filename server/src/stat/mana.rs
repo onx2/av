@@ -1,4 +1,5 @@
-use crate::{get_view_aoi_block, ActorId, MovementStateRow};
+use crate::{get_view_aoi_block, MovementStateRow};
+use shared::ActorId;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// **Ephemeral**

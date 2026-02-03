@@ -1,4 +1,5 @@
-use crate::{level_tbl, ActorId, EXPERIENCE_PER_LEVEL};
+use crate::{level_tbl, EXPERIENCE_PER_LEVEL};
+use shared::ActorId;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table};
 
 /// The amount of experience this person has accumulated

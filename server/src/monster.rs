@@ -1,9 +1,4 @@
-use super::{
-    monster_instance_tbl, movement_state_tbl, CapsuleY, HealthData, HealthRow, ManaData, ManaRow,
-    MonsterInstanceRow, MovementStateRow, PrimaryStatsData, PrimaryStatsRow, StatusFlags,
-    StatusFlagsData, TransformData, TransformRow,
-};
-use shared::{encode_cell_id, pack_owner, Owner, OwnerKind};
+use super::CapsuleY;
 use spacetimedb::{table, ReducerContext, Table};
 
 /// Monster "definition" (type).

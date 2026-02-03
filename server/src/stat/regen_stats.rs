@@ -1,7 +1,7 @@
+use crate::{health_tbl, mana_tbl};
+use shared::ActorId;
 use spacetimedb::{reducer, table, ReducerContext, ScheduleAt, SpacetimeType, Table, ViewContext};
 use std::{collections::HashMap, time::Duration};
-
-use crate::{health_tbl, mana_tbl, ActorId};
 
 #[table(name=regen_stats_tbl)]
 pub struct RegenStatsRow {

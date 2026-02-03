@@ -1,8 +1,7 @@
-use crate::{get_view_aoi_block, ActorId, MovementStateRow};
-
 use super::Vec3;
+use crate::{get_view_aoi_block, MovementStateRow};
 use nalgebra::{Isometry3, UnitQuaternion, Vector3};
-use shared::utils::yaw_from_u8;
+use shared::{yaw_from_u8, ActorId};
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// Ephemeral

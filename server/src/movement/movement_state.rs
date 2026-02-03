@@ -1,4 +1,5 @@
-use crate::{get_view_aoi_block, ActorId, MoveIntentData};
+use crate::{get_view_aoi_block, MoveIntentData};
+use shared::ActorId;
 use spacetimedb::{table, ReducerContext, ViewContext};
 
 /// Ephemeral/computed & cached state for the owner's movement. This doesn't need to be persisted

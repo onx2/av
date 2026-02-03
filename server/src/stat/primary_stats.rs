@@ -1,7 +1,8 @@
 use crate::{
-    character_instance_tbl, character_instance_tbl__view, ActorId, LevelData, LevelRow,
-    SecondaryStatsData, SecondaryStatsRow,
+    character_instance_tbl, character_instance_tbl__view, LevelData, LevelRow, SecondaryStatsData,
+    SecondaryStatsRow,
 };
+use shared::ActorId;
 use spacetimedb::{reducer, table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// Ephemeral

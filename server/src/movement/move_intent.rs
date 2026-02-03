@@ -1,5 +1,6 @@
-use crate::{transform_tbl__view, ActorId, Vec2};
+use crate::{transform_tbl__view, Vec2};
 use rapier3d::parry::utils::hashmap::HashMap;
+use shared::ActorId;
 use spacetimedb::*;
 
 /// Represents the 2-dimensional movement intent of an Actor in the world
@@ -8,6 +9,8 @@ pub enum MoveIntentData {
     /// Movement toward a specific position in the world
     Point(Vec2),
     /// Movement along a path
+    /// TODO: might be able to remove this in favor of point only and request
+    /// a new point when it is reached... at least on the client? Not sure if that works on the server.
     Path(Vec<Vec2>),
     /// Movement toward an entity in the world (Actor)
     Actor(ActorId),
