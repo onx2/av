@@ -5,7 +5,7 @@ use crate::{
     MovementStateRow, PrimaryStatsData, PrimaryStatsRow, SecondaryStatsData, SecondaryStatsRow,
     TransformData, TransformRow, Vec3,
 };
-use shared::encode_cell_id;
+use shared::{encode_cell_id, CellId};
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 
 /// The persistence layer for a player's characters
@@ -122,7 +122,8 @@ impl CharacterRow {
         // Prevent multiple player characters from joining the game, only one character per player
         self.leave_game(ctx);
 
-        let cell_id = encode_cell_id(self.transform.translation.x, self.transform.translation.z);
+        let cell_id: CellId =
+            encode_cell_id(self.transform.translation.x, self.transform.translation.z);
         let actor = ctx.db.actor_tbl().insert(ActorRow {
             id: 0,
             capsule: self.capsule,

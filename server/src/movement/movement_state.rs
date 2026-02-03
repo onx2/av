@@ -1,5 +1,5 @@
 use crate::{get_view_aoi_block, MoveIntentData};
-use shared::ActorId;
+use shared::{ActorId, CellId};
 use spacetimedb::{table, ReducerContext, ViewContext};
 
 /// Ephemeral/computed & cached state for the owner's movement. This doesn't need to be persisted
@@ -10,7 +10,7 @@ pub struct MovementStateRow {
     pub actor_id: ActorId,
 
     #[index(btree)]
-    pub cell_id: u32,
+    pub cell_id: CellId,
 
     /// Index-able column for the `move_intent` because SpacetimeType cannot be indexed.
     /// This is true when grounded=false || Some(move_intent)
@@ -42,7 +42,7 @@ impl MovementStateRow {
     /// Find all movement states for a given cell ID.
     ///
     /// **Performance & Cost**: O(log N), bsatn seek (index?? TBD)
-    pub fn by_cell_id(ctx: &ViewContext, cell_id: u32) -> impl Iterator<Item = Self> {
+    pub fn by_cell_id(ctx: &ViewContext, cell_id: CellId) -> impl Iterator<Item = Self> {
         ctx.db.movement_state_tbl().cell_id().filter(cell_id)
     }
 }

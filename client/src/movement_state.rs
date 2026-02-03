@@ -4,10 +4,11 @@ use crate::{
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadInsertMessage, ReadUpdateMessage};
+use shared::CellId;
 
 #[derive(Component, Debug)]
 pub struct MovementState {
-    pub cell_id: u32,
+    pub cell_id: CellId,
     pub should_move: bool,
     pub move_intent: Option<MoveIntentData>,
     pub vertical_velocity: i8,

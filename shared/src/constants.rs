@@ -24,13 +24,24 @@ pub const YAW_EPS: f32 = 1.0e-6;
 
 /// Size of one grid cell in world units (meters).
 /// All cells are square
-pub const CELL_SIZE: f32 = 10.0;
+pub const CELL_SIZE: f32 = 50.0;
 pub const INV_CELL_SIZE: f32 = 1.0 / CELL_SIZE;
 
+/// Side length (cells per axis) for the square `u16` cell-id grid.
+///
+/// A `u16` can represent 65536 total cells, so a square grid must be 256×256.
+pub const GRID_SIDE: u16 = 256;
+pub const GRID_SIDE_F: f32 = GRID_SIDE as f32;
+
 /// Offset applied when converting world positions to grid coordinates.
-/// Shifts the world origin so that grid (0,0) corresponds to world position (-32768, -32768).
-/// Allows unsigned u16 grid coords to cover a world range of ~655360 units (±327680).
-pub const WORLD_OFFSET: f32 = 32768.0;
+///
+/// For the `u16` cell-id grid, we use a fixed `GRID_SIDE × GRID_SIDE` world. To support negative
+/// world coordinates while keeping the cell coordinate range in `[0, GRID_SIDE)`, we shift by
+/// half the world span so that world-space `(0, 0)` maps near the center of the grid.
+///
+/// World span per axis (meters): `GRID_SIDE as f32 * CELL_SIZE`
+/// Offset (meters): `world_span / 2`
+pub const WORLD_OFFSET: f32 = GRID_SIDE_F * CELL_SIZE * 0.5;
 
 /// Gravity acceleration (meters/second^2). Negative is downward.
 pub const GRAVITY_MPS2: f32 = -13.81;
