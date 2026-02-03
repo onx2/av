@@ -32,5 +32,16 @@ pub const INV_CELL_SIZE: f32 = 1.0 / CELL_SIZE;
 /// Allows unsigned u16 grid coords to cover a world range of ~655360 units (±327680).
 pub const WORLD_OFFSET: f32 = 32768.0;
 
-pub const GRAVITY: u16 = 10;
-pub const TERMINAL_VELOCITY: u16 = GRAVITY * 4;
+/// Gravity acceleration (meters/second^2). Negative is downward.
+pub const GRAVITY_MPS2: f32 = -13.81;
+
+/// Terminal fall speed (meters/second). Negative is downward.
+pub const TERMINAL_FALL_SPEED_MPS: f32 = GRAVITY_MPS2 * 3.;
+
+/// Vertical velocity quantization scale (meters/second per 1 `i8` unit).
+///
+/// Stored vertical velocity (`i8`) represents: `v_mps = v_q as f32 * VERTICAL_VELOCITY_Q_MPS`.
+/// Smaller values = finer precision but smaller max representable speed.
+///
+/// With `0.25`, `i8` covers approximately [-32.0, +31.75] m/s.
+pub const VERTICAL_VELOCITY_Q_MPS: f32 = 0.25;

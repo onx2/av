@@ -9,7 +9,7 @@ use rapier3d::{
     prelude::{Capsule, QueryFilter},
 };
 use shared::{
-    constants::{GRAVITY, TERMINAL_VELOCITY},
+    constants::{GRAVITY_MPS2, TERMINAL_FALL_SPEED_MPS, VERTICAL_VELOCITY_Q_MPS},
     encode_cell_id, get_desired_delta, is_at_target_planar,
     utils::{build_static_query_world, yaw_to_u8},
     yaw_from_xz, ActorId,
@@ -36,7 +36,13 @@ pub struct MovementTickTimer {
     pub last_tick: Timestamp,
 }
 
-const TICK_INTERVAL_MICROS: i64 = 100_000;
+pub const TICK_60HZ_MICROS: i64 = 16_666;
+pub const TICK_30HZ_MICROS: i64 = 33_333;
+pub const TICK_20HZ_MICROS: i64 = 50_000;
+pub const TICK_10HZ_MICROS: i64 = 100_000;
+
+const TICK_INTERVAL_MICROS: i64 = TICK_20HZ_MICROS;
+const TICK_INTERVAL_SECS: f32 = TICK_INTERVAL_MICROS as f32 / 1_000_000.0;
 
 pub fn init_movement_tick(ctx: &ReducerContext) {
     ctx.db.movement_tick_timer().scheduled_id().delete(1);
@@ -62,9 +68,10 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         return Ok(());
     };
 
-    let dt = delta_time(ctx.timestamp, timer.last_tick)
-        .map(|dt| dt.min(0.125))
-        .unwrap_or(0.125);
+    let dt_raw = delta_time(ctx.timestamp, timer.last_tick).unwrap_or(TICK_INTERVAL_SECS);
+    // Clamp to 120% of the configured tick interval to avoid "teleport" corrections on
+    // startup / scheduling jitter while still allowing small variance.
+    let dt = dt_raw.min(TICK_INTERVAL_SECS * 1.2);
 
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
@@ -107,9 +114,45 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             .unwrap_or(current_planar);
 
         let mut movement_state_dirty = false;
-        if movement_state.vertical_velocity < TERMINAL_VELOCITY {
-            movement_state.vertical_velocity += (GRAVITY as f32 * dt) as u16;
-            movement_state_dirty = true;
+
+        // Quantized vertical velocity integration:
+        //
+        // - `vertical_velocity == 0` means no vertical motion (typically grounded).
+        // - Negative values mean falling (down).
+        //
+        // We integrate in discrete steps derived from dt so the simulation is stable even when
+        // dt varies slightly. Gravity and terminal velocity come from shared constants but are
+        // interpreted in the same quantized units as `vertical_velocity`.
+        //
+        // Important: we do not decide "grounded" from `vertical_velocity`. Grounding is determined
+        // by the KCC (`correction.grounded`). To avoid cases where you fail to start falling, we
+        // ensure a minimal downward velocity whenever we're not grounded (after we compute KCC).
+        //
+        // Here we only apply gravity if we're already falling (vv < 0). Starting the fall is handled
+        // after `move_shape` when we know whether KCC considers us grounded.
+        if movement_state.vertical_velocity < 0 {
+            // Frame-rate independent gravity:
+            // - Stored `vertical_velocity` is quantized i8.
+            // - Convert to m/s, integrate using m/s^2 * dt, clamp terminal, then requantize.
+            let v0_mps = movement_state.vertical_velocity as f32 * VERTICAL_VELOCITY_Q_MPS;
+
+            // Semi-implicit Euler: v(t+dt) = v(t) + g*dt
+            let mut v1_mps = v0_mps + GRAVITY_MPS2 * dt;
+
+            // Clamp to terminal fall speed (negative/downward). We only do this when already falling.
+            if v1_mps < TERMINAL_FALL_SPEED_MPS {
+                v1_mps = TERMINAL_FALL_SPEED_MPS;
+            }
+
+            // Re-quantize to i8.
+            let vq = (v1_mps / VERTICAL_VELOCITY_Q_MPS).round();
+            let vq = vq.clamp(i8::MIN as f32, i8::MAX as f32) as i8;
+
+            if vq != movement_state.vertical_velocity {
+                movement_state.vertical_velocity = vq;
+                // log::info!("vertical_velocity {}", movement_state.vertical_velocity);
+                movement_state_dirty = true;
+            }
         }
 
         let Some(movement_speed_mps) = SecondaryStatsRow::find(&view_ctx, actor_id)
@@ -127,6 +170,21 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             owner_transform.data.yaw = yaw_to_u8(yaw);
         }
 
+        // `get_desired_delta` currently expects an unsigned "fall speed" scalar.
+        // Our movement state stores `vertical_velocity` as an i8 where:
+        // - 0 = grounded/no vertical motion
+        // - negative = falling down
+        //
+        // Convert to a non-negative magnitude for the shared helper:
+        //
+        // Stored `vertical_velocity` is quantized i8 where negative means falling.
+        // Convert the quantized velocity to a magnitude in m/s, then pass as a scalar.
+        let vertical_velocity_u16: u16 = if movement_state.vertical_velocity < 0 {
+            let v_mps = (movement_state.vertical_velocity as f32 * VERTICAL_VELOCITY_Q_MPS).abs();
+            v_mps.round().clamp(0.0, u16::MAX as f32) as u16
+        } else {
+            0
+        };
         let correction = kcc.move_shape(
             dt,
             &query_pipeline,
@@ -136,7 +194,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
                 current_planar,
                 target_planar,
                 movement_speed_mps,
-                movement_state.vertical_velocity,
+                vertical_velocity_u16,
                 dt,
             ),
             |_| {},
@@ -146,10 +204,21 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         owner_transform.data.translation.y += correction.translation.y;
         owner_transform.data.translation.z += correction.translation.z;
 
-        let was_grounded = movement_state.vertical_velocity == 0;
-        if !was_grounded && correction.grounded {
-            movement_state.vertical_velocity = 0;
-            movement_state_dirty = true;
+        // Ground truth for grounding comes from KCC.
+        //
+        // - If KCC reports grounded, we stop falling (set vv=0).
+        // - If KCC reports not grounded, we ensure falling has started (vv is at least -1),
+        //   even if vv was previously 0 for any reason.
+        if correction.grounded {
+            if movement_state.vertical_velocity != 0 {
+                movement_state.vertical_velocity = 0;
+                movement_state_dirty = true;
+            }
+        } else {
+            if movement_state.vertical_velocity == 0 {
+                movement_state.vertical_velocity = -1;
+                movement_state_dirty = true;
+            }
         }
 
         let cell_id = encode_cell_id(

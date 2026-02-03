@@ -57,7 +57,7 @@ impl CharacterRow {
             name,
             transform: TransformData {
                 yaw: 0,
-                translation: Vec3::new(0., 10.0, 0.),
+                translation: Vec3::new(0., 50.0, 0.),
             },
             primary_stats,
             secondary_stats: SecondaryStatsData {
@@ -132,10 +132,9 @@ impl CharacterRow {
             .insert(CharacterInstanceRow::new(ctx.sender, actor.id, self.id));
         ctx.db.movement_state_tbl().insert(MovementStateRow {
             actor_id: actor.id,
-            grounded: false,
             should_move: true,
             move_intent: None,
-            vertical_velocity: 0.0,
+            vertical_velocity: -1,
             cell_id,
         });
         TransformRow::insert(ctx, actor.id, self.transform);

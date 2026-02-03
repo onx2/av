@@ -19,8 +19,14 @@ pub struct MovementStateRow {
 
     pub move_intent: Option<MoveIntentData>,
 
-    /// Tracked for gravity acceleration and used to determine if the actor was previously grounded.
-    pub vertical_velocity: u16,
+    /// Quantized vertical velocity (meters/second).
+    ///
+    /// - `0` means grounded / no vertical motion.
+    /// - Negative values mean falling downward.
+    ///
+    /// This is intentionally quantized to save bytes. The server derives per-tick vertical
+    /// displacement from this plus `dt`.
+    pub vertical_velocity: i8,
 }
 
 impl MovementStateRow {
