@@ -1,5 +1,4 @@
-use crate::{get_view_aoi_block, CapsuleY, MoveIntentData};
-use shared::Owner;
+use crate::{get_view_aoi_block, ActorId, MoveIntentData};
 use spacetimedb::{table, ReducerContext, ViewContext};
 
 /// Ephemeral/computed & cached state for the owner's movement. This doesn't need to be persisted
@@ -7,7 +6,7 @@ use spacetimedb::{table, ReducerContext, ViewContext};
 #[table(name=movement_state_tbl)]
 pub struct MovementStateRow {
     #[primary_key]
-    pub owner: Owner,
+    pub actor_id: ActorId,
 
     #[index(btree)]
     pub cell_id: u32,
@@ -24,20 +23,16 @@ pub struct MovementStateRow {
 
     /// Tracked for gravity acceleration
     pub vertical_velocity: f32,
-
-    /// Capsule shape of the collider for the owner, restricting this to capsules to simplify and
-    /// lower costs in spacetimeDB. Capsule = 8 bytes, but quantized to 4bytes using u16.
-    pub capsule: CapsuleY,
 }
 
 impl MovementStateRow {
-    pub fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self> {
-        ctx.db.movement_state_tbl().owner().find(owner)
+    pub fn find(ctx: &ReducerContext, actor_id: ActorId) -> Option<Self> {
+        ctx.db.movement_state_tbl().actor_id().find(actor_id)
     }
 
     /// Updates from given self, caller should have updated the state with the latest values.
     pub fn update_from_self(self, ctx: &ReducerContext) {
-        ctx.db.movement_state_tbl().owner().update(self);
+        ctx.db.movement_state_tbl().actor_id().update(self);
     }
 
     /// Find all movement states for a given cell ID.
@@ -49,7 +44,7 @@ impl MovementStateRow {
 }
 
 /// Finds the secondary stats for all actors within the AOI.
-/// Primary key of `Owner`
+/// Primary key of `ActorId`
 #[spacetimedb::view(name = movement_state_view, public)]
 pub fn movement_state_view(ctx: &ViewContext) -> Vec<MovementStateRow> {
     let Some(cell_block) = get_view_aoi_block(ctx) else {

@@ -1,12 +1,11 @@
-use crate::{get_view_aoi_block, MovementStateRow};
-use shared::Owner;
+use crate::{get_view_aoi_block, ActorId, MovementStateRow};
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// **Ephemeral**
 #[table(name=health_tbl)]
 pub struct HealthRow {
     #[primary_key]
-    pub owner: Owner,
+    pub actor_id: ActorId,
 
     /// Indexed lookup for "is current health at max?"
     #[index(btree)]
@@ -20,17 +19,17 @@ impl HealthRow {
         self.data.current = self.data.current.min(self.data.max);
     }
 
-    pub fn insert(ctx: &ReducerContext, owner: Owner, data: HealthData) {
+    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: HealthData) {
         let current = data.current.min(data.max);
         ctx.db.health_tbl().insert(Self {
-            owner,
+            actor_id,
             is_full: current == data.max,
             data: HealthData { current, ..data },
         });
     }
 
-    pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
-        ctx.db.health_tbl().owner().find(owner)
+    pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
+        ctx.db.health_tbl().actor_id().find(actor_id)
     }
 
     /// Adds to the current value, clamping and computing is_full
@@ -41,7 +40,7 @@ impl HealthRow {
         self.data.current = self.data.current.saturating_add(amount);
         self.clamp();
         self.is_full = self.data.current == self.data.max;
-        ctx.db.health_tbl().owner().update(self);
+        ctx.db.health_tbl().actor_id().update(self);
     }
 
     /// Subtracts from the current value, clamping and computing is_full
@@ -50,8 +49,9 @@ impl HealthRow {
             return;
         }
         self.data.current = self.data.current.saturating_sub(amount);
+        self.clamp();
         self.is_full = self.data.current == self.data.max;
-        ctx.db.health_tbl().owner().update(self);
+        ctx.db.health_tbl().actor_id().update(self);
     }
 
     /// Sets the current value, clamping to max and computing is_full
@@ -62,7 +62,7 @@ impl HealthRow {
         self.data.current = value;
         self.clamp();
         self.is_full = self.data.current == self.data.max;
-        ctx.db.health_tbl().owner().update(self);
+        ctx.db.health_tbl().actor_id().update(self);
     }
 
     /// Sets the max value, clamping current and computing is_full
@@ -73,7 +73,7 @@ impl HealthRow {
         self.data.max = value;
         self.clamp();
         self.is_full = self.data.current == self.data.max;
-        ctx.db.health_tbl().owner().update(self);
+        ctx.db.health_tbl().actor_id().update(self);
     }
 }
 
@@ -103,7 +103,7 @@ impl HealthData {
 }
 
 /// Finds the health for all things within the AOI.
-/// Primary key of `Owner`
+/// Primary key of `ActorId`
 #[spacetimedb::view(name = health_view, public)]
 pub fn health_view(ctx: &ViewContext) -> Vec<HealthRow> {
     let Some(cell_block) = get_view_aoi_block(ctx) else {
@@ -113,8 +113,8 @@ pub fn health_view(ctx: &ViewContext) -> Vec<HealthRow> {
     cell_block
         .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
         .filter_map(|ms| {
-            HealthRow::find(ctx, ms.owner).map(|row| HealthRow {
-                owner: ms.owner,
+            HealthRow::find(ctx, ms.actor_id).map(|row| HealthRow {
+                actor_id: ms.actor_id,
                 data: row.data,
                 is_full: row.is_full,
             })

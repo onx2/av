@@ -1,4 +1,4 @@
-use crate::{active_character_tbl__view, movement_state_tbl__view};
+use crate::{character_instance_tbl__view, movement_state_tbl__view};
 use shared::get_aoi_block;
 use spacetimedb::ViewContext;
 
@@ -6,14 +6,14 @@ use spacetimedb::ViewContext;
 ///
 /// **Performance & Cost**: O(1), two index seeks
 pub fn get_view_aoi_block(ctx: &ViewContext) -> Option<impl Iterator<Item = u32>> {
-    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
+    let Some(ci) = ctx.db.character_instance_tbl().identity().find(ctx.sender) else {
         return None;
     };
     let Some(cell_id) = ctx
         .db
         .movement_state_tbl()
-        .owner()
-        .find(&active_character.owner)
+        .actor_id()
+        .find(&ci.actor_id)
         .map(|row| row.cell_id)
     else {
         return None;

@@ -6,19 +6,19 @@
 #[cfg(feature = "dev_native")]
 mod debug_tools;
 
+mod actor;
 mod camera;
 mod cursor;
 mod input;
 mod module_bindings;
 mod movement_state;
-mod owner;
 mod player;
 mod secondary_stats;
 mod server;
 mod transform;
 mod world;
 
-pub use owner::{LocalOwner, OwnerEntity, OwnerEntityMapping, RemoteOwner, ensure_owner_entity};
+pub use actor::{ActorEntity, ActorEntityMapping, LocalActor, RemoteActor, ensure_actor_entity};
 
 #[cfg(target_os = "macos")]
 use bevy::window::CompositeAlphaMode;
@@ -61,7 +61,7 @@ impl Plugin for AppPlugin {
             camera::plugin,
             input::plugin,
             cursor::plugin,
-            owner::plugin,
+            actor::plugin,
             movement_state::plugin,
             secondary_stats::plugin,
         ));

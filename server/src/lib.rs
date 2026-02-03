@@ -1,5 +1,6 @@
-pub mod active_character;
+pub mod actor;
 pub mod character;
+pub mod character_instance;
 pub mod monster;
 pub mod monster_instance;
 pub mod movement;
@@ -14,8 +15,9 @@ pub mod transform;
 pub mod util;
 pub mod world_static;
 
-pub use active_character::*;
+pub use actor::*;
 pub use character::*;
+pub use character_instance::*;
 pub use monster::*;
 pub use monster_instance::*;
 pub use movement::*;

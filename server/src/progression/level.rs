@@ -1,15 +1,14 @@
 use crate::{
-    HealthData, HealthRow, ManaData, ManaRow, PrimaryStatsRow, SecondaryStatsData,
+    ActorId, HealthData, HealthRow, ManaData, ManaRow, PrimaryStatsRow, SecondaryStatsData,
     SecondaryStatsRow, MAX_LEVEL, TIER_INTERVAL,
 };
-use shared::Owner;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// The amount of progression this person has accumulated
 #[table(name = level_tbl)]
 pub struct LevelRow {
     #[primary_key]
-    pub owner: Owner,
+    pub actor_id: ActorId,
 
     pub data: LevelData,
 }
@@ -33,11 +32,11 @@ impl LevelData {
 }
 
 impl LevelRow {
-    pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
-        ctx.db.level_tbl().owner().find(owner)
+    pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
+        ctx.db.level_tbl().actor_id().find(actor_id)
     }
-    pub fn insert(ctx: &ReducerContext, owner: Owner, data: LevelData) {
-        ctx.db.level_tbl().insert(Self { owner, data });
+    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: LevelData) {
+        ctx.db.level_tbl().insert(Self { actor_id, data });
     }
 
     pub fn update(&self, ctx: &ReducerContext, new_level: u8) {
@@ -50,37 +49,37 @@ impl LevelRow {
             return;
         }
 
-        let res = ctx.db.level_tbl().owner().update(Self {
-            owner: self.owner,
+        let res = ctx.db.level_tbl().actor_id().update(Self {
+            actor_id: self.actor_id,
             data: LevelData { level: new_level },
         });
         let Some(primary_stats_data) =
-            PrimaryStatsRow::find(&ctx.as_read_only(), self.owner).map(|row| row.data)
+            PrimaryStatsRow::find(&ctx.as_read_only(), self.actor_id).map(|row| row.data)
         else {
             log::error!(
                 "Failed to find fortitude for player on level change {}",
-                self.owner
+                self.actor_id
             );
             return;
         };
 
         let view_ctx = ctx.as_read_only();
         // Updates to the level should trigger a recompute of the max health
-        if let Some(health) = HealthRow::find(&view_ctx, self.owner) {
+        if let Some(health) = HealthRow::find(&view_ctx, self.actor_id) {
             health.set_max(
                 ctx,
                 HealthData::compute_max(res.data.level, primary_stats_data.fortitude),
             );
         }
-        if let Some(mana) = ManaRow::find(&view_ctx, self.owner) {
+        if let Some(mana) = ManaRow::find(&view_ctx, self.actor_id) {
             mana.set_max(
                 ctx,
                 ManaData::compute_max(res.data.level, primary_stats_data.intellect),
             );
         }
 
-        // Update seconday stats when we change level
-        if let Some(mut secondary_stats) = SecondaryStatsRow::find(&view_ctx, self.owner) {
+        // Update secondary stats when we change level
+        if let Some(mut secondary_stats) = SecondaryStatsRow::find(&view_ctx, self.actor_id) {
             secondary_stats.data.movement_speed =
                 SecondaryStatsData::compute_movement_speed(res.data.level, 0., 0., 0.);
             secondary_stats.data.critical_hit_chance =

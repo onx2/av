@@ -1,25 +1,24 @@
-use crate::{get_view_aoi_block, MovementStateRow};
-use shared::Owner;
+use crate::{get_view_aoi_block, ActorId, MovementStateRow};
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 #[table(name=secondary_stats_tbl)]
 pub struct SecondaryStatsRow {
     #[primary_key]
-    pub owner: Owner,
+    pub actor_id: ActorId,
 
     pub data: SecondaryStatsData,
 }
 
 impl SecondaryStatsRow {
-    pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
-        ctx.db.secondary_stats_tbl().owner().find(owner)
+    pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
+        ctx.db.secondary_stats_tbl().actor_id().find(actor_id)
     }
-    pub fn insert(ctx: &ReducerContext, owner: Owner, data: SecondaryStatsData) {
-        ctx.db.secondary_stats_tbl().insert(Self { owner, data });
+    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: SecondaryStatsData) {
+        ctx.db.secondary_stats_tbl().insert(Self { actor_id, data });
     }
     /// Updates from given self, caller should have updated the state with the latest values.
     pub fn update_from_self(self, ctx: &ReducerContext) {
-        ctx.db.secondary_stats_tbl().owner().update(self);
+        ctx.db.secondary_stats_tbl().actor_id().update(self);
     }
 }
 
@@ -72,7 +71,7 @@ impl SecondaryStatsData {
 }
 
 /// Finds the secondary stats for all actors within the AOI.
-/// Primary key of `Owner`
+/// Primary key of `ActorId`
 #[spacetimedb::view(name = secondary_stats_view, public)]
 pub fn secondary_stats_view(ctx: &ViewContext) -> Vec<SecondaryStatsRow> {
     let Some(cell_block) = get_view_aoi_block(ctx) else {
@@ -82,8 +81,8 @@ pub fn secondary_stats_view(ctx: &ViewContext) -> Vec<SecondaryStatsRow> {
     cell_block
         .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
         .filter_map(|ms| {
-            SecondaryStatsRow::find(ctx, ms.owner).map(|row| SecondaryStatsRow {
-                owner: ms.owner,
+            SecondaryStatsRow::find(ctx, ms.actor_id).map(|row| SecondaryStatsRow {
+                actor_id: ms.actor_id,
                 data: row.data,
             })
         })

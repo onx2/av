@@ -1,8 +1,8 @@
 use std::iter::once;
 
 use crate::{
-    movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData, SecondaryStatsRow,
-    TransformRow, Vec2,
+    actor_tbl, movement_state_tbl, row_to_def, world_static_tbl, ActorId, MoveIntentData,
+    SecondaryStatsRow, TransformRow, Vec2,
 };
 use nalgebra::Vector2;
 use rapier3d::{
@@ -14,7 +14,7 @@ use shared::{
     constants::{GRAVITY, TERMINAL_VELOCITY},
     encode_cell_id, get_desired_delta, is_at_target_planar,
     utils::{build_static_query_world, yaw_to_u8},
-    yaw_from_xz, Owner,
+    yaw_from_xz,
 };
 use spacetimedb::{reducer, ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
 
@@ -84,12 +84,16 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
     let query_pipeline = query_world.as_query_pipeline(QueryFilter::only_fixed());
 
     // Initialize a actor location cache. Rapier exposes a much faster HashMap, 10x fewer CPU instructions.
-    let mut target_xz_cache: HashMap<Owner, Vec2> = HashMap::default();
+    let mut target_xz_cache: HashMap<ActorId, Vec2> = HashMap::default();
     let view_ctx = ctx.as_read_only();
     for mut movement_state in once(first_movement_state).chain(movement_states) {
-        let owner = movement_state.owner;
-        let Some(mut owner_transform) = TransformRow::find(ctx, owner) else {
-            log::error!("Failed to find transform for owner {}", owner);
+        let actor_id = movement_state.actor_id;
+        let Some(mut owner_transform) = TransformRow::find(ctx, actor_id) else {
+            log::error!("Failed to find transform for actor_id {}", actor_id);
+            continue;
+        };
+        let Some(capsule) = ctx.db.actor_tbl().id().find(actor_id).map(|a| a.capsule) else {
+            log::error!("Failed to find transform for actor_id {}", actor_id);
             continue;
         };
 
@@ -110,10 +114,10 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             movement_state_dirty = true;
         }
 
-        let Some(movement_speed_mps) = SecondaryStatsRow::find(&view_ctx, owner)
+        let Some(movement_speed_mps) = SecondaryStatsRow::find(&view_ctx, actor_id)
             .map(|secondary_stats| secondary_stats.data.movement_speed)
         else {
-            log::error!("Failed to find secondary stats for entity {}", owner);
+            log::error!("Failed to find secondary stats for entity {}", actor_id);
             continue;
         };
 
@@ -128,10 +132,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         let correction = kcc.move_shape(
             dt,
             &query_pipeline,
-            &Capsule::new_y(
-                movement_state.capsule.half_height,
-                movement_state.capsule.radius,
-            ),
+            &Capsule::new_y(capsule.half_height, capsule.radius),
             &owner_transform.data.into(),
             get_desired_delta(
                 current_planar,

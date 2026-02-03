@@ -1,12 +1,11 @@
-use crate::{get_view_aoi_block, MovementStateRow};
-use shared::Owner;
+use crate::{get_view_aoi_block, ActorId, MovementStateRow};
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// **Ephemeral**
 #[table(name=mana_tbl)]
 pub struct ManaRow {
     #[primary_key]
-    pub owner: Owner,
+    pub actor_id: ActorId,
 
     /// Indexed lookup for "is current mana at max?"
     #[index(btree)]
@@ -16,17 +15,17 @@ pub struct ManaRow {
 }
 
 impl ManaRow {
-    pub fn insert(ctx: &ReducerContext, owner: Owner, data: ManaData) {
+    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: ManaData) {
         let current = data.current.min(data.max);
         ctx.db.mana_tbl().insert(Self {
-            owner,
+            actor_id,
             is_full: current == data.max,
             data: ManaData { current, ..data },
         });
     }
 
-    pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
-        ctx.db.mana_tbl().owner().find(owner)
+    pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
+        ctx.db.mana_tbl().actor_id().find(actor_id)
     }
 
     /// Adds to the current value, clamping and computing is_full
@@ -37,7 +36,7 @@ impl ManaRow {
 
         self.data.current = self.data.current.saturating_add(amount).min(self.data.max);
         self.is_full = self.data.current == self.data.max;
-        ctx.db.mana_tbl().owner().update(self);
+        ctx.db.mana_tbl().actor_id().update(self);
     }
 
     /// Subtracts from the current value, clamping and computing is_full
@@ -47,7 +46,7 @@ impl ManaRow {
         }
         self.data.current = self.data.current.saturating_sub(amount);
         self.is_full = self.data.current == self.data.max;
-        ctx.db.mana_tbl().owner().update(self);
+        ctx.db.mana_tbl().actor_id().update(self);
     }
 
     /// Sets the current value, clamping to max and computing is_full
@@ -58,7 +57,7 @@ impl ManaRow {
 
         self.data.current = value.min(self.data.max);
         self.is_full = self.data.current == self.data.max;
-        ctx.db.mana_tbl().owner().update(self);
+        ctx.db.mana_tbl().actor_id().update(self);
     }
 
     /// Sets the max value, clamping current and computing is_full
@@ -69,7 +68,7 @@ impl ManaRow {
         self.data.max = value;
         self.data.current = self.data.current.min(value);
         self.is_full = self.data.current == self.data.max;
-        ctx.db.mana_tbl().owner().update(self);
+        ctx.db.mana_tbl().actor_id().update(self);
     }
 }
 
@@ -110,8 +109,8 @@ pub fn mana_view(ctx: &ViewContext) -> Vec<ManaRow> {
     cell_block
         .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
         .filter_map(|ms| {
-            ManaRow::find(ctx, ms.owner).map(|row| ManaRow {
-                owner: ms.owner,
+            ManaRow::find(ctx, ms.actor_id).map(|row| ManaRow {
+                actor_id: ms.actor_id,
                 data: row.data,
                 is_full: row.is_full,
             })

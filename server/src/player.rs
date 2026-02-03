@@ -1,5 +1,4 @@
-use crate::{active_character_tbl, character_tbl};
-use shared::unpack_owner_id;
+use crate::{character_instance_tbl, character_tbl};
 use spacetimedb::{table, Identity, ReducerContext, Table, Timestamp};
 
 /// Main persistence table a person's "account"
@@ -41,12 +40,11 @@ impl PlayerRow {
         player.online = false;
         ctx.db.player_tbl().identity().update(player);
 
-        let Some(active_char) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
+        let Some(ci) = ctx.db.character_instance_tbl().identity().find(ctx.sender) else {
             log::info!("Disconnect: Unable to find active char: {:?}", ctx.sender);
             return;
         };
-        let owner_id = unpack_owner_id(active_char.owner);
-        let Some(character) = ctx.db.character_tbl().owner_id().find(owner_id) else {
+        let Some(character) = ctx.db.character_tbl().id().find(ci.character_id) else {
             log::error!("Disconnect: Unable to find char: {:?}", ctx.sender);
             return;
         };

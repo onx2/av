@@ -1,11 +1,11 @@
 use crate::{
-    active_character_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl, movement_state_tbl,
-    primary_stats_tbl, transform_tbl, ActiveCharacterRow, CapsuleY, ExperienceData, ExperienceRow,
-    HealthData, HealthRow, LevelData, LevelRow, ManaData, ManaRow, MovementStateRow,
-    PrimaryStatsData, PrimaryStatsRow, SecondaryStatsData, SecondaryStatsRow, TransformData,
-    TransformRow, Vec3,
+    actor_tbl, character_instance_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl,
+    movement_state_tbl, primary_stats_tbl, transform_tbl, ActorRow, CapsuleY, CharacterInstanceRow,
+    ExperienceData, ExperienceRow, HealthData, HealthRow, LevelData, LevelRow, ManaData, ManaRow,
+    MovementStateRow, PrimaryStatsData, PrimaryStatsRow, SecondaryStatsData, SecondaryStatsRow,
+    TransformData, TransformRow, Vec3,
 };
-use shared::{encode_cell_id, pack_owner, AsOwner, Owner, OwnerId, OwnerKind};
+use shared::encode_cell_id;
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 
 /// The persistence layer for a player's characters
@@ -13,7 +13,7 @@ use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 pub struct CharacterRow {
     #[auto_inc]
     #[primary_key]
-    pub owner_id: OwnerId,
+    pub id: u32,
 
     #[index(btree)]
     pub identity: Identity,
@@ -35,18 +35,6 @@ pub struct CharacterRow {
     pub level: LevelData,
 }
 
-impl AsOwner for CharacterRow {
-    fn owner(&self) -> Owner {
-        pack_owner(self.owner_id, OwnerKind::Character)
-    }
-    fn owner_id(&self) -> OwnerId {
-        self.owner_id
-    }
-    fn owner_kind(&self) -> OwnerKind {
-        OwnerKind::Character
-    }
-}
-
 impl CharacterRow {
     pub fn create(
         ctx: &ReducerContext,
@@ -64,7 +52,7 @@ impl CharacterRow {
         let level_data = LevelData::default();
         let primary_stats = PrimaryStatsData::default();
         let inserted = ctx.db.character_tbl().insert(CharacterRow {
-            owner_id: 0,
+            id: 0,
             identity: ctx.sender,
             name,
             transform: TransformData {
@@ -109,46 +97,54 @@ impl CharacterRow {
         todo!("delete character todo")
     }
 
-    fn delete_orphaned_rows(ctx: &ReducerContext, owner: Owner) {
-        ctx.db.active_character_tbl().owner().delete(owner);
-        ctx.db.transform_tbl().owner().delete(owner);
-        ctx.db.primary_stats_tbl().owner().delete(owner);
-        ctx.db.health_tbl().owner().delete(owner);
-        ctx.db.mana_tbl().owner().delete(owner);
-        ctx.db.experience_tbl().owner().delete(owner);
-        ctx.db.level_tbl().owner().delete(owner);
-        ctx.db.movement_state_tbl().owner().delete(owner);
+    fn delete_orphaned_rows(ctx: &ReducerContext) {
+        let Some(ci) = ctx.db.character_instance_tbl().identity().find(&ctx.sender) else {
+            log::error!("Unable to find actor for orphaned rows.");
+            return;
+        };
+
+        ctx.db.transform_tbl().actor_id().delete(ci.actor_id);
+        ctx.db.primary_stats_tbl().actor_id().delete(ci.actor_id);
+        ctx.db.health_tbl().actor_id().delete(ci.actor_id);
+        ctx.db.mana_tbl().actor_id().delete(ci.actor_id);
+        ctx.db.experience_tbl().actor_id().delete(ci.actor_id);
+        ctx.db.level_tbl().actor_id().delete(ci.actor_id);
+        ctx.db.movement_state_tbl().actor_id().delete(ci.actor_id);
+        ctx.db.actor_tbl().id().delete(ci.actor_id);
+        ctx.db.character_instance_tbl().delete(ci);
     }
 
     pub fn leave_game(&self, ctx: &ReducerContext) {
-        Self::delete_orphaned_rows(ctx, self.owner());
+        Self::delete_orphaned_rows(ctx);
     }
 
     pub fn enter_game(&self, ctx: &ReducerContext) {
         // Prevent multiple player characters from joining the game, only one character per player
         self.leave_game(ctx);
 
-        let owner = self.owner();
         let cell_id = encode_cell_id(self.transform.translation.x, self.transform.translation.z);
+        let actor = ctx.db.actor_tbl().insert(ActorRow {
+            id: 0,
+            capsule: self.capsule,
+        });
         ctx.db
-            .active_character_tbl()
-            .insert(ActiveCharacterRow::new(ctx.sender, owner));
+            .character_instance_tbl()
+            .insert(CharacterInstanceRow::new(ctx.sender, actor.id, self.id));
         ctx.db.movement_state_tbl().insert(MovementStateRow {
-            owner,
+            actor_id: actor.id,
             grounded: false,
             should_move: true,
             move_intent: None,
             vertical_velocity: 0.0,
             cell_id,
-            capsule: self.capsule,
         });
-        TransformRow::insert(ctx, owner, self.transform);
-        PrimaryStatsRow::insert(ctx, owner, self.primary_stats);
-        SecondaryStatsRow::insert(ctx, owner, self.secondary_stats);
-        HealthRow::insert(ctx, owner, self.health);
-        ManaRow::insert(ctx, owner, self.mana);
-        ExperienceRow::insert(ctx, owner, self.experience);
-        LevelRow::insert(ctx, owner, self.level);
+        TransformRow::insert(ctx, actor.id, self.transform);
+        PrimaryStatsRow::insert(ctx, actor.id, self.primary_stats);
+        SecondaryStatsRow::insert(ctx, actor.id, self.secondary_stats);
+        HealthRow::insert(ctx, actor.id, self.health);
+        ManaRow::insert(ctx, actor.id, self.mana);
+        ExperienceRow::insert(ctx, actor.id, self.experience);
+        LevelRow::insert(ctx, actor.id, self.level);
     }
 }
 
@@ -161,7 +157,7 @@ pub fn create_character(ctx: &ReducerContext, name: String) -> Result<(), String
 
 // TODO: make this correct again, this is changed to just find the first char for testing
 #[reducer]
-pub fn enter_game(ctx: &ReducerContext, character_id: OwnerId) -> Result<(), String> {
+pub fn enter_game(ctx: &ReducerContext, character_id: u32) -> Result<(), String> {
     // let Some(character) = ctx.db.character_tbl().owner_id().find(character_id) else {
     //     return Err("Character not found".into());
     // };

@@ -1,4 +1,4 @@
-use crate::{active_character_tbl, movement_state_tbl, transform_tbl, MoveIntentData};
+use crate::{character_instance_tbl, movement_state_tbl, transform_tbl, MoveIntentData};
 use nalgebra::Vector2;
 use shared::utils::{is_move_too_close, is_move_too_far};
 use spacetimedb::{reducer, ReducerContext};
@@ -11,12 +11,12 @@ use spacetimedb::{reducer, ReducerContext};
 ///     `should_move = move_intent.is_some() || !grounded`
 #[reducer]
 pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), String> {
-    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
+    let Some(ci) = ctx.db.character_instance_tbl().identity().find(ctx.sender) else {
         log::error!("Unable to find active character");
         return Err("Unable to find active character".into());
     };
 
-    let Some(transform_row) = ctx.db.transform_tbl().owner().find(active_character.owner) else {
+    let Some(transform_row) = ctx.db.transform_tbl().actor_id().find(ci.actor_id) else {
         log::error!("Unable to find transform for the active character");
         return Err("Unable to find transform for the active character".into());
     };
@@ -24,12 +24,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
     let current: Vector2<f32> = transform_row.data.translation.xz().into();
 
     // Load movement state we will update. (Move intents now live here.)
-    let Some(mut movement_state) = ctx
-        .db
-        .movement_state_tbl()
-        .owner()
-        .find(active_character.owner)
-    else {
+    let Some(mut movement_state) = ctx.db.movement_state_tbl().actor_id().find(ci.actor_id) else {
         log::error!("Unable to find movement state for the active character");
         return Err("Unable to find movement state for the active character".into());
     };
@@ -72,7 +67,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
             }
         }
         MoveIntentData::Actor(owner) => {
-            let Some(target) = ctx.db.transform_tbl().owner().find(owner) else {
+            let Some(target) = ctx.db.transform_tbl().actor_id().find(owner) else {
                 log::error!("Unable to find target for move intent");
                 return Err("Unable to find target for move intent".into());
             };
@@ -90,30 +85,31 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
     movement_state.move_intent = Some(intent);
     movement_state.should_move = true;
 
-    ctx.db.movement_state_tbl().owner().update(movement_state);
+    ctx.db
+        .movement_state_tbl()
+        .actor_id()
+        .update(movement_state);
 
     Ok(())
 }
 
 #[reducer]
 pub fn cancel_move(ctx: &ReducerContext) -> Result<(), String> {
-    let Some(active_character) = ctx.db.active_character_tbl().identity().find(ctx.sender) else {
+    let Some(ci) = ctx.db.character_instance_tbl().identity().find(ctx.sender) else {
         return Err("Unable to find active character".into());
     };
 
-    let Some(mut movement_state) = ctx
-        .db
-        .movement_state_tbl()
-        .owner()
-        .find(active_character.owner)
-    else {
+    let Some(mut movement_state) = ctx.db.movement_state_tbl().actor_id().find(ci.actor_id) else {
         return Err("Unable to find movement state for the active character".into());
     };
 
     movement_state.move_intent = None;
     movement_state.should_move = !movement_state.grounded;
 
-    ctx.db.movement_state_tbl().owner().update(movement_state);
+    ctx.db
+        .movement_state_tbl()
+        .actor_id()
+        .update(movement_state);
 
     Ok(())
 }

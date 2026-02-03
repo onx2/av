@@ -1,23 +1,22 @@
-use shared::Owner;
 use spacetimedb::{reducer, table, ReducerContext, ScheduleAt, SpacetimeType, Table, ViewContext};
 use std::{collections::HashMap, time::Duration};
 
-use crate::{health_tbl, mana_tbl};
+use crate::{health_tbl, mana_tbl, ActorId};
 
 #[table(name=regen_stats_tbl)]
 pub struct RegenStatsRow {
     #[primary_key]
-    pub owner: Owner,
+    pub actor_id: ActorId,
 
     pub data: RegenStatsData,
 }
 
 impl RegenStatsRow {
-    pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
-        ctx.db.regen_stats_tbl().owner().find(owner)
+    pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
+        ctx.db.regen_stats_tbl().actor_id().find(actor_id)
     }
-    pub fn insert(ctx: &ReducerContext, owner: Owner, data: RegenStatsData) {
-        ctx.db.regen_stats_tbl().insert(Self { owner, data });
+    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: RegenStatsData) {
+        ctx.db.regen_stats_tbl().insert(Self { actor_id, data });
     }
 }
 
@@ -69,13 +68,13 @@ fn regen_reducer(ctx: &ReducerContext, _timer: RegenTimer) -> Result<(), String>
     // Computes the delta change, though this is essentially moot since we regen at 1second right now
     let compute_delta = |max: u16, rate: f32| ((max as f32) * rate * dt_secs).min(10.0) as u16;
 
-    let mut regen_cache: HashMap<Owner, RegenStatsData> = HashMap::new();
+    let mut regen_cache: HashMap<ActorId, RegenStatsData> = HashMap::new();
     let view_ctx = ctx.as_read_only();
     for health_row in ctx.db.health_tbl().is_full().filter(false) {
-        let Some(row) = RegenStatsRow::find(&view_ctx, health_row.owner) else {
+        let Some(row) = RegenStatsRow::find(&view_ctx, health_row.actor_id) else {
             continue;
         };
-        regen_cache.insert(health_row.owner, row.data);
+        regen_cache.insert(health_row.actor_id, row.data);
 
         let max = health_row.data.max;
         let rate = RegenStatsData::compute_regen_rate(row.data.health_regen_bonus);
@@ -84,9 +83,9 @@ fn regen_reducer(ctx: &ReducerContext, _timer: RegenTimer) -> Result<(), String>
 
     for mana_row in ctx.db.mana_tbl().is_full().filter(false) {
         // Try to get regen info from in-memory cache instead of a DB index seek
-        let stats: RegenStatsData = if let Some(v) = regen_cache.get(&mana_row.owner) {
+        let stats: RegenStatsData = if let Some(v) = regen_cache.get(&mana_row.actor_id) {
             *v
-        } else if let Some(row) = RegenStatsRow::find(&view_ctx, mana_row.owner) {
+        } else if let Some(row) = RegenStatsRow::find(&view_ctx, mana_row.actor_id) {
             row.data
         } else {
             continue;

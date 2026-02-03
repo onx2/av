@@ -1,8 +1,8 @@
-use crate::{get_view_aoi_block, MovementStateRow};
+use crate::{get_view_aoi_block, ActorId, MovementStateRow};
 
 use super::Vec3;
 use nalgebra::{Isometry3, UnitQuaternion, Vector3};
-use shared::{utils::yaw_from_u8, Owner};
+use shared::utils::yaw_from_u8;
 use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// Ephemeral
@@ -11,25 +11,25 @@ use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
 #[table(name=transform_tbl)]
 pub struct TransformRow {
     #[primary_key]
-    pub owner: Owner,
+    pub actor_id: ActorId,
 
     pub data: TransformData,
 }
 
 impl TransformRow {
-    pub fn find(ctx: &ReducerContext, owner: Owner) -> Option<Self> {
-        ctx.db.transform_tbl().owner().find(owner)
+    pub fn find(ctx: &ReducerContext, actor_id: ActorId) -> Option<Self> {
+        ctx.db.transform_tbl().actor_id().find(actor_id)
     }
-    pub fn insert(ctx: &ReducerContext, owner: Owner, data: TransformData) {
-        ctx.db.transform_tbl().insert(Self { owner, data });
+    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: TransformData) {
+        ctx.db.transform_tbl().insert(Self { actor_id, data });
     }
     /// Updates from given self, caller should have updated the state with the latest values.
     pub fn update_from_self(self, ctx: &ReducerContext) {
-        ctx.db.transform_tbl().owner().update(self);
+        ctx.db.transform_tbl().actor_id().update(self);
     }
     pub fn update(&self, ctx: &ReducerContext, data: TransformData) {
-        ctx.db.transform_tbl().owner().update(Self {
-            owner: self.owner,
+        ctx.db.transform_tbl().actor_id().update(Self {
+            actor_id: self.actor_id,
             data,
         });
     }
@@ -62,6 +62,6 @@ pub fn transform_view(ctx: &ViewContext) -> Vec<TransformRow> {
 
     cell_block
         .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
-        .filter_map(|ms| ctx.db.transform_tbl().owner().find(&ms.owner))
+        .filter_map(|ms| ctx.db.transform_tbl().actor_id().find(&ms.actor_id))
         .collect()
 }

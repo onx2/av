@@ -1,5 +1,7 @@
-use crate::{ActiveCharacterRow, LevelData, LevelRow, SecondaryStatsData, SecondaryStatsRow};
-use shared::Owner;
+use crate::{
+    character_instance_tbl, character_instance_tbl__view, ActorId, LevelData, LevelRow,
+    SecondaryStatsData, SecondaryStatsRow,
+};
 use spacetimedb::{reducer, table, ReducerContext, SpacetimeType, Table, ViewContext};
 
 /// Ephemeral
@@ -8,23 +10,23 @@ use spacetimedb::{reducer, table, ReducerContext, SpacetimeType, Table, ViewCont
 #[table(name=primary_stats_tbl)]
 pub struct PrimaryStatsRow {
     #[primary_key]
-    pub owner: Owner,
+    pub actor_id: ActorId,
 
     pub data: PrimaryStatsData,
 }
 
 impl PrimaryStatsRow {
-    pub fn find(ctx: &ViewContext, owner: Owner) -> Option<Self> {
-        ctx.db.primary_stats_tbl().owner().find(owner)
+    pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
+        ctx.db.primary_stats_tbl().actor_id().find(actor_id)
     }
-    pub fn insert(ctx: &ReducerContext, owner: Owner, data: PrimaryStatsData) {
-        ctx.db.primary_stats_tbl().insert(Self { owner, data });
+    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: PrimaryStatsData) {
+        ctx.db.primary_stats_tbl().insert(Self { actor_id, data });
     }
 
     pub fn update(&self, ctx: &ReducerContext, data: PrimaryStatsData) {
         let original_ferocity = self.data.ferocity;
-        let primary_stats = ctx.db.primary_stats_tbl().owner().update(Self {
-            owner: self.owner,
+        let primary_stats = ctx.db.primary_stats_tbl().actor_id().update(Self {
+            actor_id: self.actor_id,
             data,
         });
 
@@ -34,9 +36,9 @@ impl PrimaryStatsRow {
         }
 
         let view_ctx = ctx.as_read_only();
-        if let Some(mut secondary_stats) = SecondaryStatsRow::find(&view_ctx, self.owner) {
-            let Some(level) = LevelRow::find(&view_ctx, self.owner).map(|r| r.data.level) else {
-                log::error!("Unable to find level for owner: {:?}", self.owner);
+        if let Some(mut secondary_stats) = SecondaryStatsRow::find(&view_ctx, self.actor_id) {
+            let Some(level) = LevelRow::find(&view_ctx, self.actor_id).map(|r| r.data.level) else {
+                log::error!("Unable to find level for actor: {:?}", self.actor_id);
                 return;
             };
 
@@ -115,11 +117,12 @@ impl PrimaryStatsData {
 /// Primary key of `Owner`
 #[spacetimedb::view(name = primary_stats_view, public)]
 pub fn primary_stats_view(ctx: &ViewContext) -> Option<PrimaryStatsData> {
-    let Some(active_character) = ActiveCharacterRow::find_by_identity(ctx) else {
+    let Some(active_character) = ctx.db.character_instance_tbl().identity().find(&ctx.sender)
+    else {
         return None;
     };
 
-    PrimaryStatsRow::find(ctx, active_character.owner).map(|ps| ps.data)
+    PrimaryStatsRow::find(ctx, active_character.actor_id).map(|ps| ps.data)
 }
 
 #[derive(SpacetimeType)]
@@ -133,10 +136,15 @@ pub struct PlacePointsInput {
 #[reducer]
 pub fn place_points(ctx: &ReducerContext, input: PlacePointsInput) -> Result<(), String> {
     let view_ctx = ctx.as_read_only();
-    let Some(active_character) = ActiveCharacterRow::find_by_identity(&view_ctx) else {
+    let Some(active_character) = ctx
+        .db
+        .character_instance_tbl()
+        .identity()
+        .find(&view_ctx.sender)
+    else {
         return Err("No active character found".to_string());
     };
-    let Some(ps) = PrimaryStatsRow::find(&view_ctx, active_character.owner) else {
+    let Some(ps) = PrimaryStatsRow::find(&view_ctx, active_character.actor_id) else {
         return Err("No primary stats found".to_string());
     };
 
