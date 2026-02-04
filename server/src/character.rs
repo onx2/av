@@ -34,6 +34,8 @@ pub struct CharacterRow {
     pub acuity: u8,
     pub available_points: u8,
 
+    // Secondary stats are computed
+
     // Vitals
     pub health: HealthData,
     pub mana: ManaData,

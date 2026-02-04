@@ -41,7 +41,7 @@ pub const TICK_30HZ_MICROS: i64 = 33_333;
 pub const TICK_20HZ_MICROS: i64 = 50_000;
 pub const TICK_10HZ_MICROS: i64 = 100_000;
 
-const TICK_INTERVAL_MICROS: i64 = TICK_20HZ_MICROS;
+const TICK_INTERVAL_MICROS: i64 = TICK_10HZ_MICROS;
 const TICK_INTERVAL_SECS: f32 = TICK_INTERVAL_MICROS as f32 / 1_000_000.0;
 
 pub fn init_movement_tick(ctx: &ReducerContext) {

@@ -24,8 +24,8 @@ fn on_secondary_stats_inserted(
         println!("on_secondary_stats_inserted: {:?}", msg.row.clone());
         let bevy_entity = ensure_actor_entity(&mut commands, &mut oe_mapping, msg.row.actor_id);
         commands.entity(bevy_entity).insert(SecondaryStats {
-            movement_speed: msg.row.data.movement_speed,
-            critical_hit_chance: msg.row.data.critical_hit_chance,
+            movement_speed: msg.row.movement_speed,
+            critical_hit_chance: msg.row.critical_hit_chance,
         });
     }
 }
@@ -42,7 +42,7 @@ fn on_secondary_stats_updated(
         let Ok(mut secondary_stats) = secondary_stats_q.get_mut(bevy_entity) else {
             continue;
         };
-        secondary_stats.movement_speed = msg.new.data.movement_speed;
-        secondary_stats.critical_hit_chance = msg.new.data.critical_hit_chance;
+        secondary_stats.movement_speed = msg.new.movement_speed;
+        secondary_stats.critical_hit_chance = msg.new.critical_hit_chance;
     }
 }

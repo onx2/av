@@ -14,8 +14,10 @@ pub struct NetTransform {
 }
 
 pub(super) fn plugin(app: &mut App) {
-    app.add_systems(PreUpdate, (on_transform_inserted, on_transform_updated));
-    app.add_systems(PostUpdate, interpolate);
+    app.add_systems(
+        Update,
+        ((on_transform_inserted, on_transform_updated), interpolate).chain(),
+    );
 }
 
 fn on_transform_inserted(
