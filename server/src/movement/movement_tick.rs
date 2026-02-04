@@ -156,7 +156,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         }
 
         let Some(movement_speed_mps) = SecondaryStatsRow::find(&view_ctx, actor_id)
-            .map(|secondary_stats| secondary_stats.data.movement_speed)
+            .map(|secondary_stats| secondary_stats.movement_speed)
         else {
             log::error!("Failed to find secondary stats for entity {}", actor_id);
             continue;

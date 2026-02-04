@@ -1,7 +1,4 @@
-use crate::{
-    character_instance_tbl, character_instance_tbl__view, LevelRow, SecondaryStatsData,
-    SecondaryStatsRow,
-};
+use crate::{character_instance_tbl, character_instance_tbl__view, LevelRow, SecondaryStatsRow};
 use shared::ActorId;
 use spacetimedb::{reducer, table, ReducerContext, SpacetimeType, Table, ViewContext};
 
@@ -13,49 +10,6 @@ pub struct PrimaryStatsRow {
     #[primary_key]
     pub actor_id: ActorId,
 
-    pub data: PrimaryStatsData,
-}
-
-impl PrimaryStatsRow {
-    pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
-        ctx.db.primary_stats_tbl().actor_id().find(actor_id)
-    }
-    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: PrimaryStatsData) {
-        ctx.db.primary_stats_tbl().insert(Self { actor_id, data });
-    }
-
-    pub fn update(&self, ctx: &ReducerContext, data: PrimaryStatsData) {
-        let original_ferocity = self.data.ferocity;
-        let primary_stats = ctx.db.primary_stats_tbl().actor_id().update(Self {
-            actor_id: self.actor_id,
-            data,
-        });
-
-        // TODO: Update derived stats when the base values change. Right now only ferocity is used.
-        if original_ferocity == data.ferocity {
-            return;
-        }
-
-        let view_ctx = ctx.as_read_only();
-        if let Some(mut secondary_stats) = SecondaryStatsRow::find(&view_ctx, self.actor_id) {
-            let Some(level) = LevelRow::find(&view_ctx, self.actor_id).map(|r| r.level) else {
-                log::error!("Unable to find level for actor: {:?}", self.actor_id);
-                return;
-            };
-
-            secondary_stats.data.critical_hit_chance =
-                SecondaryStatsData::compute_critical_hit_chance(
-                    level,
-                    primary_stats.data.ferocity,
-                    0.,
-                );
-            secondary_stats.update_from_self(ctx);
-        }
-    }
-}
-
-#[derive(SpacetimeType, Debug, PartialEq, Clone, Copy)]
-pub struct PrimaryStatsData {
     /// Used in part to determine the critical chance of attacks and abilities
     pub ferocity: u8,
 
@@ -75,21 +29,68 @@ pub struct PrimaryStatsData {
     pub available_points: u8,
 }
 
-impl Default for PrimaryStatsData {
-    fn default() -> Self {
-        Self {
-            ferocity: Self::MIN_STAT,
-            fortitude: Self::MIN_STAT,
-            intellect: Self::MIN_STAT,
-            acuity: Self::MIN_STAT,
-            available_points: 0,
+impl PrimaryStatsRow {
+    pub const MIN_STAT: u8 = 10;
+    pub const MAX_STAT: u8 = 60;
+
+    pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
+        ctx.db.primary_stats_tbl().actor_id().find(actor_id)
+    }
+    pub fn insert(
+        ctx: &ReducerContext,
+        actor_id: ActorId,
+        ferocity: u8,
+        fortitude: u8,
+        intellect: u8,
+        acuity: u8,
+        available_points: u8,
+    ) {
+        ctx.db.primary_stats_tbl().insert(Self {
+            actor_id,
+            ferocity,
+            fortitude,
+            intellect,
+            acuity,
+            available_points,
+        });
+    }
+
+    pub fn update(
+        &self,
+        ctx: &ReducerContext,
+        ferocity: u8,
+        fortitude: u8,
+        intellect: u8,
+        acuity: u8,
+        available_points: u8,
+    ) {
+        let original_ferocity = self.ferocity;
+        let primary_stats = ctx.db.primary_stats_tbl().actor_id().update(Self {
+            actor_id: self.actor_id,
+            ferocity,
+            fortitude,
+            intellect,
+            acuity,
+            available_points,
+        });
+
+        // TODO: Update derived stats when the base values change. Right now only ferocity is used.
+        if original_ferocity == ferocity {
+            return;
+        }
+
+        let view_ctx = ctx.as_read_only();
+        if let Some(mut secondary_stats) = SecondaryStatsRow::find(&view_ctx, self.actor_id) {
+            let Some(level) = LevelRow::find(&view_ctx, self.actor_id).map(|r| r.level) else {
+                log::error!("Unable to find level for actor: {:?}", self.actor_id);
+                return;
+            };
+
+            secondary_stats.critical_hit_chance =
+                SecondaryStatsRow::compute_critical_hit_chance(level, primary_stats.ferocity, 0.);
+            secondary_stats.update_from_self(ctx);
         }
     }
-}
-
-impl PrimaryStatsData {
-    const MIN_STAT: u8 = 10;
-    const MAX_STAT: u8 = 60;
 
     /// Determines if stats are within bounds of the available points, level, and and min/max
     pub fn validate(&self, level: u8) -> bool {
@@ -117,13 +118,13 @@ impl PrimaryStatsData {
 ///
 /// Primary key of `Owner`
 #[spacetimedb::view(name = primary_stats_view, public)]
-pub fn primary_stats_view(ctx: &ViewContext) -> Option<PrimaryStatsData> {
+pub fn primary_stats_view(ctx: &ViewContext) -> Option<PrimaryStatsRow> {
     let Some(active_character) = ctx.db.character_instance_tbl().identity().find(&ctx.sender)
     else {
         return None;
     };
 
-    PrimaryStatsRow::find(ctx, active_character.actor_id).map(|ps| ps.data)
+    PrimaryStatsRow::find(ctx, active_character.actor_id)
 }
 
 #[derive(SpacetimeType)]
@@ -150,47 +151,43 @@ pub fn place_points(ctx: &ReducerContext, input: PlacePointsInput) -> Result<(),
     };
 
     // Each stat can only increase (never decrease).
-    if input.new_ferocity < ps.data.ferocity
-        || input.new_fortitude < ps.data.fortitude
-        || input.new_intellect < ps.data.intellect
-        || input.new_acuity < ps.data.acuity
+    if input.new_ferocity < ps.ferocity
+        || input.new_fortitude < ps.fortitude
+        || input.new_intellect < ps.intellect
+        || input.new_acuity < ps.acuity
     {
         return Err("Primary stats cannot be decreased".to_string());
     }
 
     // Prevent going over max
-    if input.new_ferocity > PrimaryStatsData::MAX_STAT
-        || input.new_fortitude > PrimaryStatsData::MAX_STAT
-        || input.new_intellect > PrimaryStatsData::MAX_STAT
-        || input.new_acuity > PrimaryStatsData::MAX_STAT
+    if input.new_ferocity > PrimaryStatsRow::MAX_STAT
+        || input.new_fortitude > PrimaryStatsRow::MAX_STAT
+        || input.new_intellect > PrimaryStatsRow::MAX_STAT
+        || input.new_acuity > PrimaryStatsRow::MAX_STAT
     {
         return Err("Primary stat exceeds maximum".to_string());
     }
 
-    let current_total = ps.data.acuity as u16
-        + ps.data.ferocity as u16
-        + ps.data.fortitude as u16
-        + ps.data.intellect as u16;
+    let current_total =
+        ps.acuity as u16 + ps.ferocity as u16 + ps.fortitude as u16 + ps.intellect as u16;
     let sent_total = input.new_acuity as u16
         + input.new_ferocity as u16
         + input.new_fortitude as u16
         + input.new_intellect as u16;
 
     let spent = (sent_total - current_total) as u8;
-    if spent > ps.data.available_points {
+    if spent > ps.available_points {
         return Err("Not enough available points".to_string());
     }
 
     // Apply update and decrement remaining points by the amount spent.
     ps.update(
         ctx,
-        PrimaryStatsData {
-            ferocity: input.new_ferocity,
-            fortitude: input.new_fortitude,
-            intellect: input.new_intellect,
-            acuity: input.new_acuity,
-            available_points: (ps.data.available_points - spent) as u8,
-        },
+        input.new_ferocity,
+        input.new_fortitude,
+        input.new_intellect,
+        input.new_acuity,
+        (ps.available_points - spent) as u8,
     );
 
     Ok(())

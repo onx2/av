@@ -1,6 +1,6 @@
 use crate::{
-    HealthData, HealthRow, ManaData, ManaRow, PrimaryStatsRow, SecondaryStatsData,
-    SecondaryStatsRow, MAX_LEVEL, TIER_INTERVAL,
+    HealthData, HealthRow, ManaData, ManaRow, PrimaryStatsRow, SecondaryStatsRow, MAX_LEVEL,
+    TIER_INTERVAL,
 };
 use shared::ActorId;
 use spacetimedb::{table, ReducerContext, Table, ViewContext};
@@ -43,9 +43,7 @@ impl LevelRow {
             actor_id: self.actor_id,
             level: new_level,
         });
-        let Some(primary_stats_data) =
-            PrimaryStatsRow::find(&ctx.as_read_only(), self.actor_id).map(|row| row.data)
-        else {
+        let Some(primary_stats) = PrimaryStatsRow::find(&ctx.as_read_only(), self.actor_id) else {
             log::error!(
                 "Failed to find fortitude for player on level change {}",
                 self.actor_id
@@ -58,26 +56,25 @@ impl LevelRow {
         if let Some(health) = HealthRow::find(&view_ctx, self.actor_id) {
             health.set_max(
                 ctx,
-                HealthData::compute_max(res.level, primary_stats_data.fortitude),
+                HealthData::compute_max(res.level, primary_stats.fortitude),
             );
         }
         if let Some(mana) = ManaRow::find(&view_ctx, self.actor_id) {
             mana.set_max(
                 ctx,
-                ManaData::compute_max(res.level, primary_stats_data.intellect),
+                ManaData::compute_max(res.level, primary_stats.intellect),
             );
         }
 
         // Update secondary stats when we change level
         if let Some(mut secondary_stats) = SecondaryStatsRow::find(&view_ctx, self.actor_id) {
-            secondary_stats.data.movement_speed =
-                SecondaryStatsData::compute_movement_speed(res.level, 0., 0., 0.);
-            secondary_stats.data.critical_hit_chance =
-                SecondaryStatsData::compute_critical_hit_chance(
-                    res.level,
-                    primary_stats_data.ferocity,
-                    0.,
-                );
+            secondary_stats.movement_speed =
+                SecondaryStatsRow::compute_movement_speed(res.level, 0., 0., 0.);
+            secondary_stats.critical_hit_chance = SecondaryStatsRow::compute_critical_hit_chance(
+                res.level,
+                primary_stats.ferocity,
+                0.,
+            );
             SecondaryStatsRow::update_from_self(secondary_stats, ctx);
         }
     }

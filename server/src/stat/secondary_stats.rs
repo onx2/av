@@ -1,39 +1,47 @@
 use crate::{get_view_aoi_block, MovementStateRow};
 use shared::ActorId;
-use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
+use spacetimedb::{table, ReducerContext, Table, ViewContext};
 
 #[table(name=secondary_stats_tbl)]
 pub struct SecondaryStatsRow {
     #[primary_key]
     pub actor_id: ActorId,
 
-    pub data: SecondaryStatsData,
+    pub movement_speed: f32,
+
+    /// Critical hit chance normalized to a 0.0–1.0 fraction.
+    /// Example: 0.05 = 5% chance.
+    pub critical_hit_chance: f32,
+    // armor
+    // attack_speed
 }
 
 impl SecondaryStatsRow {
     pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
         ctx.db.secondary_stats_tbl().actor_id().find(actor_id)
     }
-    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: SecondaryStatsData) {
-        ctx.db.secondary_stats_tbl().insert(Self { actor_id, data });
+
+    pub fn insert(
+        ctx: &ReducerContext,
+        actor_id: ActorId,
+        movement_speed: f32,
+        critical_hit_chance: f32,
+    ) {
+        ctx.db.secondary_stats_tbl().insert(Self {
+            actor_id,
+            movement_speed,
+            critical_hit_chance,
+        });
     }
     /// Updates from given self, caller should have updated the state with the latest values.
     pub fn update_from_self(self, ctx: &ReducerContext) {
         ctx.db.secondary_stats_tbl().actor_id().update(self);
     }
-}
 
-#[derive(SpacetimeType, Debug, PartialEq, Clone, Copy)]
-pub struct SecondaryStatsData {
-    pub movement_speed: f32,
-    pub critical_hit_chance: f32,
-    // armor
-    // attack_speed
-}
-
-impl SecondaryStatsData {
     const MAX_MOVEMENT_SPEED: f32 = 6.5;
-    const MAX_CRITICAL_HIT_CHANCE: f32 = 50.0;
+
+    /// Critical hit chance cap as a normalized fraction (0.0–1.0).
+    const MAX_CRITICAL_HIT_CHANCE: f32 = 0.50;
 
     /// Movement speed is determined by level, buffs, and gear only.
     ///
@@ -54,19 +62,21 @@ impl SecondaryStatsData {
             .min(Self::MAX_MOVEMENT_SPEED)
     }
 
-    /// Critical hit chance is determined by level, ferocity (primary stat), and gear
+    /// Critical hit chance is determined by level, ferocity (primary stat), and gear.
+    ///
+    /// Returns a normalized 0.0–1.0 fraction (e.g. 0.05 = 5%).
     ///
     /// Note: Bonus values should be passed in as decimal percentages (normalized between 0 and 1)
     /// and the multiplier will be computed based on that.
     ///
     /// TODO: implement gear
     pub fn compute_critical_hit_chance(level: u8, ferocity: u8, gear: f32) -> f32 {
-        let base_speed = 5.0;
-        let ferocity_bonus = ferocity as f32 * 0.075;
-        let level_bonus = level as f32 * 0.01;
+        let base_chance = 0.05;
+        let ferocity_bonus = ferocity as f32 * 0.00075;
+        let level_bonus = level as f32 * 0.0001;
         let gear_multiplier = 1. + gear;
         // Max critical hit chance of 50% seems reasonable for now... tbd
-        (base_speed * (1. + ferocity_bonus + level_bonus) * gear_multiplier)
+        (base_chance * (1. + ferocity_bonus + level_bonus) * gear_multiplier)
             .min(Self::MAX_CRITICAL_HIT_CHANCE)
     }
 }
@@ -84,7 +94,8 @@ pub fn secondary_stats_view(ctx: &ViewContext) -> Vec<SecondaryStatsRow> {
         .filter_map(|ms| {
             SecondaryStatsRow::find(ctx, ms.actor_id).map(|row| SecondaryStatsRow {
                 actor_id: ms.actor_id,
-                data: row.data,
+                movement_speed: row.movement_speed,
+                critical_hit_chance: row.critical_hit_chance,
             })
         })
         .collect()

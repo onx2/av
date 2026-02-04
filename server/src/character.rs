@@ -2,8 +2,7 @@ use crate::{
     actor_tbl, character_instance_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl,
     movement_state_tbl, primary_stats_tbl, transform_tbl, ActorRow, CapsuleY, CharacterInstanceRow,
     ExperienceRow, HealthData, HealthRow, LevelRow, ManaData, ManaRow, MovementStateRow,
-    PrimaryStatsData, PrimaryStatsRow, SecondaryStatsData, SecondaryStatsRow, TransformData,
-    TransformRow, Vec3,
+    PrimaryStatsRow, SecondaryStatsRow, TransformData, TransformRow, Vec3,
 };
 use shared::{encode_cell_id, CellId};
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
@@ -11,17 +10,15 @@ use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
 /// The persistence layer for a player's characters
 #[table(name=character_tbl)]
 pub struct CharacterRow {
-    #[index(btree)]
-    pub identity: Identity,
-
     #[auto_inc]
     #[primary_key]
     pub id: u32,
 
+    #[index(btree)]
+    pub identity: Identity,
+
     #[unique]
     pub name: String,
-
-    pub experience: u32,
 
     #[index(btree)]
     pub deleted: bool,
@@ -29,10 +26,20 @@ pub struct CharacterRow {
     pub capsule: CapsuleY,
 
     pub transform: TransformData,
-    pub primary_stats: PrimaryStatsData,
-    pub secondary_stats: SecondaryStatsData,
+
+    // Primary stats
+    pub ferocity: u8,
+    pub fortitude: u8,
+    pub intellect: u8,
+    pub acuity: u8,
+    pub available_points: u8,
+
+    // Vitals
     pub health: HealthData,
     pub mana: ManaData,
+
+    // Progression
+    pub experience: u32,
     pub level: u8,
 }
 
@@ -51,7 +58,10 @@ impl CharacterRow {
         }
 
         let level = 1;
-        let primary_stats = PrimaryStatsData::default();
+        let ferocity = PrimaryStatsRow::MIN_STAT;
+        let fortitude = PrimaryStatsRow::MIN_STAT;
+        let intellect = PrimaryStatsRow::MIN_STAT;
+        let acuity = PrimaryStatsRow::MIN_STAT;
         let inserted = ctx.db.character_tbl().insert(CharacterRow {
             id: 0,
             identity: ctx.sender,
@@ -60,24 +70,23 @@ impl CharacterRow {
                 yaw: 0,
                 translation: Vec3::new(0., 50.0, 0.),
             },
-            primary_stats,
-            secondary_stats: SecondaryStatsData {
-                movement_speed: SecondaryStatsData::compute_movement_speed(level, 0.0, 0.0, 0.0),
-                critical_hit_chance: SecondaryStatsData::compute_critical_hit_chance(
-                    level,
-                    primary_stats.ferocity,
-                    0.0,
-                ),
-            },
             deleted: false,
-            experience: 0,
-            level,
-            health: HealthData::new(HealthData::compute_max(level, primary_stats.fortitude)),
-            mana: ManaData::new(ManaData::compute_max(level, primary_stats.intellect)),
             capsule: CapsuleY {
                 radius: 0.3,
                 half_height: 0.9,
             },
+
+            ferocity,
+            fortitude,
+            intellect,
+            acuity,
+            available_points: 0,
+
+            health: HealthData::new(HealthData::compute_max(level, fortitude)),
+            mana: ManaData::new(ManaData::compute_max(level, intellect)),
+
+            experience: 0,
+            level,
         });
 
         Ok(inserted)
@@ -129,8 +138,19 @@ impl CharacterRow {
             cell_id,
         });
         TransformRow::insert(ctx, actor.id, self.transform);
-        PrimaryStatsRow::insert(ctx, actor.id, self.primary_stats);
-        SecondaryStatsRow::insert(ctx, actor.id, self.secondary_stats);
+        PrimaryStatsRow::insert(
+            ctx,
+            actor.id,
+            self.ferocity,
+            self.fortitude,
+            self.intellect,
+            self.acuity,
+            self.available_points,
+        );
+        let movement_speed = SecondaryStatsRow::compute_movement_speed(self.level, 0.0, 0.0, 0.0);
+        let critical_hit_chance =
+            SecondaryStatsRow::compute_critical_hit_chance(self.level, self.ferocity, 0.0);
+        SecondaryStatsRow::insert(ctx, actor.id, movement_speed, critical_hit_chance);
         HealthRow::insert(ctx, actor.id, self.health);
         ManaRow::insert(ctx, actor.id, self.mana);
         ExperienceRow::insert(ctx, actor.id, self.experience);
