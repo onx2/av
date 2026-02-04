@@ -1,47 +1,47 @@
-use crate::{module_bindings::ActiveCharacterRow, server::SpacetimeDB};
+use crate::{module_bindings::CharacterInstanceRow, server::SpacetimeDB};
 use bevy::{platform::collections::HashMap, prelude::*};
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage};
-use shared::Owner;
+use shared::ActorId;
 
 /// Marker to ensure we only attach active-character visuals once per entity.
 #[derive(Component, Debug)]
 pub struct ActiveCharacterVisuals;
 
 #[derive(Resource, Default)]
-pub struct OwnerEntityMapping(pub HashMap<Owner, Entity>);
+pub struct ActorEntityMapping(pub HashMap<ActorId, Entity>);
 
 #[derive(Component, Debug)]
-pub struct OwnerEntity(pub Owner);
+pub struct ActorEntity(pub ActorId);
 
 #[derive(Component, Debug)]
-pub struct LocalOwner;
+pub struct LocalActor;
 
 #[derive(Component, Debug)]
-pub struct RemoteOwner;
+pub struct RemoteActor;
 
-/// Ensures there is a Bevy `Entity` for the given `owner`, regardless of message ordering.
+/// Ensures there is a Bevy `Entity` for the given `actor_id`, regardless of message ordering.
 ///
 /// This is the common pattern for replication timing issues:
 /// - Any table insert/update handler can call this first.
-/// - It guarantees a stable `Owner -> Entity` mapping exists.
-/// - It spawns a minimal entity (only `OwnerEntity`) when needed.
-pub fn ensure_owner_entity(
+/// - It guarantees a stable `Actor -> Entity` mapping exists.
+/// - It spawns a minimal entity (only `ActorEntity`) when needed.
+pub fn ensure_actor_entity(
     commands: &mut Commands,
-    oe_mapping: &mut OwnerEntityMapping,
-    owner: Owner,
+    oe_mapping: &mut ActorEntityMapping,
+    actor_id: ActorId,
 ) -> Entity {
-    if let Some(&entity) = oe_mapping.0.get(&owner) {
+    if let Some(&entity) = oe_mapping.0.get(&actor_id) {
         return entity;
     }
 
     let entity = commands
         .spawn((
-            OwnerEntity(owner),
+            ActorEntity(actor_id),
             // Hidden until we have a valid transform. TODO: this might not be necessary once assets for the character are used.
             Visibility::Hidden,
         ))
         .id();
-    oe_mapping.0.insert(owner, entity);
+    oe_mapping.0.insert(actor_id, entity);
     entity
 }
 
@@ -50,51 +50,50 @@ pub fn ensure_owner_entity(
 /// Safe to call multiple times; inserts are idempotent.
 pub fn ensure_local_remote_tags(commands: &mut Commands, entity: Entity, is_local: bool) {
     if is_local {
-        commands.entity(entity).insert(LocalOwner);
+        commands.entity(entity).insert(LocalActor);
     } else {
-        commands.entity(entity).insert(RemoteOwner);
+        commands.entity(entity).insert(RemoteActor);
     }
 }
 
 pub(super) fn plugin(app: &mut App) {
-    app.insert_resource(OwnerEntityMapping::default());
+    app.insert_resource(ActorEntityMapping::default());
     app.add_systems(
         Update,
         (
-            on_active_character_inserted,
-            on_active_character_deleted,
+            on_character_instance_inserted,
+            on_character_instance_deleted,
             on_monster_instance_inserted,
         ),
     );
 }
 
-fn on_active_character_deleted(
+fn on_character_instance_deleted(
     mut commands: Commands,
-    mut oe_mapping: ResMut<OwnerEntityMapping>,
-    mut msgs: ReadDeleteMessage<ActiveCharacterRow>,
+    mut oe_mapping: ResMut<ActorEntityMapping>,
+    mut msgs: ReadDeleteMessage<CharacterInstanceRow>,
 ) {
     for msg in msgs.read() {
-        if let Some(bevy_entity) = oe_mapping.0.remove(&msg.row.owner) {
+        if let Some(bevy_entity) = oe_mapping.0.remove(&msg.row.actor_id) {
             commands.entity(bevy_entity).despawn();
         }
     }
 }
 
-fn on_active_character_inserted(
+fn on_character_instance_inserted(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut msgs: ReadInsertMessage<ActiveCharacterRow>,
-    mut oe_mapping: ResMut<OwnerEntityMapping>,
+    mut msgs: ReadInsertMessage<CharacterInstanceRow>,
+    mut oe_mapping: ResMut<ActorEntityMapping>,
     stdb: SpacetimeDB,
     visuals_q: Query<(), With<ActiveCharacterVisuals>>,
 ) {
     for msg in msgs.read() {
         let is_local = msg.row.identity == stdb.identity();
-        let owner = msg.row.owner;
 
         // Ensure the base entity exists even if other tables arrive first/last.
-        let entity = ensure_owner_entity(&mut commands, &mut oe_mapping, owner);
+        let entity = ensure_actor_entity(&mut commands, &mut oe_mapping, msg.row.actor_id);
         ensure_local_remote_tags(&mut commands, entity, is_local);
 
         // Attach visuals only once per entity.
@@ -146,18 +145,18 @@ fn on_active_character_inserted(
                 });
         }
 
-        println!("on_active_character_inserted: {:?}", owner);
+        println!("on_character_instance_inserted: {:?}", msg.row.actor_id);
     }
 }
 
 fn on_monster_instance_inserted(// mut commands: Commands,
     // mut msgs: ReadInsertMessage<Monster>,
-    // mut oe_mapping: ResMut<OwnerEntityMapping>,
+    // mut oe_mapping: ResMut<ActorEntityMapping>,
     // stdb: SpacetimeDB,
 ) {
     // for msg in msgs.read() {
     //     // Not sure when this would happen but probably shouldn't allow duplicates
-    //     if oe_mapping.0.contains_key(&msg.row.owner) {
+    //     if oe_mapping.0.contains_key(&msg.row.actor_id) {
     //         continue;
     //     }
 

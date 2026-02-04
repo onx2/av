@@ -1,7 +1,5 @@
-use std::iter::once;
-
 use crate::{
-    movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData, SecondaryStatsRow,
+    actor_tbl, movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData, SecondaryStatsRow,
     TransformRow, Vec2,
 };
 use nalgebra::Vector2;
@@ -11,12 +9,13 @@ use rapier3d::{
     prelude::{Capsule, QueryFilter},
 };
 use shared::{
-    constants::{GRAVITY, TERMINAL_VELOCITY},
+    constants::{GRAVITY_MPS2, TERMINAL_FALL_SPEED_MPS, VERTICAL_VELOCITY_Q_MPS},
     encode_cell_id, get_desired_delta, is_at_target_planar,
     utils::{build_static_query_world, yaw_to_u8},
-    yaw_from_xz, Owner,
+    yaw_from_xz, ActorId,
 };
 use spacetimedb::{reducer, ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
+use std::iter::once;
 
 pub fn delta_time(now: Timestamp, last: Timestamp) -> Option<f32> {
     now.time_duration_since(last)
@@ -37,7 +36,13 @@ pub struct MovementTickTimer {
     pub last_tick: Timestamp,
 }
 
-const TICK_INTERVAL_MICROS: i64 = 200_000;
+pub const TICK_60HZ_MICROS: i64 = 16_666;
+pub const TICK_30HZ_MICROS: i64 = 33_333;
+pub const TICK_20HZ_MICROS: i64 = 50_000;
+pub const TICK_10HZ_MICROS: i64 = 100_000;
+
+const TICK_INTERVAL_MICROS: i64 = TICK_10HZ_MICROS;
+const TICK_INTERVAL_SECS: f32 = TICK_INTERVAL_MICROS as f32 / 1_000_000.0;
 
 pub fn init_movement_tick(ctx: &ReducerContext) {
     ctx.db.movement_tick_timer().scheduled_id().delete(1);
@@ -56,17 +61,17 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         return Err("`movement_tick_reducer` may not be invoked by clients.".into());
     }
 
-    // No need to waste CPU instructions and a table scan for building the query world
-    // when we don't have processable movement states...
+    // Prevent wasting CPU instructions + table scan for the query world when possible
     let mut movement_states = ctx.db.movement_state_tbl().should_move().filter(true);
     let Some(first_movement_state) = movement_states.next() else {
         log::info!("No movement states to process");
         return Ok(());
     };
 
-    let dt = delta_time(ctx.timestamp, timer.last_tick)
-        .map(|dt| dt.min(0.125))
-        .unwrap_or(0.125);
+    let dt_raw = delta_time(ctx.timestamp, timer.last_tick).unwrap_or(TICK_INTERVAL_SECS);
+    // Clamp to 120% of the configured tick interval to avoid "teleport" corrections on
+    // startup / scheduling jitter while still allowing small variance.
+    let dt = dt_raw.min(TICK_INTERVAL_SECS * 1.2);
 
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
@@ -84,12 +89,16 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
     let query_pipeline = query_world.as_query_pipeline(QueryFilter::only_fixed());
 
     // Initialize a actor location cache. Rapier exposes a much faster HashMap, 10x fewer CPU instructions.
-    let mut target_xz_cache: HashMap<Owner, Vec2> = HashMap::default();
+    let mut target_xz_cache: HashMap<ActorId, Vec2> = HashMap::default();
     let view_ctx = ctx.as_read_only();
     for mut movement_state in once(first_movement_state).chain(movement_states) {
-        let owner = movement_state.owner;
-        let Some(mut owner_transform) = TransformRow::find(ctx, owner) else {
-            log::error!("Failed to find transform for owner {}", owner);
+        let actor_id = movement_state.actor_id;
+        let Some(mut owner_transform) = TransformRow::find(ctx, actor_id) else {
+            log::error!("Failed to find transform for actor_id {}", actor_id);
+            continue;
+        };
+        let Some(capsule) = ctx.db.actor_tbl().id().find(actor_id).map(|a| a.capsule) else {
+            log::error!("Failed to find transform for actor_id {}", actor_id);
             continue;
         };
 
@@ -105,15 +114,51 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             .unwrap_or(current_planar);
 
         let mut movement_state_dirty = false;
-        if !movement_state.grounded && movement_state.vertical_velocity > TERMINAL_VELOCITY {
-            movement_state.vertical_velocity += GRAVITY * dt;
-            movement_state_dirty = true;
+
+        // Quantized vertical velocity integration:
+        //
+        // - `vertical_velocity == 0` means no vertical motion (typically grounded).
+        // - Negative values mean falling (down).
+        //
+        // We integrate in discrete steps derived from dt so the simulation is stable even when
+        // dt varies slightly. Gravity and terminal velocity come from shared constants but are
+        // interpreted in the same quantized units as `vertical_velocity`.
+        //
+        // Important: we do not decide "grounded" from `vertical_velocity`. Grounding is determined
+        // by the KCC (`correction.grounded`). To avoid cases where you fail to start falling, we
+        // ensure a minimal downward velocity whenever we're not grounded (after we compute KCC).
+        //
+        // Here we only apply gravity if we're already falling (vv < 0). Starting the fall is handled
+        // after `move_shape` when we know whether KCC considers us grounded.
+        if movement_state.vertical_velocity < 0 {
+            // Frame-rate independent gravity:
+            // - Stored `vertical_velocity` is quantized i8.
+            // - Convert to m/s, integrate using m/s^2 * dt, clamp terminal, then requantize.
+            let v0_mps = movement_state.vertical_velocity as f32 * VERTICAL_VELOCITY_Q_MPS;
+
+            // Semi-implicit Euler: v(t+dt) = v(t) + g*dt
+            let mut v1_mps = v0_mps + GRAVITY_MPS2 * dt;
+
+            // Clamp to terminal fall speed (negative/downward). We only do this when already falling.
+            if v1_mps < TERMINAL_FALL_SPEED_MPS {
+                v1_mps = TERMINAL_FALL_SPEED_MPS;
+            }
+
+            // Re-quantize to i8.
+            let vq = (v1_mps / VERTICAL_VELOCITY_Q_MPS).round();
+            let vq = vq.clamp(i8::MIN as f32, i8::MAX as f32) as i8;
+
+            if vq != movement_state.vertical_velocity {
+                movement_state.vertical_velocity = vq;
+                // log::info!("vertical_velocity {}", movement_state.vertical_velocity);
+                movement_state_dirty = true;
+            }
         }
 
-        let Some(movement_speed_mps) = SecondaryStatsRow::find(&view_ctx, owner)
-            .map(|secondary_stats| secondary_stats.data.movement_speed)
+        let Some(movement_speed_mps) = SecondaryStatsRow::find(&view_ctx, actor_id)
+            .map(|secondary_stats| secondary_stats.movement_speed)
         else {
-            log::error!("Failed to find secondary stats for entity {}", owner);
+            log::error!("Failed to find secondary stats for entity {}", actor_id);
             continue;
         };
 
@@ -125,20 +170,31 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             owner_transform.data.yaw = yaw_to_u8(yaw);
         }
 
+        // `get_desired_delta` currently expects an unsigned "fall speed" scalar.
+        // Our movement state stores `vertical_velocity` as an i8 where:
+        // - 0 = grounded/no vertical motion
+        // - negative = falling down
+        //
+        // Convert to a non-negative magnitude for the shared helper:
+        //
+        // Stored `vertical_velocity` is quantized i8 where negative means falling.
+        // Convert the quantized velocity to a magnitude in m/s, then pass as a scalar.
+        let vertical_velocity_u16: u16 = if movement_state.vertical_velocity < 0 {
+            let v_mps = (movement_state.vertical_velocity as f32 * VERTICAL_VELOCITY_Q_MPS).abs();
+            v_mps.round().clamp(0.0, u16::MAX as f32) as u16
+        } else {
+            0
+        };
         let correction = kcc.move_shape(
             dt,
             &query_pipeline,
-            &Capsule::new_y(
-                movement_state.capsule.half_height,
-                movement_state.capsule.radius,
-            ),
+            &Capsule::new_y(capsule.half_height, capsule.radius),
             &owner_transform.data.into(),
             get_desired_delta(
                 current_planar,
                 target_planar,
                 movement_speed_mps,
-                movement_state.vertical_velocity,
-                movement_state.grounded,
+                vertical_velocity_u16,
                 dt,
             ),
             |_| {},
@@ -148,13 +204,21 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         owner_transform.data.translation.y += correction.translation.y;
         owner_transform.data.translation.z += correction.translation.z;
 
-        if movement_state.grounded != correction.grounded {
-            movement_state.grounded = correction.grounded;
-            movement_state_dirty = true;
-        }
-        if movement_state.grounded && movement_state.vertical_velocity != 0.0 {
-            movement_state.vertical_velocity = 0.0;
-            movement_state_dirty = true;
+        // Ground truth for grounding comes from KCC.
+        //
+        // - If KCC reports grounded, we stop falling (set vv=0).
+        // - If KCC reports not grounded, we ensure falling has started (vv is at least -1),
+        //   even if vv was previously 0 for any reason.
+        if correction.grounded {
+            if movement_state.vertical_velocity != 0 {
+                movement_state.vertical_velocity = 0;
+                movement_state_dirty = true;
+            }
+        } else {
+            if movement_state.vertical_velocity == 0 {
+                movement_state.vertical_velocity = -1;
+                movement_state_dirty = true;
+            }
         }
 
         let cell_id = encode_cell_id(

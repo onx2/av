@@ -2,7 +2,7 @@ pub mod reducers;
 pub mod types;
 
 use crate::module_bindings::{
-    ActiveCharacterViewTableAccess, DbConnection, HealthViewTableAccess, ManaViewTableAccess,
+    CharacterInstanceViewTableAccess, DbConnection, HealthViewTableAccess, ManaViewTableAccess,
     MovementStateViewTableAccess, PrimaryStatsViewTableAccess, RemoteTables,
     SecondaryStatsViewTableAccess, TransformViewTableAccess, WorldStaticTblTableAccess,
 };
@@ -41,12 +41,12 @@ pub(super) fn plugin(app: &mut App) {
             // --------------------------------
             .add_table(RemoteTables::world_static_tbl)
             .add_table_without_pk(RemoteTables::primary_stats_view)
-            .add_view_with_pk(RemoteTables::secondary_stats_view, |r| r.owner)
-            .add_view_with_pk(RemoteTables::movement_state_view, |r| r.owner)
-            .add_view_with_pk(RemoteTables::health_view, |r| r.owner)
-            .add_view_with_pk(RemoteTables::mana_view, |r| r.owner)
-            .add_view_with_pk(RemoteTables::active_character_view, |r| r.owner)
-            .add_view_with_pk(RemoteTables::transform_view, |r| r.owner)
+            .add_view_with_pk(RemoteTables::secondary_stats_view, |r| r.actor_id)
+            .add_view_with_pk(RemoteTables::movement_state_view, |r| r.actor_id)
+            .add_view_with_pk(RemoteTables::health_view, |r| r.actor_id)
+            .add_view_with_pk(RemoteTables::mana_view, |r| r.actor_id)
+            .add_view_with_pk(RemoteTables::character_instance_view, |r| r.actor_id)
+            .add_view_with_pk(RemoteTables::transform_view, |r| r.actor_id)
             .with_run_fn(DbConnection::run_threaded),
     );
     app.add_systems(Update, on_connect);
@@ -63,7 +63,7 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
             "SELECT * FROM mana_view",
             "SELECT * FROM world_static_tbl",
             "SELECT * FROM movement_state_view",
-            "SELECT * FROM active_character_view",
+            "SELECT * FROM character_instance_view",
             "SELECT * FROM transform_view",
         ]);
     }

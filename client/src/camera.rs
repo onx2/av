@@ -1,4 +1,4 @@
-use crate::owner::LocalOwner;
+use crate::actor::LocalActor;
 use bevy::{
     camera::Exposure,
     pbr::{AtmosphereMode, AtmosphereSettings},
@@ -38,7 +38,7 @@ fn add_camera(mut commands: Commands) {
 
 fn follow_player(
     mut camera_query: Query<&mut Transform, With<Camera3d>>,
-    local_owner: Single<&Transform, (With<LocalOwner>, Without<Camera3d>)>,
+    local_owner: Single<&Transform, (With<LocalActor>, Without<Camera3d>)>,
     time: Res<Time>,
 ) {
     let Ok(mut cam_tf) = camera_query.single_mut() else {

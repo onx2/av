@@ -55,8 +55,7 @@ pub fn get_desired_delta(
     current_planar: Vector2<f32>,
     target_planar: Vector2<f32>,
     movement_speed_mps: f32,
-    vertical_velocity: f32,
-    grounded: bool,
+    vertical_velocity: u16,
     dt: f32,
 ) -> Vector3<f32> {
     const GROUND_BIAS_VELOCITY: f32 = -0.125;
@@ -76,14 +75,14 @@ pub fn get_desired_delta(
         (dx * scale, dz * scale)
     };
 
-    if grounded {
+    if vertical_velocity == 0 {
         // Very slight downward bias to help snap to ground on slopes
         [x, GROUND_BIAS_VELOCITY * dt, z].into()
     } else {
         // Air control reduction in planar and gravity.
         [
             x * AIR_CONTROL_REDUCTION,
-            vertical_velocity * dt,
+            -(vertical_velocity as f32) * dt,
             z * AIR_CONTROL_REDUCTION,
         ]
         .into()
@@ -105,78 +104,6 @@ pub fn is_move_too_far(a: Vector2<f32>, b: Vector2<f32>) -> bool {
 /// Are two positions within a planar acceptance radius (meters)?
 pub fn is_move_too_close(a: Vector2<f32>, b: Vector2<f32>) -> bool {
     planar_distance_sq(a, b) <= SMALLEST_REQUEST_DISTANCE_SQ
-}
-
-/// Encodes world position (x, z) into a compact 32-bit cell ID.
-///
-/// - Adds `WORLD_OFFSET` to shift negative coords into positive range.
-/// - Divides by `CELL_SIZE` to get grid indices (floored).
-/// - Casts to u16 (truncates fractional part).
-/// - Packs: grid_x into high 16 bits (<< 16), grid_z into low 16 bits (|).
-///
-/// Result: Unique u32 ID with X-major ordering (x high, z low).
-pub fn encode_cell_id(x: f32, z: f32) -> u32 {
-    let grid_x = ((x + WORLD_OFFSET) * INV_CELL_SIZE) as u16;
-    let grid_z = ((z + WORLD_OFFSET) * INV_CELL_SIZE) as u16;
-    (u32::from(grid_x) << 16) | u32::from(grid_z)
-}
-
-/// Decodes a 32-bit cell ID into the world position (x, z) of the cell's minimum (bottom-left) corner.
-///
-/// - Extracts grid coordinates: x from high 16 bits, z from low 16 bits.
-/// - Multiplies by `CELL_SIZE` to get offset position.
-/// - Subtracts `WORLD_OFFSET` to revert the encoding shift.
-///
-/// Returns [x, z] in world units.
-pub fn decode_cell_id(id: u32) -> [f32; 2] {
-    [
-        f32::from((id >> 16) as u16) * CELL_SIZE - WORLD_OFFSET,
-        // 0xFFFF == u16::MAX, but converts to u32 implicitly
-        f32::from((id & 0xFFFF) as u16) * CELL_SIZE - WORLD_OFFSET,
-    ]
-}
-
-/// Returns the 9 cell IDs forming a 3x3 Area of Interest (AOI) block around the given center cell.
-///
-/// **NOTE** Its expected to have a buffer of 1 cell around the world so we don't need to worry about the
-/// saturating add/sub duplicating values for center and edge.
-///
-/// Layout (top-down view, +Z = North):
-///
-/// [0] North-West | [1] North     | [2] North-East
-/// ------------------------------------------------
-/// [3] West       | [4] Center    | [5] East
-/// ------------------------------------------------
-/// [6] South-West | [7] South     | [8] South-East
-///
-/// Index 4 is always the input `id`. Neighbors use saturating arithmetic to clamp at u16 bounds (0..65535).
-///
-/// **Performance**: O(1)
-pub fn get_aoi_block(cell_id: u32) -> [u32; 9] {
-    // Cell ID format: [x: u16 (bits 31-16)] [z: u16 (bits 15-0)]
-    let x = (cell_id >> 16) as u16; // Extract grid X from low 16 bits after right shift
-    let z = (cell_id & 0xFFFF) as u16; // Extract grid Z from low 16 bits after bitwise AND
-
-    // Neighbor coordinates (wrap to valid range and avoid branching, saves a few cycles)
-    // It is expected we never hit the edge of the grid
-    let x_west = x.wrapping_sub(1); // West (X-1)
-    let x_east = x.wrapping_add(1); // East (X+1)
-    let z_north = z.wrapping_add(1); // North (Z-1)
-    let z_south = z.wrapping_sub(1); // South (Z+1)
-
-    // Pre-shift X values to high 16 bits to pack
-    // Reconstruct neighbor IDs via OR (low 16 bits = Z, high already shifted)
-    [
-        (u32::from(x_west) << 16) | u32::from(z_north), // NW
-        (u32::from(x) << 16) | u32::from(z_north),      // N
-        (u32::from(x_east) << 16) | u32::from(z_north), // NE
-        (u32::from(x_west) << 16) | u32::from(z),       // W
-        cell_id,                                        // Center
-        (u32::from(x_east) << 16) | u32::from(z),       // E
-        (u32::from(x_west) << 16) | u32::from(z_south), // SW
-        (u32::from(x) << 16) | u32::from(z_south),      // S
-        (u32::from(x_east) << 16) | u32::from(z_south), // SE
-    ]
 }
 
 pub struct StaticQueryWorld {

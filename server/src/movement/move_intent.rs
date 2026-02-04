@@ -1,6 +1,6 @@
 use crate::{transform_tbl__view, Vec2};
 use rapier3d::parry::utils::hashmap::HashMap;
-use shared::Owner;
+use shared::ActorId;
 use spacetimedb::*;
 
 /// Represents the 2-dimensional movement intent of an Actor in the world
@@ -9,9 +9,11 @@ pub enum MoveIntentData {
     /// Movement toward a specific position in the world
     Point(Vec2),
     /// Movement along a path
+    /// TODO: might be able to remove this in favor of point only and request
+    /// a new point when it is reached... at least on the client? Not sure if that works on the server.
     Path(Vec<Vec2>),
     /// Movement toward an entity in the world (Actor)
-    Actor(Owner),
+    Actor(ActorId),
 }
 impl MoveIntentData {
     /// Gets the next target position for the given MoveIntent
@@ -19,10 +21,10 @@ impl MoveIntentData {
         match &self {
             MoveIntentData::Point(point) => Some(*point),
             MoveIntentData::Path(path) => path.first().copied(),
-            MoveIntentData::Actor(owner) => db
+            MoveIntentData::Actor(actor_id) => db
                 .transform_tbl()
-                .owner()
-                .find(owner)
+                .actor_id()
+                .find(actor_id)
                 .map(|t| t.data.translation.xz()),
         }
     }
@@ -33,16 +35,16 @@ impl MoveIntentData {
     pub fn target_position_with_cache(
         &self,
         db: &LocalReadOnly,
-        cache: &mut HashMap<Owner, Vec2>,
+        cache: &mut HashMap<ActorId, Vec2>,
     ) -> Option<Vec2> {
         match &self {
             MoveIntentData::Point(point) => Some(*point),
             MoveIntentData::Path(path) => path.first().copied(),
-            MoveIntentData::Actor(owner) => match cache.get(owner) {
+            MoveIntentData::Actor(actor_id) => match cache.get(actor_id) {
                 Some(pos) => Some(*pos),
-                None => db.transform_tbl().owner().find(owner).map(|t| {
+                None => db.transform_tbl().actor_id().find(actor_id).map(|t| {
                     let xz = t.data.translation.xz();
-                    cache.insert(*owner, xz);
+                    cache.insert(*actor_id, xz);
                     xz
                 }),
             },

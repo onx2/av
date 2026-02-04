@@ -1,4 +1,4 @@
-use crate::{OwnerEntityMapping, ensure_owner_entity, module_bindings::SecondaryStatsRow};
+use crate::{ActorEntityMapping, ensure_actor_entity, module_bindings::SecondaryStatsRow};
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadInsertMessage, ReadUpdateMessage};
 
@@ -18,14 +18,14 @@ pub(super) fn plugin(app: &mut App) {
 fn on_secondary_stats_inserted(
     mut commands: Commands,
     mut msgs: ReadInsertMessage<SecondaryStatsRow>,
-    mut oe_mapping: ResMut<OwnerEntityMapping>,
+    mut oe_mapping: ResMut<ActorEntityMapping>,
 ) {
     for msg in msgs.read() {
         println!("on_secondary_stats_inserted: {:?}", msg.row.clone());
-        let bevy_entity = ensure_owner_entity(&mut commands, &mut oe_mapping, msg.row.owner);
+        let bevy_entity = ensure_actor_entity(&mut commands, &mut oe_mapping, msg.row.actor_id);
         commands.entity(bevy_entity).insert(SecondaryStats {
-            movement_speed: msg.row.data.movement_speed,
-            critical_hit_chance: msg.row.data.critical_hit_chance,
+            movement_speed: msg.row.movement_speed,
+            critical_hit_chance: msg.row.critical_hit_chance,
         });
     }
 }
@@ -33,16 +33,16 @@ fn on_secondary_stats_inserted(
 fn on_secondary_stats_updated(
     mut secondary_stats_q: Query<&mut SecondaryStats>,
     mut msgs: ReadUpdateMessage<SecondaryStatsRow>,
-    oe_mapping: Res<OwnerEntityMapping>,
+    oe_mapping: Res<ActorEntityMapping>,
 ) {
     for msg in msgs.read() {
-        let Some(&bevy_entity) = oe_mapping.0.get(&msg.new.owner) else {
+        let Some(&bevy_entity) = oe_mapping.0.get(&msg.new.actor_id) else {
             continue;
         };
         let Ok(mut secondary_stats) = secondary_stats_q.get_mut(bevy_entity) else {
             continue;
         };
-        secondary_stats.movement_speed = msg.new.data.movement_speed;
-        secondary_stats.critical_hit_chance = msg.new.data.critical_hit_chance;
+        secondary_stats.movement_speed = msg.new.movement_speed;
+        secondary_stats.critical_hit_chance = msg.new.critical_hit_chance;
     }
 }

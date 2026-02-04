@@ -17,20 +17,42 @@ pub const SMALLEST_MOVE_DISTANCE_SQ: f32 = 0.0001;
 pub const MAX_INTENT_DISTANCE_SQ: f32 = 100.0 * 100.0;
 
 /// The maximum number of points on a path that are allowed
-pub const MAX_INTENT_PATH_LEN: usize = 20;
+pub const MAX_INTENT_PATH_LEN: usize = 5;
 
 /// Minimum planar motion required to update yaw (meters per tick).
 pub const YAW_EPS: f32 = 1.0e-6;
 
 /// Size of one grid cell in world units (meters).
 /// All cells are square
-pub const CELL_SIZE: f32 = 10.0;
+pub const CELL_SIZE: f32 = 50.0;
 pub const INV_CELL_SIZE: f32 = 1.0 / CELL_SIZE;
 
-/// Offset applied when converting world positions to grid coordinates.
-/// Shifts the world origin so that grid (0,0) corresponds to world position (-32768, -32768).
-/// Allows unsigned u16 grid coords to cover a world range of ~655360 units (±327680).
-pub const WORLD_OFFSET: f32 = 32768.0;
+/// Side length (cells per axis) for the square `u16` cell-id grid.
+///
+/// A `u16` can represent 65536 total cells, so a square grid must be 256×256.
+pub const GRID_SIDE: u16 = 256;
+pub const GRID_SIDE_F: f32 = GRID_SIDE as f32;
 
-pub const GRAVITY: f32 = -23.81;
-pub const TERMINAL_VELOCITY: f32 = GRAVITY * 4.0;
+/// Offset applied when converting world positions to grid coordinates.
+///
+/// For the `u16` cell-id grid, we use a fixed `GRID_SIDE × GRID_SIDE` world. To support negative
+/// world coordinates while keeping the cell coordinate range in `[0, GRID_SIDE)`, we shift by
+/// half the world span so that world-space `(0, 0)` maps near the center of the grid.
+///
+/// World span per axis (meters): `GRID_SIDE as f32 * CELL_SIZE`
+/// Offset (meters): `world_span / 2`
+pub const WORLD_OFFSET: f32 = GRID_SIDE_F * CELL_SIZE * 0.5;
+
+/// Gravity acceleration (meters/second^2). Negative is downward.
+pub const GRAVITY_MPS2: f32 = -13.81;
+
+/// Terminal fall speed (meters/second). Negative is downward.
+pub const TERMINAL_FALL_SPEED_MPS: f32 = GRAVITY_MPS2 * 3.;
+
+/// Vertical velocity quantization scale (meters/second per 1 `i8` unit).
+///
+/// Stored vertical velocity (`i8`) represents: `v_mps = v_q as f32 * VERTICAL_VELOCITY_Q_MPS`.
+/// Smaller values = finer precision but smaller max representable speed.
+///
+/// With `0.25`, `i8` covers approximately [-32.0, +31.75] m/s.
+pub const VERTICAL_VELOCITY_Q_MPS: f32 = 0.25;
