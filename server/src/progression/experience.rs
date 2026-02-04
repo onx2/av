@@ -1,6 +1,6 @@
-use crate::{level_tbl, EXPERIENCE_PER_LEVEL};
+use crate::{level_tbl, CharacterInstanceRow, EXPERIENCE_PER_LEVEL};
 use shared::ActorId;
-use spacetimedb::{table, ReducerContext, Table};
+use spacetimedb::{table, ReducerContext, Table, ViewContext};
 
 /// The amount of experience this person has accumulated
 #[table(name = experience_tbl)]
@@ -38,7 +38,7 @@ impl ExperienceRow {
         EXPERIENCE_PER_LEVEL.partition_point(|&req| req <= xp) as u8
     }
 
-    pub fn find(ctx: &ReducerContext, actor_id: ActorId) -> Option<Self> {
+    pub fn find(ctx: &ViewContext, actor_id: ActorId) -> Option<Self> {
         ctx.db.experience_tbl().actor_id().find(actor_id)
     }
 
@@ -49,4 +49,15 @@ impl ExperienceRow {
     pub fn delete(self, ctx: &ReducerContext) {
         ctx.db.experience_tbl().delete(self);
     }
+}
+
+#[spacetimedb::view(name = experience_view, public)]
+pub fn experience_view(ctx: &ViewContext) -> Option<ExperienceRow> {
+    let Some(character_instance_row) = CharacterInstanceRow::find_by_identity(ctx) else {
+        return None;
+    };
+    let Some(experience_row) = ExperienceRow::find(ctx, character_instance_row.actor_id) else {
+        return None;
+    };
+    Some(experience_row)
 }

@@ -12,7 +12,6 @@ pub struct MovementState {
     pub should_move: bool,
     pub move_intent: Option<MoveIntentData>,
     pub vertical_velocity: i8,
-    // pub capsule: Capsule, // TODO: predict collision on client
 }
 
 pub(super) fn plugin(app: &mut App) {

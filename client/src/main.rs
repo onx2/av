@@ -9,7 +9,11 @@ mod debug_tools;
 mod actor;
 mod camera;
 mod cursor;
+mod experience;
+mod health;
 mod input;
+mod level;
+mod mana;
 mod module_bindings;
 mod movement_state;
 mod player;
@@ -58,8 +62,12 @@ impl Plugin for AppPlugin {
             transform::plugin,
             world::plugin,
             player::plugin,
+            health::plugin,
+            mana::plugin,
+            level::plugin,
             camera::plugin,
             input::plugin,
+            experience::plugin,
             cursor::plugin,
             actor::plugin,
             movement_state::plugin,

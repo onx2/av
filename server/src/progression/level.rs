@@ -1,6 +1,6 @@
 use crate::{
-    HealthData, HealthRow, ManaData, ManaRow, PrimaryStatsRow, SecondaryStatsRow, MAX_LEVEL,
-    TIER_INTERVAL,
+    get_view_aoi_block, HealthData, HealthRow, ManaData, ManaRow, MovementStateRow,
+    PrimaryStatsRow, SecondaryStatsRow, MAX_LEVEL, TIER_INTERVAL,
 };
 use shared::ActorId;
 use spacetimedb::{table, ReducerContext, Table, ViewContext};
@@ -78,4 +78,21 @@ impl LevelRow {
             SecondaryStatsRow::update_from_self(secondary_stats, ctx);
         }
     }
+}
+
+#[spacetimedb::view(name = level_view, public)]
+pub fn level_view(ctx: &ViewContext) -> Vec<LevelRow> {
+    let Some(cell_block) = get_view_aoi_block(ctx) else {
+        return vec![];
+    };
+
+    cell_block
+        .flat_map(|cell_id| MovementStateRow::by_cell_id(ctx, cell_id))
+        .filter_map(|ms| {
+            LevelRow::find(ctx, ms.actor_id).map(|row| LevelRow {
+                actor_id: ms.actor_id,
+                level: row.level,
+            })
+        })
+        .collect()
 }

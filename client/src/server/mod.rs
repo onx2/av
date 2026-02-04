@@ -2,9 +2,10 @@ pub mod reducers;
 pub mod types;
 
 use crate::module_bindings::{
-    CharacterInstanceViewTableAccess, DbConnection, HealthViewTableAccess, ManaViewTableAccess,
-    MovementStateViewTableAccess, PrimaryStatsViewTableAccess, RemoteTables,
-    SecondaryStatsViewTableAccess, TransformViewTableAccess, WorldStaticTblTableAccess,
+    CharacterInstanceViewTableAccess, DbConnection, ExperienceViewTableAccess,
+    HealthViewTableAccess, LevelViewTableAccess, ManaViewTableAccess, MovementStateViewTableAccess,
+    PrimaryStatsViewTableAccess, RemoteTables, SecondaryStatsViewTableAccess,
+    TransformViewTableAccess, WorldStaticTblTableAccess,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadStdbConnectedMessage, StdbConnection, StdbPlugin};
@@ -47,6 +48,8 @@ pub(super) fn plugin(app: &mut App) {
             .add_view_with_pk(RemoteTables::mana_view, |r| r.actor_id)
             .add_view_with_pk(RemoteTables::character_instance_view, |r| r.actor_id)
             .add_view_with_pk(RemoteTables::transform_view, |r| r.actor_id)
+            .add_view_with_pk(RemoteTables::experience_view, |r| r.actor_id)
+            .add_view_with_pk(RemoteTables::level_view, |r| r.actor_id)
             .with_run_fn(DbConnection::run_threaded),
     );
     app.add_systems(Update, on_connect);
@@ -61,6 +64,8 @@ fn on_connect(mut messages: ReadStdbConnectedMessage, stdb: SpacetimeDB) {
             "SELECT * FROM secondary_stats_view",
             "SELECT * FROM health_view",
             "SELECT * FROM mana_view",
+            "SELECT * FROM experience_view",
+            "SELECT * FROM level_view",
             "SELECT * FROM world_static_tbl",
             "SELECT * FROM movement_state_view",
             "SELECT * FROM character_instance_view",
