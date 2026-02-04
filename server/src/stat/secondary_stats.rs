@@ -12,8 +12,8 @@ pub struct SecondaryStatsRow {
     /// Critical hit chance normalized to a 0.0–1.0 fraction.
     /// Example: 0.05 = 5% chance.
     pub critical_hit_chance: f32,
-    // armor
-    // attack_speed
+    // pub armor: f32
+    // pub attack_speed: f32
 }
 
 impl SecondaryStatsRow {

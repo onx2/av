@@ -56,3 +56,9 @@ pub const TERMINAL_FALL_SPEED_MPS: f32 = GRAVITY_MPS2 * 3.;
 ///
 /// With `0.25`, `i8` covers approximately [-32.0, +31.75] m/s.
 pub const VERTICAL_VELOCITY_Q_MPS: f32 = 0.25;
+
+pub const MICROS_60HZ: i64 = 16_666;
+pub const MICROS_30HZ: i64 = 33_333;
+pub const MICROS_20HZ: i64 = 50_000;
+pub const MICROS_10HZ: i64 = 100_000;
+pub const MICROS_1HZ: i64 = 1_000_000;

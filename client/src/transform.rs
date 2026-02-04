@@ -4,7 +4,7 @@ use crate::{
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadInsertMessage, ReadUpdateMessage};
-use shared::utils::yaw_from_u8;
+use shared::{SMALLEST_REQUEST_DISTANCE_SQ, is_move_too_close, utils::yaw_from_u8};
 
 /// Cached server transform data for an entity.
 #[derive(Component, Debug)]

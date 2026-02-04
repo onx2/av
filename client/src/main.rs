@@ -10,6 +10,7 @@ mod actor;
 mod camera;
 mod cursor;
 mod experience;
+mod extrapolate_move;
 mod health;
 mod input;
 mod level;
@@ -62,6 +63,7 @@ impl Plugin for AppPlugin {
             transform::plugin,
             world::plugin,
             player::plugin,
+            extrapolate_move::plugin,
             health::plugin,
             mana::plugin,
             level::plugin,

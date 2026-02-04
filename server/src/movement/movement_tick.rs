@@ -9,7 +9,7 @@ use rapier3d::{
     prelude::{Capsule, QueryFilter},
 };
 use shared::{
-    constants::{GRAVITY_MPS2, TERMINAL_FALL_SPEED_MPS, VERTICAL_VELOCITY_Q_MPS},
+    constants::{GRAVITY_MPS2, MICROS_1HZ, TERMINAL_FALL_SPEED_MPS, VERTICAL_VELOCITY_Q_MPS},
     encode_cell_id, get_desired_delta, is_at_target_planar,
     utils::{build_static_query_world, yaw_to_u8},
     yaw_from_xz, ActorId,
@@ -36,12 +36,7 @@ pub struct MovementTickTimer {
     pub last_tick: Timestamp,
 }
 
-pub const TICK_60HZ_MICROS: i64 = 16_666;
-pub const TICK_30HZ_MICROS: i64 = 33_333;
-pub const TICK_20HZ_MICROS: i64 = 50_000;
-pub const TICK_10HZ_MICROS: i64 = 100_000;
-
-const TICK_INTERVAL_MICROS: i64 = TICK_10HZ_MICROS;
+const TICK_INTERVAL_MICROS: i64 = MICROS_1HZ;
 const TICK_INTERVAL_SECS: f32 = TICK_INTERVAL_MICROS as f32 / 1_000_000.0;
 
 pub fn init_movement_tick(ctx: &ReducerContext) {
@@ -115,25 +110,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
 
         let mut movement_state_dirty = false;
 
-        // Quantized vertical velocity integration:
-        //
-        // - `vertical_velocity == 0` means no vertical motion (typically grounded).
-        // - Negative values mean falling (down).
-        //
-        // We integrate in discrete steps derived from dt so the simulation is stable even when
-        // dt varies slightly. Gravity and terminal velocity come from shared constants but are
-        // interpreted in the same quantized units as `vertical_velocity`.
-        //
-        // Important: we do not decide "grounded" from `vertical_velocity`. Grounding is determined
-        // by the KCC (`correction.grounded`). To avoid cases where you fail to start falling, we
-        // ensure a minimal downward velocity whenever we're not grounded (after we compute KCC).
-        //
-        // Here we only apply gravity if we're already falling (vv < 0). Starting the fall is handled
-        // after `move_shape` when we know whether KCC considers us grounded.
         if movement_state.vertical_velocity < 0 {
-            // Frame-rate independent gravity:
-            // - Stored `vertical_velocity` is quantized i8.
-            // - Convert to m/s, integrate using m/s^2 * dt, clamp terminal, then requantize.
             let v0_mps = movement_state.vertical_velocity as f32 * VERTICAL_VELOCITY_Q_MPS;
 
             // Semi-implicit Euler: v(t+dt) = v(t) + g*dt
@@ -150,7 +127,6 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
 
             if vq != movement_state.vertical_velocity {
                 movement_state.vertical_velocity = vq;
-                // log::info!("vertical_velocity {}", movement_state.vertical_velocity);
                 movement_state_dirty = true;
             }
         }
