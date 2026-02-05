@@ -12,12 +12,12 @@ pub struct MovementStateRow {
     #[index(btree)]
     pub cell_id: CellId,
 
+    pub move_intent: Option<MoveIntentData>,
+
     /// Index-able column for the `move_intent` because SpacetimeType cannot be indexed.
     /// This is true when grounded=false || Some(move_intent)
     #[index(btree)]
     pub should_move: bool,
-
-    pub move_intent: Option<MoveIntentData>,
 
     /// Quantized vertical velocity (meters/second).
     ///

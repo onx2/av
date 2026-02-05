@@ -9,6 +9,7 @@ use rapier3d::{
     prelude::{Capsule, QueryFilter},
 };
 use shared::{
+    advance_vertical_velocity,
     constants::{GRAVITY_MPS2, MICROS_1HZ, TERMINAL_FALL_SPEED_MPS, VERTICAL_VELOCITY_Q_MPS},
     encode_cell_id, get_desired_delta, is_at_target_planar,
     utils::{build_static_query_world, yaw_to_u8},
@@ -63,10 +64,9 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
         return Ok(());
     };
 
-    let dt_raw = delta_time(ctx.timestamp, timer.last_tick).unwrap_or(TICK_INTERVAL_SECS);
-    // Clamp to 120% of the configured tick interval to avoid "teleport" corrections on
-    // startup / scheduling jitter while still allowing small variance.
-    let dt = dt_raw.min(TICK_INTERVAL_SECS * 1.2);
+    let dt = delta_time(ctx.timestamp, timer.last_tick)
+        .unwrap_or(TICK_INTERVAL_SECS)
+        .min(TICK_INTERVAL_SECS * 1.2);
 
     let kcc = KinematicCharacterController {
         autostep: Some(CharacterAutostep {
@@ -109,22 +109,9 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             .unwrap_or(current_planar);
 
         let mut movement_state_dirty = false;
-
-        if movement_state.vertical_velocity < 0 {
-            let v0_mps = movement_state.vertical_velocity as f32 * VERTICAL_VELOCITY_Q_MPS;
-
-            // Semi-implicit Euler: v(t+dt) = v(t) + g*dt
-            let mut v1_mps = v0_mps + GRAVITY_MPS2 * dt;
-
-            // Clamp to terminal fall speed (negative/downward). We only do this when already falling.
-            if v1_mps < TERMINAL_FALL_SPEED_MPS {
-                v1_mps = TERMINAL_FALL_SPEED_MPS;
-            }
-
-            // Re-quantize to i8.
-            let vq = (v1_mps / VERTICAL_VELOCITY_Q_MPS).round();
-            let vq = vq.clamp(i8::MIN as f32, i8::MAX as f32) as i8;
-
+        let is_falling = movement_state.vertical_velocity < 0;
+        if is_falling {
+            let vq = advance_vertical_velocity(movement_state.vertical_velocity, dt);
             if vq != movement_state.vertical_velocity {
                 movement_state.vertical_velocity = vq;
                 movement_state_dirty = true;
@@ -146,21 +133,6 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             owner_transform.data.yaw = yaw_to_u8(yaw);
         }
 
-        // `get_desired_delta` currently expects an unsigned "fall speed" scalar.
-        // Our movement state stores `vertical_velocity` as an i8 where:
-        // - 0 = grounded/no vertical motion
-        // - negative = falling down
-        //
-        // Convert to a non-negative magnitude for the shared helper:
-        //
-        // Stored `vertical_velocity` is quantized i8 where negative means falling.
-        // Convert the quantized velocity to a magnitude in m/s, then pass as a scalar.
-        let vertical_velocity_u16: u16 = if movement_state.vertical_velocity < 0 {
-            let v_mps = (movement_state.vertical_velocity as f32 * VERTICAL_VELOCITY_Q_MPS).abs();
-            v_mps.round().clamp(0.0, u16::MAX as f32) as u16
-        } else {
-            0
-        };
         let correction = kcc.move_shape(
             dt,
             &query_pipeline,
@@ -170,7 +142,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
                 current_planar,
                 target_planar,
                 movement_speed_mps,
-                vertical_velocity_u16,
+                movement_state.vertical_velocity,
                 dt,
             ),
             |_| {},

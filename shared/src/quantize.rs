@@ -1,25 +1,36 @@
-pub fn quantize_f32_to_u16(x: f32, min: f32, max: f32) -> u16 {
-    assert!(max > min);
-    assert!(min.is_finite() && max.is_finite());
-    assert!(x.is_finite());
+// pub fn quantize_f32_to_u16(x: f32, min: f32, max: f32) -> u16 {
+//     assert!(max > min);
+//     assert!(min.is_finite() && max.is_finite());
+//     assert!(x.is_finite());
 
-    let x = x.clamp(min, max);
-    let t = (x - min) / (max - min); // [0, 1]
-    let q = (t * (u16::MAX as f32)).round();
+//     let x = x.clamp(min, max);
+//     let t = (x - min) / (max - min); // [0, 1]
+//     let q = (t * (u16::MAX as f32)).round();
 
-    // Defensive clamp in case of float edge cases.
-    q.clamp(0.0, u16::MAX as f32) as u16
+//     // Defensive clamp in case of float edge cases.
+//     q.clamp(0.0, u16::MAX as f32) as u16
+// }
+
+// pub fn dequantize_u16_to_f32(code: u16, min: f32, max: f32) -> f32 {
+//     assert!(max > min);
+//     assert!(min.is_finite() && max.is_finite());
+
+//     let t = (code as f32) / (u16::MAX as f32); // [0, 1]
+//     min + t * (max - min)
+// }
+
+// pub fn quantization_step(min: f32, max: f32) -> f32 {
+//     assert!(max > min);
+//     (max - min) / (u16::MAX as f32)
+// }
+
+use crate::VERTICAL_VELOCITY_Q_MPS;
+
+pub fn quantize_vertical_velocity(vel: f32) -> i8 {
+    let vq = (vel / VERTICAL_VELOCITY_Q_MPS).round();
+    vq.clamp(i8::MIN as f32, i8::MAX as f32) as i8
 }
 
-pub fn dequantize_u16_to_f32(code: u16, min: f32, max: f32) -> f32 {
-    assert!(max > min);
-    assert!(min.is_finite() && max.is_finite());
-
-    let t = (code as f32) / (u16::MAX as f32); // [0, 1]
-    min + t * (max - min)
-}
-
-pub fn quantization_step(min: f32, max: f32) -> f32 {
-    assert!(max > min);
-    (max - min) / (u16::MAX as f32)
+pub fn dequantize_vertical_velocity(v_q: i8) -> f32 {
+    v_q as f32 * VERTICAL_VELOCITY_Q_MPS
 }

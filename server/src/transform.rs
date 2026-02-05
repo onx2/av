@@ -35,9 +35,11 @@ impl TransformRow {
 }
 #[derive(SpacetimeType, Debug, Default, PartialEq, Clone, Copy)]
 pub struct TransformData {
+    /// 12byte
     pub translation: Vec3,
 
-    /// Quantized rotation around the Y axis.
+    /// 1byte
+    /// quantized rotation around the Y axis.
     /// ~1.4 degrees of precision seems good enough for most purposes
     /// and this saves 15bytes of data on each move tick.
     pub yaw: u8,

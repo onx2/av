@@ -1,6 +1,7 @@
 pub mod cell;
 pub mod collision;
 pub mod constants;
+pub mod quantize;
 pub mod utils;
 
 pub use cell::{
@@ -8,10 +9,8 @@ pub use cell::{
     world_span_m,
 };
 pub use collision::{ColliderShapeDef, WorldStaticDef, collider_from_def};
-pub use constants::{
-    CELL_SIZE, DIRECTIONAL_MOVEMENT_INTERVAL, GRID_SIDE, INV_CELL_SIZE, MAX_INTENT_DISTANCE_SQ,
-    MAX_INTENT_PATH_LEN, SMALLEST_MOVE_DISTANCE_SQ, SMALLEST_REQUEST_DISTANCE_SQ, WORLD_OFFSET,
-};
+pub use constants::*;
+pub use quantize::*;
 pub use utils::*;
 
 /// 4byte unique identifier for an actor.

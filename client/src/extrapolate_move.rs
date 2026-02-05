@@ -53,19 +53,11 @@ fn extrapolate_move(
                 transform.rotation = Quat::from_rotation_y(yaw);
             }
 
-            let vertical_velocity_u16: u16 = if movement_state.vertical_velocity < 0 {
-                let v_mps =
-                    (movement_state.vertical_velocity as f32 * VERTICAL_VELOCITY_Q_MPS).abs();
-                v_mps.round().clamp(0.0, u16::MAX as f32) as u16
-            } else {
-                0
-            };
-
             let desired_delta = get_desired_delta(
                 Vector2::new(current_planar.x, current_planar.y),
                 Vector2::new(target_planar.x, target_planar.y),
                 movement_speed_mps,
-                vertical_velocity_u16,
+                movement_state.vertical_velocity,
                 dt,
             );
 

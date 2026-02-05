@@ -3,10 +3,6 @@ use std::time::Duration;
 /// How frequently, in milliseconds, to send directional movement updates to the server.
 pub const DIRECTIONAL_MOVEMENT_INTERVAL: Duration = Duration::from_millis(50);
 
-/// 2π (tau), full rotation in radians.
-/// Used for yaw quantization helpers.
-pub const TAU: f32 = std::f32::consts::TAU;
-
 /// The smallest distance, squared, difference between two move requests allowed
 pub const SMALLEST_REQUEST_DISTANCE_SQ: f32 = 0.1;
 
