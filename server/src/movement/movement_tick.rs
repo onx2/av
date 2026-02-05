@@ -9,8 +9,8 @@ use rapier3d::{
     prelude::{Capsule, QueryFilter},
 };
 use shared::{
-    advance_vertical_velocity, constants::MICROS_1HZ, encode_cell_id, get_desired_delta,
-    is_at_target_planar, utils::build_static_query_world, yaw_from_xz, ActorId,
+    advance_vertical_velocity, encode_cell_id, get_desired_delta, is_at_target_planar,
+    utils::build_static_query_world, yaw_from_xz, ActorId, MICROS_20HZ,
 };
 use spacetimedb::{reducer, ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
 use std::iter::once;
@@ -34,7 +34,7 @@ pub struct MovementTickTimer {
     pub last_tick: Timestamp,
 }
 
-const TICK_INTERVAL_MICROS: i64 = MICROS_1HZ;
+const TICK_INTERVAL_MICROS: i64 = MICROS_20HZ;
 const TICK_INTERVAL_SECS: f32 = TICK_INTERVAL_MICROS as f32 / 1_000_000.0;
 
 pub fn init_movement_tick(ctx: &ReducerContext) {
