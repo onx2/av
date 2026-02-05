@@ -1,6 +1,6 @@
 use crate::{
-    actor_tbl, movement_state_tbl, row_to_def, world_static_tbl, MoveIntentData, SecondaryStatsRow,
-    TransformRow, Vec2,
+    actor_tbl, movement_state_tbl, row_to_def, to_isometry3, world_static_tbl, MoveIntentData,
+    SecondaryStatsRow, TransformRow, Vec2,
 };
 use nalgebra::Vector2;
 use rapier3d::{
@@ -9,11 +9,8 @@ use rapier3d::{
     prelude::{Capsule, QueryFilter},
 };
 use shared::{
-    advance_vertical_velocity,
-    constants::{GRAVITY_MPS2, MICROS_1HZ, TERMINAL_FALL_SPEED_MPS, VERTICAL_VELOCITY_Q_MPS},
-    encode_cell_id, get_desired_delta, is_at_target_planar,
-    utils::{build_static_query_world, yaw_to_u8},
-    yaw_from_xz, ActorId,
+    advance_vertical_velocity, constants::MICROS_1HZ, encode_cell_id, get_desired_delta,
+    is_at_target_planar, utils::build_static_query_world, yaw_from_xz, ActorId,
 };
 use spacetimedb::{reducer, ReducerContext, ScheduleAt, Table, TimeDuration, Timestamp};
 use std::iter::once;
@@ -97,15 +94,11 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             continue;
         };
 
-        let current_planar: Vector2<f32> = owner_transform.data.translation.xz().into();
+        let current_planar: Vector2<f32> = owner_transform.translation.xz().into();
         let target_planar: Vector2<f32> = movement_state
             .move_intent
-            .as_ref()
-            .map(|mi| {
-                mi.target_position_with_cache(&view_ctx.db, &mut target_xz_cache)
-                    .map(|pos| pos.into())
-                    .unwrap_or(current_planar)
-            })
+            .target_position_with_cache(&view_ctx.db, &mut target_xz_cache)
+            .map(|pos| pos.into())
             .unwrap_or(current_planar);
 
         let mut movement_state_dirty = false;
@@ -130,14 +123,14 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             .unwrap_or_default();
 
         if let Some(yaw) = yaw_from_xz(direction) {
-            owner_transform.data.yaw = yaw_to_u8(yaw);
+            owner_transform.yaw = yaw;
         }
 
         let correction = kcc.move_shape(
             dt,
             &query_pipeline,
             &Capsule::new_y(capsule.half_height, capsule.radius),
-            &owner_transform.data.into(),
+            &to_isometry3(&owner_transform),
             get_desired_delta(
                 current_planar,
                 target_planar,
@@ -148,9 +141,9 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             |_| {},
         );
 
-        owner_transform.data.translation.x += correction.translation.x;
-        owner_transform.data.translation.y += correction.translation.y;
-        owner_transform.data.translation.z += correction.translation.z;
+        owner_transform.translation.x += correction.translation.x;
+        owner_transform.translation.y += correction.translation.y;
+        owner_transform.translation.z += correction.translation.z;
 
         // Ground truth for grounding comes from KCC.
         //
@@ -169,33 +162,31 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             }
         }
 
-        let cell_id = encode_cell_id(
-            owner_transform.data.translation.x,
-            owner_transform.data.translation.z,
-        );
+        let cell_id = encode_cell_id(owner_transform.translation.x, owner_transform.translation.z);
         if movement_state.cell_id != cell_id {
             movement_state.cell_id = cell_id;
             movement_state_dirty = true;
         }
 
-        if is_at_target_planar(owner_transform.data.translation.xz().into(), target_planar) {
-            let clear_intent = match movement_state.move_intent.as_mut() {
-                Some(MoveIntentData::Point(_)) => true,
-                Some(MoveIntentData::Actor(_)) => true,
-                Some(MoveIntentData::Path(path)) => {
+        if is_at_target_planar(owner_transform.translation.xz().into(), target_planar) {
+            let clear_intent = match &mut movement_state.move_intent {
+                MoveIntentData::Point(_) => true,
+                MoveIntentData::Actor(_) => true,
+                MoveIntentData::Path(path) => {
                     if !path.is_empty() {
                         path.remove(0);
                     }
                     path.is_empty()
                 }
-                None => false,
+                MoveIntentData::None => false,
             };
             if clear_intent {
-                movement_state.move_intent = None;
+                movement_state.move_intent = MoveIntentData::None;
                 movement_state_dirty = true;
             }
         }
-        let should_move = movement_state.move_intent.is_some() || !correction.grounded;
+        let should_move =
+            movement_state.move_intent != MoveIntentData::None || !correction.grounded;
         if movement_state.should_move != should_move {
             movement_state.should_move = should_move;
             movement_state_dirty = true;

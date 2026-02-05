@@ -4,7 +4,6 @@ use crate::movement_state::MovementState;
 use crate::secondary_stats::SecondaryStats;
 use bevy::prelude::*;
 use nalgebra::Vector2;
-use shared::constants::VERTICAL_VELOCITY_Q_MPS;
 use shared::{get_desired_delta, yaw_from_xz};
 
 pub(super) fn plugin(app: &mut App) {
@@ -34,14 +33,14 @@ fn extrapolate_move(
     query
         .iter_mut()
         .for_each(|(mut transform, movement_state, secondary_stats)| {
-            // TODO: add CapuleY to the actor state locally...
-
-            let Some(move_intent) = &movement_state.move_intent else {
+            // TODO: add CapuleY to the actor state locally...?
+            if !movement_state.should_move {
                 return;
-            };
+            }
+
             let current_planar = transform.translation.xz();
-            let target_planar = match move_intent {
-                MoveIntentData::Point(point) => Vec2::new((*point).x, (*point).z),
+            let target_planar = match &movement_state.move_intent {
+                MoveIntentData::Point(point) => Vec2::new((point).x, (point).z),
                 _ => current_planar,
             };
             let movement_speed_mps = secondary_stats.movement_speed;

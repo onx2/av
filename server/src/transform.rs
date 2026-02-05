@@ -1,8 +1,7 @@
-use super::Vec3;
-use crate::{get_view_aoi_block, MovementStateRow};
+use crate::{get_view_aoi_block, MovementStateRow, Vec3};
 use nalgebra::{Isometry3, UnitQuaternion, Vector3};
-use shared::{yaw_from_u8, ActorId};
-use spacetimedb::{table, ReducerContext, SpacetimeType, Table, ViewContext};
+use shared::ActorId;
+use spacetimedb::{table, ReducerContext, Table, ViewContext};
 
 /// Ephemeral
 ///
@@ -12,45 +11,42 @@ pub struct TransformRow {
     #[primary_key]
     pub actor_id: ActorId,
 
-    pub data: TransformData,
+    // [OPTIMIZE TODO]
+    // This can probably be removed and computed on the client
+    // We'd really only need yaw on the server during event-driven things...
+    // keeping for now though just in case.
+    pub yaw: f32,
+
+    pub translation: Vec3,
 }
 
 impl TransformRow {
     pub fn find(ctx: &ReducerContext, actor_id: ActorId) -> Option<Self> {
         ctx.db.transform_tbl().actor_id().find(actor_id)
     }
-    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, data: TransformData) {
-        ctx.db.transform_tbl().insert(Self { actor_id, data });
+    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, translation: Vec3, yaw: f32) {
+        ctx.db.transform_tbl().insert(Self {
+            actor_id,
+            translation,
+            yaw,
+        });
     }
     /// Updates from given self, caller should have updated the state with the latest values.
     pub fn update_from_self(self, ctx: &ReducerContext) {
         ctx.db.transform_tbl().actor_id().update(self);
     }
-    pub fn update(&self, ctx: &ReducerContext, data: TransformData) {
+    pub fn update(&self, ctx: &ReducerContext, translation: Vec3, yaw: f32) {
         ctx.db.transform_tbl().actor_id().update(Self {
             actor_id: self.actor_id,
-            data,
+            translation,
+            yaw,
         });
     }
 }
-#[derive(SpacetimeType, Debug, Default, PartialEq, Clone, Copy)]
-pub struct TransformData {
-    /// 12byte
-    pub translation: Vec3,
 
-    /// 1byte
-    /// quantized rotation around the Y axis.
-    /// ~1.4 degrees of precision seems good enough for most purposes
-    /// and this saves 15bytes of data on each move tick.
-    pub yaw: u8,
-}
-
-impl From<TransformData> for Isometry3<f32> {
-    fn from(v: TransformData) -> Self {
-        let yaw = yaw_from_u8(v.yaw);
-        let rotation = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw);
-        Self::from_parts(v.translation.into(), rotation)
-    }
+pub fn to_isometry3(row: &TransformRow) -> Isometry3<f32> {
+    let rotation = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), row.yaw);
+    Isometry3::from_parts(row.translation.into(), rotation)
 }
 
 /// Finds the active character for all things within the AOI.

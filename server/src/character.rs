@@ -1,8 +1,8 @@
 use crate::{
     actor_tbl, character_instance_tbl, experience_tbl, health_tbl, level_tbl, mana_tbl,
     movement_state_tbl, primary_stats_tbl, transform_tbl, ActorRow, CapsuleY, CharacterInstanceRow,
-    ExperienceRow, HealthData, HealthRow, LevelRow, ManaData, ManaRow, MovementStateRow,
-    PrimaryStatsRow, SecondaryStatsRow, TransformData, TransformRow, Vec3,
+    ExperienceRow, HealthData, HealthRow, LevelRow, ManaData, ManaRow, MoveIntentData,
+    MovementStateRow, PrimaryStatsRow, SecondaryStatsRow, TransformRow, Vec3,
 };
 use shared::{encode_cell_id, CellId};
 use spacetimedb::{reducer, table, Identity, ReducerContext, Table};
@@ -25,7 +25,8 @@ pub struct CharacterRow {
 
     pub capsule: CapsuleY,
 
-    pub transform: TransformData,
+    pub translation: Vec3,
+    pub yaw: f32,
 
     // Primary stats
     pub ferocity: u8,
@@ -68,10 +69,8 @@ impl CharacterRow {
             id: 0,
             identity: ctx.sender,
             name,
-            transform: TransformData {
-                yaw: 0,
-                translation: Vec3::new(0., 50.0, 0.),
-            },
+            yaw: 0.,
+            translation: Vec3::new(0., 50.0, 0.),
             deleted: false,
             capsule: CapsuleY {
                 radius: 0.3,
@@ -123,8 +122,7 @@ impl CharacterRow {
         // Prevent multiple player characters from joining the game, only one character per player
         self.leave_game(ctx);
 
-        let cell_id: CellId =
-            encode_cell_id(self.transform.translation.x, self.transform.translation.z);
+        let cell_id: CellId = encode_cell_id(self.translation.x, self.translation.z);
         let actor = ctx.db.actor_tbl().insert(ActorRow {
             id: 0,
             capsule: self.capsule,
@@ -135,11 +133,11 @@ impl CharacterRow {
         ctx.db.movement_state_tbl().insert(MovementStateRow {
             actor_id: actor.id,
             should_move: true,
-            move_intent: None,
+            move_intent: MoveIntentData::None,
             vertical_velocity: -1,
             cell_id,
         });
-        TransformRow::insert(ctx, actor.id, self.transform);
+        TransformRow::insert(ctx, actor.id, self.translation, self.yaw);
         PrimaryStatsRow::insert(
             ctx,
             actor.id,

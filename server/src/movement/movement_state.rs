@@ -12,21 +12,20 @@ pub struct MovementStateRow {
     #[index(btree)]
     pub cell_id: CellId,
 
-    pub move_intent: Option<MoveIntentData>,
-
     /// Index-able column for the `move_intent` because SpacetimeType cannot be indexed.
-    /// This is true when grounded=false || Some(move_intent)
+    /// Represents vertical_velocity < 0 || Some(move_intent)
     #[index(btree)]
     pub should_move: bool,
 
     /// Quantized vertical velocity (meters/second).
+    /// Per-tick vertical displacement is derived from this and delta time.
     ///
     /// - `0` means grounded / no vertical motion.
     /// - Negative values mean falling downward.
-    ///
-    /// This is intentionally quantized to save bytes. The server derives per-tick vertical
-    /// displacement from this plus `dt`.
     pub vertical_velocity: i8,
+
+    /// The player's movement intentions
+    pub move_intent: MoveIntentData,
 }
 
 impl MovementStateRow {

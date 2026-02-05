@@ -6,6 +6,7 @@ use spacetimedb::*;
 /// Represents the 2-dimensional movement intent of an Actor in the world
 #[derive(SpacetimeType, Debug, Clone, PartialEq)]
 pub enum MoveIntentData {
+    None,
     /// Movement toward a specific position in the world
     Point(Vec2),
     /// Movement along a path
@@ -15,17 +16,19 @@ pub enum MoveIntentData {
     /// Movement toward an entity in the world (Actor)
     Actor(ActorId),
 }
+
 impl MoveIntentData {
     /// Gets the next target position for the given MoveIntent
     pub fn target_position(&self, db: &LocalReadOnly) -> Option<Vec2> {
         match &self {
+            MoveIntentData::None => None,
             MoveIntentData::Point(point) => Some(*point),
             MoveIntentData::Path(path) => path.first().copied(),
             MoveIntentData::Actor(actor_id) => db
                 .transform_tbl()
                 .actor_id()
                 .find(actor_id)
-                .map(|t| t.data.translation.xz()),
+                .map(|t| t.translation.xz()),
         }
     }
 
@@ -38,12 +41,13 @@ impl MoveIntentData {
         cache: &mut HashMap<ActorId, Vec2>,
     ) -> Option<Vec2> {
         match &self {
+            MoveIntentData::None => None,
             MoveIntentData::Point(point) => Some(*point),
             MoveIntentData::Path(path) => path.first().copied(),
             MoveIntentData::Actor(actor_id) => match cache.get(actor_id) {
                 Some(pos) => Some(*pos),
                 None => db.transform_tbl().actor_id().find(actor_id).map(|t| {
-                    let xz = t.data.translation.xz();
+                    let xz = t.translation.xz();
                     cache.insert(*actor_id, xz);
                     xz
                 }),

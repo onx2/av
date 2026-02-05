@@ -4,7 +4,6 @@ use crate::{
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadInsertMessage, ReadUpdateMessage};
-use shared::{SMALLEST_REQUEST_DISTANCE_SQ, is_move_too_close, utils::yaw_from_u8};
 
 /// Cached server transform data for an entity.
 #[derive(Component, Debug)]
@@ -29,8 +28,8 @@ fn on_transform_inserted(
         let bevy_entity = ensure_actor_entity(&mut commands, &mut oe_mapping, msg.row.actor_id);
 
         // Use Commands to avoid timing issues with deferred spawns/components.
-        let translation: Vec3 = msg.row.data.translation.clone().into();
-        let rotation: Quat = Quat::from_rotation_y(yaw_from_u8(msg.row.data.yaw));
+        let translation: Vec3 = msg.row.translation.clone().into();
+        let rotation: Quat = Quat::from_rotation_y(msg.row.yaw);
 
         commands.entity(bevy_entity).insert((
             // Make visible now that we have a valid transform. TODO: this might not be necessary once assets for the character are used.
@@ -61,8 +60,8 @@ fn on_transform_updated(
             continue;
         };
         // println!("on_transform_updated: {:?}", transform.actor_id);
-        net_transform.translation = msg.new.data.translation.clone().into();
-        net_transform.rotation = Quat::from_rotation_y(yaw_from_u8(msg.new.data.yaw));
+        net_transform.translation = msg.new.translation.clone().into();
+        net_transform.rotation = Quat::from_rotation_y(msg.new.yaw);
     }
 }
 

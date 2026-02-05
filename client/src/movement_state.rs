@@ -10,7 +10,7 @@ use shared::CellId;
 pub struct MovementState {
     pub cell_id: CellId,
     pub should_move: bool,
-    pub move_intent: Option<MoveIntentData>,
+    pub move_intent: MoveIntentData,
     pub vertical_velocity: i8,
 }
 

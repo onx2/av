@@ -8,7 +8,7 @@ use spacetimedb::{reducer, ReducerContext};
 /// New approach:
 /// - `movement_state_tbl.move_intent` stores the current intent.
 /// - `movement_state_tbl.should_move` is kept consistent with the movement tick:
-///     `should_move = move_intent.is_some() || !grounded`
+///     `should_move = (move_intent != MoveIntentData::None) || !grounded`
 #[reducer]
 pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), String> {
     let Some(ci) = ctx.db.character_instance_tbl().identity().find(ctx.sender) else {
@@ -21,7 +21,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
         return Err("Unable to find transform for the active character".into());
     };
 
-    let current: Vector2<f32> = transform_row.data.translation.xz().into();
+    let current: Vector2<f32> = transform_row.translation.xz().into();
 
     // Load movement state we will update. (Move intents now live here.)
     let Some(mut movement_state) = ctx.db.movement_state_tbl().actor_id().find(ci.actor_id) else {
@@ -30,7 +30,8 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
     };
 
     // Should we ignore this request based on our current intent?
-    if let Some(current_intent) = movement_state.move_intent.as_ref() {
+    if movement_state.move_intent != MoveIntentData::None {
+        let current_intent = &movement_state.move_intent;
         let should_ignore = match (current_intent, &intent) {
             // Already chasing this actor
             (MoveIntentData::Actor(id_a), MoveIntentData::Actor(id_b)) => id_a == id_b,
@@ -50,6 +51,9 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
 
     // Is this new intent valid?
     match &intent {
+        MoveIntentData::None => {
+            // Treat `None` as a cancellation request.
+        }
         MoveIntentData::Point(point) => {
             if is_move_too_close(current, (*point).into()) {
                 log::info!(
@@ -63,7 +67,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
                 log::info!(
                     "Ignoring move intent due to distance from current position being too far"
                 );
-                return Err("Distance from current position too far".into());
+                return Err("Distance from current position being too far".into());
             }
         }
         MoveIntentData::Actor(owner) => {
@@ -73,7 +77,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
             };
 
             // Only check if the actor is too far because this can be used to follow, even when close.
-            if is_move_too_far(current, target.data.translation.xz().into()) {
+            if is_move_too_far(current, target.translation.xz().into()) {
                 log::info!(
                     "Ignoring move intent due to distance from current position being too far"
                 );
@@ -82,8 +86,9 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
         }
     }
 
-    movement_state.move_intent = Some(intent);
-    movement_state.should_move = true;
+    movement_state.should_move =
+        movement_state.vertical_velocity < 0 || intent != MoveIntentData::None;
+    movement_state.move_intent = intent;
 
     ctx.db
         .movement_state_tbl()
@@ -103,8 +108,8 @@ pub fn cancel_move(ctx: &ReducerContext) -> Result<(), String> {
         return Err("Unable to find movement state for the active character".into());
     };
 
-    movement_state.move_intent = None;
-    movement_state.should_move = movement_state.vertical_velocity != 0;
+    movement_state.move_intent = MoveIntentData::None;
+    movement_state.should_move = movement_state.vertical_velocity < 0;
 
     ctx.db
         .movement_state_tbl()
