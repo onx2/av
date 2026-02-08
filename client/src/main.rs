@@ -21,7 +21,7 @@ mod movement;
 mod player;
 mod secondary_stats;
 mod server;
-mod transform;
+// mod transform;
 mod world;
 
 pub use actor::{ActorEntity, ActorEntityMapping, LocalActor, RemoteActor, ensure_actor_entity};

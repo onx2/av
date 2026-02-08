@@ -9,6 +9,9 @@ use transform::*;
 #[derive(Resource, Debug, Default)]
 pub struct ClientIntentSeq(pub u32);
 
+#[derive(Component, Debug, Default)]
+pub struct LastAckIntentSeq(pub u32);
+
 pub(super) fn plugin(app: &mut App) {
     app.init_resource::<ClientIntentSeq>();
     app.add_plugins((transform::plugin, movement_state::plugin));
@@ -18,8 +21,35 @@ pub(super) fn plugin(app: &mut App) {
 
 fn reconcile(
     time: Res<Time<Fixed>>,
-    mut query: Query<(&mut SimTransform, &SimMovementState, &SecondaryStats), With<ActorEntity>>,
+    mut query: Query<
+        (
+            &NetTransform,
+            &NetMovementState,
+            &mut LastAckIntentSeq,
+            &mut SimTransform,
+            &mut SimMovementState,
+        ),
+        With<ActorEntity>,
+    >,
 ) {
+    query.par_iter_mut().for_each(
+        |(
+            net_transform,
+            net_movement_state,
+            mut last_ack_intent_seq,
+            mut sim_transform,
+            mut sim_movement_state,
+        )| {
+            if net_transform.client_intent_seq > last_ack_intent_seq.0 {
+                sim_transform.translation = net_transform.translation;
+                sim_movement_state.move_intent = net_movement_state.move_intent.clone();
+                sim_movement_state.cell_id = net_movement_state.cell_id;
+                sim_movement_state.should_move = net_movement_state.should_move;
+                sim_movement_state.vertical_velocity = net_movement_state.vertical_velocity;
+                last_ack_intent_seq.0 = net_transform.client_intent_seq;
+            }
+        },
+    );
 }
 
 fn predict(

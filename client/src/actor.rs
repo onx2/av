@@ -1,4 +1,6 @@
-use crate::{module_bindings::CharacterInstanceRow, server::SpacetimeDB};
+use crate::{
+    module_bindings::CharacterInstanceRow, movement::LastAckIntentSeq, server::SpacetimeDB,
+};
 use bevy::{platform::collections::HashMap, prelude::*};
 use bevy_spacetimedb::{ReadDeleteMessage, ReadInsertMessage};
 use shared::ActorId;
@@ -37,6 +39,7 @@ pub fn ensure_actor_entity(
     let entity = commands
         .spawn((
             ActorEntity(actor_id),
+            LastAckIntentSeq(0),
             // Hidden until we have a valid transform. TODO: this might not be necessary once assets for the character are used.
             Visibility::Hidden,
         ))

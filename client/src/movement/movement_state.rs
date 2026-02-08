@@ -1,6 +1,7 @@
 use crate::{
     ActorEntityMapping, ensure_actor_entity,
     module_bindings::{MoveIntentData, MovementStateRow},
+    movement::LastAckIntentSeq,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadInsertMessage, ReadUpdateMessage};
@@ -54,7 +55,7 @@ fn on_inserted(
 }
 
 fn on_updated(
-    mut net_movement_state_q: Query<&mut NetMovementState>,
+    mut query: Query<&mut NetMovementState>,
     mut msgs: ReadUpdateMessage<MovementStateRow>,
     oe_mapping: Res<ActorEntityMapping>,
 ) {
@@ -62,7 +63,7 @@ fn on_updated(
         let Some(&bevy_entity) = oe_mapping.0.get(&msg.new.actor_id) else {
             continue;
         };
-        let Ok(mut net_movement_state) = net_movement_state_q.get_mut(bevy_entity) else {
+        let Ok(mut net_movement_state) = query.get_mut(bevy_entity) else {
             continue;
         };
 
@@ -71,5 +72,6 @@ fn on_updated(
         net_movement_state.cell_id = msg.new.cell_id;
         net_movement_state.should_move = msg.new.should_move;
         net_movement_state.vertical_velocity = msg.new.vertical_velocity;
+        net_movement_state.client_intent_seq = msg.new.client_intent_seq;
     }
 }

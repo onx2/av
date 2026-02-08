@@ -1,6 +1,7 @@
 use crate::{
     actor::{ActorEntityMapping, ensure_actor_entity},
     module_bindings::TransformRow,
+    movement::LastAckIntentSeq,
 };
 use bevy::prelude::*;
 use bevy_spacetimedb::{ReadInsertMessage, ReadUpdateMessage};
@@ -47,7 +48,7 @@ fn on_inserted(
 
 /// A listener during update of messages sent from the server for the transform data changing.
 fn on_updated(
-    mut transform_q: Query<&mut NetTransform>,
+    mut query: Query<&mut NetTransform>,
     mut msgs: ReadUpdateMessage<TransformRow>,
     oe_mapping: Res<ActorEntityMapping>,
 ) {
@@ -55,9 +56,10 @@ fn on_updated(
         let Some(&bevy_entity) = oe_mapping.0.get(&msg.new.actor_id) else {
             continue;
         };
-        let Ok(mut net_transform) = transform_q.get_mut(bevy_entity) else {
+        let Ok(mut net_transform) = query.get_mut(bevy_entity) else {
             continue;
         };
         net_transform.translation = msg.new.translation.clone().into();
+        net_transform.client_intent_seq = msg.new.client_intent_seq;
     }
 }
