@@ -18,28 +18,40 @@ pub struct TransformRow {
     pub yaw: f32,
 
     pub translation: Vec3,
+
+    /// Monotonic marker for intent changes from the client, this transform was a result of a move
+    /// for that particular movement intent.
+    pub client_intent_seq: u32,
 }
 
 impl TransformRow {
     pub fn find(ctx: &ReducerContext, actor_id: ActorId) -> Option<Self> {
         ctx.db.transform_tbl().actor_id().find(actor_id)
     }
-    pub fn insert(ctx: &ReducerContext, actor_id: ActorId, translation: Vec3, yaw: f32) {
+    pub fn insert(
+        ctx: &ReducerContext,
+        actor_id: ActorId,
+        translation: Vec3,
+        yaw: f32,
+        intent_seq: u32,
+    ) {
         ctx.db.transform_tbl().insert(Self {
             actor_id,
             translation,
             yaw,
+            client_intent_seq: intent_seq,
         });
     }
     /// Updates from given self, caller should have updated the state with the latest values.
     pub fn update_from_self(self, ctx: &ReducerContext) {
         ctx.db.transform_tbl().actor_id().update(self);
     }
-    pub fn update(&self, ctx: &ReducerContext, translation: Vec3, yaw: f32) {
+    pub fn update(&self, ctx: &ReducerContext, translation: Vec3, yaw: f32, intent_seq: u32) {
         ctx.db.transform_tbl().actor_id().update(Self {
             actor_id: self.actor_id,
             translation,
             yaw,
+            client_intent_seq: intent_seq,
         });
     }
 }

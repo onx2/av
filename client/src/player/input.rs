@@ -3,7 +3,7 @@ use crate::{
     cursor::{CurrentCursor, set_cursor_to_ability, set_cursor_to_combat, set_cursor_to_default},
     input::InputAction,
     module_bindings::{MoveIntentData, cancel_move, create_character, enter_game, request_move},
-    // owner::LocalOwner,
+    movement::ClientIntentSeq,
     server::SpacetimeDB,
 };
 use bevy::{picking::pointer::PointerInteraction, prelude::*};
@@ -14,6 +14,7 @@ pub(super) fn handle_lmb_movement(
     actions: Res<ActionState<InputAction>>,
     interactions: Query<&PointerInteraction>,
     stdb: SpacetimeDB,
+    mut client_intent: ResMut<ClientIntentSeq>,
 ) {
     let pressed = actions.pressed(&InputAction::LeftClick);
     let just_released = actions.just_released(&InputAction::LeftClick);
@@ -32,12 +33,11 @@ pub(super) fn handle_lmb_movement(
 
     // TODO: just_released should request path move, for now everything is point
     if pressed || just_released {
-        match stdb
-            .reducers()
-            .request_move(MoveIntentData::Point(crate::module_bindings::Vec2 {
-                x: pos.x,
-                z: pos.z,
-            })) {
+        client_intent.0 += 1;
+        match stdb.reducers().request_move(
+            MoveIntentData::Point(crate::module_bindings::Vec2 { x: pos.x, z: pos.z }),
+            client_intent.0,
+        ) {
             Ok(_) => {
                 // local_actor_q.move_intent = MoveIntentData::Point(pos.into());
             }

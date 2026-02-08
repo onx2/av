@@ -141,6 +141,7 @@ fn movement_tick_reducer(ctx: &ReducerContext, mut timer: MovementTickTimer) -> 
             |_| {},
         );
 
+        owner_transform.client_intent_seq = movement_state.client_intent_seq;
         owner_transform.translation.x += correction.translation.x;
         owner_transform.translation.y += correction.translation.y;
         owner_transform.translation.z += correction.translation.z;

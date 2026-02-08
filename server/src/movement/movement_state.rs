@@ -26,6 +26,9 @@ pub struct MovementStateRow {
 
     /// The player's movement intentions
     pub move_intent: MoveIntentData,
+
+    /// Monotonic marker for intent changes from the client.
+    pub client_intent_seq: u32,
 }
 
 impl MovementStateRow {

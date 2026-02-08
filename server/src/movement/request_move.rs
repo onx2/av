@@ -10,7 +10,11 @@ use spacetimedb::{reducer, ReducerContext};
 /// - `movement_state_tbl.should_move` is kept consistent with the movement tick:
 ///     `should_move = (move_intent != MoveIntentData::None) || !grounded`
 #[reducer]
-pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), String> {
+pub fn request_move(
+    ctx: &ReducerContext,
+    intent: MoveIntentData,
+    intent_seq: u32,
+) -> Result<(), String> {
     let Some(ci) = ctx.db.character_instance_tbl().identity().find(ctx.sender) else {
         log::error!("Unable to find active character");
         return Err("Unable to find active character".into());
@@ -89,6 +93,7 @@ pub fn request_move(ctx: &ReducerContext, intent: MoveIntentData) -> Result<(), 
     movement_state.should_move =
         movement_state.vertical_velocity < 0 || intent != MoveIntentData::None;
     movement_state.move_intent = intent;
+    movement_state.client_intent_seq = intent_seq;
 
     ctx.db
         .movement_state_tbl()

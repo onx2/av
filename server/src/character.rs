@@ -130,14 +130,16 @@ impl CharacterRow {
         ctx.db
             .character_instance_tbl()
             .insert(CharacterInstanceRow::new(ctx.sender, actor.id, self.id));
+        let client_intent_seq = 0;
         ctx.db.movement_state_tbl().insert(MovementStateRow {
             actor_id: actor.id,
             should_move: true,
             move_intent: MoveIntentData::None,
             vertical_velocity: -1,
+            client_intent_seq,
             cell_id,
         });
-        TransformRow::insert(ctx, actor.id, self.translation, self.yaw);
+        TransformRow::insert(ctx, actor.id, self.translation, self.yaw, client_intent_seq);
         PrimaryStatsRow::insert(
             ctx,
             actor.id,

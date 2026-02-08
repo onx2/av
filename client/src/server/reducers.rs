@@ -12,6 +12,7 @@ use spacetimedb_sdk::ReducerEvent;
 pub struct RequestMove {
     pub event: ReducerEvent<Reducer>,
     pub intent: MoveIntentData,
+    pub client_intent_seq: u32,
 }
 
 #[derive(Debug, RegisterReducerMessage)]
