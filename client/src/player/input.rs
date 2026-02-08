@@ -1,16 +1,17 @@
 use crate::{
     // actor::{LocalActor, MovementData},
+    LocalActor,
     cursor::{CurrentCursor, set_cursor_to_ability, set_cursor_to_combat, set_cursor_to_default},
     input::InputAction,
     module_bindings::{MoveIntentData, cancel_move, create_character, enter_game, request_move},
-    movement::ClientIntentSeq,
+    movement::{ClientIntentSeq, movement_state::SimMovementState},
     server::SpacetimeDB,
 };
 use bevy::{picking::pointer::PointerInteraction, prelude::*};
 use leafwing_input_manager::prelude::ActionState;
 
 pub(super) fn handle_lmb_movement(
-    // mut local_actor_q: Single<&mut MovementData, With<LocalOwner>>,
+    mut local_actor_q: Single<&mut SimMovementState, With<LocalActor>>,
     actions: Res<ActionState<InputAction>>,
     interactions: Query<&PointerInteraction>,
     stdb: SpacetimeDB,
@@ -34,12 +35,14 @@ pub(super) fn handle_lmb_movement(
     // TODO: just_released should request path move, for now everything is point
     if pressed || just_released {
         client_intent.0 += 1;
-        match stdb.reducers().request_move(
-            MoveIntentData::Point(crate::module_bindings::Vec2 { x: pos.x, z: pos.z }),
-            client_intent.0,
-        ) {
+        let point = crate::module_bindings::Vec2 { x: pos.x, z: pos.z };
+        match stdb
+            .reducers()
+            .request_move(MoveIntentData::Point(point.clone()), client_intent.0)
+        {
             Ok(_) => {
-                // local_actor_q.move_intent = MoveIntentData::Point(pos.into());
+                local_actor_q.move_intent = MoveIntentData::Point(point);
+                local_actor_q.should_move = true;
             }
             Err(e) => println!("Error: {e}"),
         }

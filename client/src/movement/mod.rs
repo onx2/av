@@ -1,9 +1,16 @@
-mod movement_state;
-mod transform;
+pub mod movement_state;
+pub mod transform;
 
-use crate::{ActorEntity, secondary_stats::SecondaryStats};
+use crate::module_bindings::MoveIntentData;
+use crate::{ActorEntity, secondary_stats::SecondaryStats, world::ClientStaticQueryWorld};
 use bevy::prelude::*;
 use movement_state::*;
+use nalgebra::{Isometry3, Translation3, UnitQuaternion, Vector2, Vector3};
+use rapier3d::{
+    control::{CharacterAutostep, CharacterLength, KinematicCharacterController},
+    prelude::{Capsule, QueryFilter},
+};
+use shared::{advance_vertical_velocity, get_desired_delta, yaw_from_xz};
 use transform::*;
 
 #[derive(Resource, Debug, Default)]
@@ -20,7 +27,6 @@ pub(super) fn plugin(app: &mut App) {
 }
 
 fn reconcile(
-    time: Res<Time<Fixed>>,
     mut query: Query<
         (
             &NetTransform,
@@ -54,8 +60,100 @@ fn reconcile(
 
 fn predict(
     time: Res<Time<Fixed>>,
-    mut query: Query<(&mut SimTransform, &SimMovementState, &SecondaryStats), With<ActorEntity>>,
+    query_world: Res<ClientStaticQueryWorld>,
+    mut query: Query<
+        (&mut SimTransform, &mut SimMovementState, &SecondaryStats),
+        With<ActorEntity>,
+    >,
 ) {
+    let dt = time.delta_secs();
+
+    let Some(query_world) = query_world.query_world.as_ref() else {
+        return;
+    };
+
+    let kcc = KinematicCharacterController {
+        autostep: Some(CharacterAutostep {
+            include_dynamic_bodies: false,
+            max_height: CharacterLength::Relative(0.4),
+            ..CharacterAutostep::default()
+        }),
+        offset: CharacterLength::Relative(0.025),
+        ..KinematicCharacterController::default()
+    };
+
+    let query_pipeline = query_world.as_query_pipeline(QueryFilter::only_fixed());
+
+    // Temporary static capsule values (until replicated).
+    const CAPSULE_RADIUS: f32 = 0.3;
+    const CAPSULE_HALF_HEIGHT: f32 = 0.9;
+    let capsule = Capsule::new_y(CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS);
+
+    query.iter_mut().for_each(
+        |(mut sim_transform, mut sim_movement_state, secondary_stats)| {
+            if !sim_movement_state.should_move && sim_movement_state.vertical_velocity >= 0 {
+                return;
+            }
+
+            if sim_movement_state.vertical_velocity < 0 {
+                sim_movement_state.vertical_velocity =
+                    advance_vertical_velocity(sim_movement_state.vertical_velocity, dt);
+            }
+
+            let current_planar = sim_transform.translation.xz();
+            let target_planar = match &sim_movement_state.move_intent {
+                MoveIntentData::Point(point) => Vec2::new(point.x, point.z),
+                MoveIntentData::Path(path) => path
+                    .first()
+                    .map(|p| Vec2::new(p.x, p.z))
+                    .unwrap_or(current_planar),
+                _ => current_planar,
+            };
+
+            let movement_speed_mps = secondary_stats.movement_speed;
+            let direction = (target_planar - current_planar)
+                .try_normalize()
+                .unwrap_or_default();
+
+            let yaw = yaw_from_xz(Vector2::new(direction.x, direction.y)).unwrap_or(0.0);
+
+            let desired_delta = get_desired_delta(
+                Vector2::new(current_planar.x, current_planar.y),
+                Vector2::new(target_planar.x, target_planar.y),
+                movement_speed_mps,
+                sim_movement_state.vertical_velocity,
+                dt,
+            );
+
+            let iso: Isometry3<f32> = Isometry3::from_parts(
+                Translation3::new(
+                    sim_transform.translation.x,
+                    sim_transform.translation.y,
+                    sim_transform.translation.z,
+                ),
+                UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw),
+            );
+
+            let correction = kcc.move_shape(
+                dt,
+                &query_pipeline,
+                &capsule,
+                &iso,
+                desired_delta.into(),
+                |_| {},
+            );
+
+            sim_transform.translation.x += correction.translation.x;
+            sim_transform.translation.y += correction.translation.y;
+            sim_transform.translation.z += correction.translation.z;
+
+            if correction.grounded {
+                sim_movement_state.vertical_velocity = 0;
+            } else if sim_movement_state.vertical_velocity == 0 {
+                sim_movement_state.vertical_velocity = -1;
+            }
+        },
+    );
 }
 
 fn interpolate(time: Res<Time>, mut transform_query: Query<(&mut Transform, &SimTransform)>) {
